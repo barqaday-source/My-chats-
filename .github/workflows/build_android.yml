@@ -35,18 +35,49 @@ jobs:
           flutter-version: '3.29.0'
           channel: 'stable'     
 
-      - name: Prepare Workspace
+      - name: Create Android Project Structure
         run: |
-          flutter pub cache clean --force
           flutter clean
-          rm -rf android
-          flutter create .
+          rm -rf android ios linux macos windows web
+          # هذا ينشئ كل المنصات من جديد بإعدادات Flutter 3.29
+          flutter create --platforms=android --project-name cchat --org com.seachat .
 
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Configure Android Files
+      - name: Inject Correct Kotlin Version and Android Config
         run: |
+          # 1. أهم خطوة: نحقن settings.gradle بإصدار Kotlin 1.9.24
+          cat > android/settings.gradle << 'EOF'
+          pluginManagement {
+              def flutterSdkPath = {
+                  def properties = new Properties()
+                  file("local.properties").withInputStream { properties.load(it) }
+                  def flutterSdkPath = properties.getProperty("flutter.sdk")
+                  assert flutterSdkPath != null, "flutter.sdk not set in local.properties"
+                  return flutterSdkPath
+              }
+              settings.ext.flutterSdkPath = flutterSdkPath()
+
+              includeBuild("${settings.ext.flutterSdkPath}/packages/flutter_tools/gradle")
+
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+
+          plugins {
+              id "dev.flutter.flutter-plugin-loader" version "1.0.0"
+              id "com.android.application" version "8.1.0" apply false
+              id "org.jetbrains.kotlin.android" version "1.9.24" apply false
+          }
+
+          include ":app"
+          EOF
+
+          # 2. تعديل build.gradle.kts عشان Java 17 و NDK
           cat > android/app/build.gradle.kts << 'EOF'
           plugins {
               id("com.android.application")
@@ -85,6 +116,7 @@ jobs:
           }
           EOF
 
+          # 3. AndroidManifest مع صلاحيات الصوت
           cat > android/app/src/main/AndroidManifest.xml << 'EOF'
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
               <uses-permission android:name="android.permission.INTERNET" />
@@ -122,6 +154,7 @@ jobs:
           </manifest>
           EOF
 
+          # 4. MainActivity.kt
           mkdir -p android/app/src/main/kotlin/com/seachat/app/
           cat > android/app/src/main/kotlin/com/seachat/app/MainActivity.kt << 'EOF'
           package com.seachat.app
@@ -143,5 +176,3 @@ jobs:
           name: SeaChat-APK-${{ github.run_number }}
           path: build/app/outputs/flutter-apk/app-*.apk
           retention-days: 14
-
-
