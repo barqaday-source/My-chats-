@@ -31,16 +31,13 @@ dependencies:
   flutter_local_notifications: ^17.2.2
   equatable: ^2.0.5
   path: ^1.9.0
-
-  # ✅ تشغيل الصوت - مستقر 100% مع Android CI
   audioplayers: ^5.2.1
-
-  # ✅ تسجيل الصوت - مستقر مع Android CI
   record: ^5.1.2
-  
+
+# ✅ هذا هو الإصلاح - يُجبر record_linux على نسخة متوافقة
 dependency_overrides:
   record_linux: ^0.8.1
-  
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
