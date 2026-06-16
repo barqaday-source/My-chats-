@@ -32,11 +32,12 @@ dependencies:
   equatable: ^2.0.5
   path: ^1.9.0
   audioplayers: ^5.2.1
-  record: ^5.1.2
+  record: 5.1.2
 
-# ✅ هذا هو الإصلاح - يُجبر record_linux على نسخة متوافقة
+# الإصلاح: نثبت نسخ record_linux + record_platform_interface مع بعض
 dependency_overrides:
   record_linux: 1.0.3
+  record_platform_interface: 1.3.0
 
 dev_dependencies:
   flutter_test:
