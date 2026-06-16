@@ -9,7 +9,8 @@ import '../../providers/auth_provider.dart';
 import '../../services/chat_service.dart';
 import '../../services/storage_service.dart';
 import '../../widgets/user_avatar.dart';
-import 'package:cchat/services/storage_service.dart';
+import 'package:mychats/services/storage_service.dart';
+
 
 class RoomSettingsScreen extends StatefulWidget {
   final RoomModel room;
