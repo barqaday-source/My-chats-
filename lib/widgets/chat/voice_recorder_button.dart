@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
-import 'package:record/record.dart';
+import 'package:flutter_sound/flutter_sound.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:uuid/uuid.dart';
@@ -21,14 +21,16 @@ class VoiceRecorderButton extends StatefulWidget {
 
 class _VoiceRecorderButtonState extends State<VoiceRecorderButton>
     with TickerProviderStateMixin {
-  final AudioRecorder _recorder = AudioRecorder();
+  final FlutterSoundRecorder _recorder = FlutterSoundRecorder();
   bool _isRecording = false;
+  bool _recorderReady = false;
   int _recordDuration = 0;
   Timer? _timer;
   Timer? _amplitudeTimer;
   late AnimationController _pulseController;
   List<double> _waveform = [];
   String? _currentPath;
+  StreamSubscription? _recorderSub;
 
   @override
   void initState() {
@@ -37,44 +39,55 @@ class _VoiceRecorderButtonState extends State<VoiceRecorderButton>
       duration: const Duration(milliseconds: 800),
       vsync: this,
     )..repeat(reverse: true);
+    _openRecorder();
   }
 
   @override
   void dispose() {
     _timer?.cancel();
     _amplitudeTimer?.cancel();
+    _recorderSub?.cancel();
     _pulseController.dispose();
-    _recorder.dispose();
+    _recorder.closeRecorder();
     super.dispose();
   }
 
+  Future<void> _openRecorder() async {
+    final status = await Permission.microphone.request();
+    if (status != PermissionStatus.granted) return;
+    
+    await _recorder.openRecorder();
+    _recorder.setSubscriptionDuration(const Duration(milliseconds: 100));
+    setState(() => _recorderReady = true);
+  }
+
   Future<void> _startRecording() async {
-    final micPerm = await Permission.microphone.request();
-    if (!micPerm.isGranted) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('يجب منح إذن الميكروفون للتسجيل',
-                style: TextStyle(fontFamily: 'Tajawal')),
-            duration: Duration(seconds: 2),
-          ),
-        );
+    if (!_recorderReady) {
+      await _openRecorder();
+      if (!_recorderReady) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('يجب منح إذن الميكروفون للتسجيل',
+                  style: TextStyle(fontFamily: 'Tajawal')),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+        return;
       }
-      return;
     }
 
     try {
       final dir = await getTemporaryDirectory();
-      final path = '${dir.path}/${const Uuid().v4()}.m4a';
+      final path = '${dir.path}/${const Uuid().v4()}.aac';
       _currentPath = path;
 
-      await _recorder.start(
-        const RecordConfig(
-          encoder: AudioEncoder.aacLc,
-          bitRate: 128000,
-          sampleRate: 44100,
-        ),
-        path: path,
+      await _recorder.startRecorder(
+        toFile: path,
+        codec: Codec.aacADTS,
+        bitRate: 128000,
+        sampleRate: 44100,
       );
 
       setState(() {
@@ -89,23 +102,14 @@ class _VoiceRecorderButtonState extends State<VoiceRecorderButton>
         if (_recordDuration >= 60) _stopRecording();
       });
 
-      _amplitudeTimer =
-          Timer.periodic(const Duration(milliseconds: 100), (_) async {
+      _recorderSub = _recorder.onProgress!.listen((e) {
         if (!mounted) return;
-        try {
-          final amp = await _recorder.getAmplitude();
-          final normalized =
-              ((amp.current + 60) / 60).clamp(0.1, 1.0);
-          setState(() {
-            _waveform.add(normalized);
-            if (_waveform.length > 30) _waveform.removeAt(0);
-          });
-        } catch (_) {
-          setState(() {
-            _waveform.add(Random().nextDouble() * 0.6 + 0.2);
-            if (_waveform.length > 30) _waveform.removeAt(0);
-          });
-        }
+        final db = e.decibels ?? 0;
+        final normalized = ((db + 60) / 60).clamp(0.1, 1.0);
+        setState(() {
+          _waveform.add(normalized);
+          if (_waveform.length > 30) _waveform.removeAt(0);
+        });
       });
     } catch (e) {
       if (mounted) {
@@ -122,10 +126,10 @@ class _VoiceRecorderButtonState extends State<VoiceRecorderButton>
 
   Future<void> _stopRecording() async {
     _timer?.cancel();
-    _amplitudeTimer?.cancel();
+    _recorderSub?.cancel();
 
     if (_recordDuration < 1) {
-      await _recorder.stop();
+      await _recorder.stopRecorder();
       setState(() {
         _isRecording = false;
         _waveform.clear();
@@ -143,7 +147,7 @@ class _VoiceRecorderButtonState extends State<VoiceRecorderButton>
     }
 
     try {
-      final path = await _recorder.stop();
+      final path = await _recorder.stopRecorder();
       final finalPath = path ?? _currentPath ?? '';
       final duration = _recordDuration;
 
@@ -165,8 +169,8 @@ class _VoiceRecorderButtonState extends State<VoiceRecorderButton>
 
   Future<void> _cancelRecording() async {
     _timer?.cancel();
-    _amplitudeTimer?.cancel();
-    await _recorder.stop();
+    _recorderSub?.cancel();
+    await _recorder.stopRecorder();
     setState(() {
       _isRecording = false;
       _recordDuration = 0;
