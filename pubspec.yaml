@@ -6,7 +6,6 @@ version: 1.0.0+1
 environment:
   sdk: '>=3.3.0 <4.0.0'
 
-
 dependencies:
   flutter:
     sdk: flutter
@@ -32,23 +31,17 @@ dependencies:
   flutter_local_notifications: ^17.2.2
   equatable: ^2.0.5
   path: ^1.9.0
-  just_audio: ^0.9.36
-  record: 5.0.5
 
-  
+  # ✅ تشغيل الصوت - مستقر 100% مع Android CI
+  audioplayers: ^5.2.1
+
+  # ✅ تسجيل الصوت - مستقر مع Android CI
+  record: ^5.1.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^4.0.0
-  flutter_launcher_icons: ^0.14.1
-
-flutter_launcher_icons:
-  android: true
-  ios: true
-  image_path: "assets/images/app_logo.png"
-  min_sdk_android: 21
-  adaptive_icon_background: "#0B1220"
-  adaptive_icon_foreground: "assets/images/app_logo.png"
 
 flutter:
   uses-material-design: true
