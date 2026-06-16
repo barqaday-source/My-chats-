@@ -7,50 +7,51 @@ class SupabaseConfig {
       'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZvaGxsZXFjdW9tdWRvcnlpd2tjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE2MjE3NzAsImV4cCI6MjA5NzE5Nzc3MH0.VNUs7_WXzAeSz5TC_aD56FfzFQkmc_p99PY_b7hPZYU';
 
   // Tables
-  static const tUsers = 'users';
+  static const tUsers = 'users'; // 👈 هذا هو اسم الجدول الصحيح في قاعدتك
   static const tRooms = 'rooms';
   static const tMessages = 'messages';
   static const tNotifications = 'notifications';
   static const tReports = 'reports';
   static const tRoomMembers = 'room_members';
   static const tPrivateChats = 'private_chats';
-  static const tBlockedUsers = 'blocked_users'; // 👈 انتبه هذا اسم جدولك
+  static const tBlockedUsers = 'blocked_users'; 
   static const tContactInfo = 'contact_info';
-  static const tBlocks = 'blocks'; // 👈 لو تستخدم اسم ثاني
+  static const tBlocks = 'blocks'; 
 
-  // Storage buckets - لازم تطابق Supabase بالضبط
+  // Storage buckets
   static const bucketAvatars = 'avatars';
-  static const bucketRooms = 'room-images'; // 👈 اسمك
-  static const bucketMedia = 'chat-media'; // 👈 اسمك
-  static const bucketAudio = 'audio-messages'; // 👈 اسمك
+  static const bucketRooms = 'room-images'; 
+  static const bucketMedia = 'chat-media'; 
+  static const bucketAudio = 'audio-messages'; 
 
   static bool _initialized = false;
 
   static Future<bool> init() async {
-  if (_initialized) return true;
-  
-  try {
-    await Supabase.initialize(
-      url: url,
-      anonKey: anonKey,
-      authOptions: const FlutterAuthClientOptions(
-        authFlowType: AuthFlowType.pkce,
-        autoRefreshToken: true,
-        // persistSession: true,  // ❌ احذف هذا السطر - نسختك ما تدعمه
-      ),
-      realtimeClientOptions: const RealtimeClientOptions(
-        eventsPerSecond: 10,
-      ),
-      debug: kDebugMode,
-    );
-    _initialized = true;
-    debugPrint("Supabase connected successfully");
-    return true;
-  } catch (e) {
-    debugPrint("Supabase init failed: $e");
-    return false;
-  }
+    if (_initialized) return true;
+    
+    try {
+      await Supabase.initialize(
+        url: url,
+        anonKey: anonKey,
+        // 🔥 الإعداد المتقدم لتشغيل تجديد الجلسة للأبد وحفظ توكن الأندرويد بنجاح
+        authOptions: const FlutterAuthOptions(
+          persistSession: true,       // تفعيل حفظ الجلسة على الهاتف
+          autoRefreshToken: true,    // تفعيل التجديد الصامت التلقائي للجلسات
+        ),
+        realtimeClientOptions: const RealtimeClientOptions(
+          eventsPerSecond: 10,
+        ),
+        debug: kDebugMode,
+      );
+      _initialized = true;
+      debugPrint("Supabase connected successfully");
+      return true;
+    } catch (e) {
+      debugPrint("Supabase init failed: $e");
+      return false;
+    }
   } 
+
   static SupabaseClient get client => Supabase.instance.client;
   static GoTrueClient get auth => client.auth;
   static SupabaseStorageClient get storage => client.storage;
