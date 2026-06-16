@@ -101,42 +101,42 @@ class _AudioMessageWidgetState extends State<AudioMessageWidget> {
 
   @override
   Widget build(BuildContext context) {
-    final iconColor = widget.isMe ? AppColors.white : AppColors.primary;
+    final iconColor = widget.isMe? AppColors.white : AppColors.primary;
     final trackColor = widget.isMe
-        ? AppColors.white.withOpacity(0.3)
+       ? AppColors.white.withOpacity(0.3)
         : AppColors.glassBorder;
-    final fillColor = widget.isMe ? AppColors.white : AppColors.primary;
+    final fillColor = widget.isMe? AppColors.white : AppColors.primary;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: widget.isMe ? AppColors.primary : AppColors.bgCard,
+        color: widget.isMe? AppColors.primary : AppColors.bgCard,
         borderRadius: BorderRadius.circular(18),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           GestureDetector(
-            onTap: _isLoading ? null : _togglePlay,
+            onTap: _isLoading? null : _togglePlay,
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 200),
               width: 36,
               height: 36,
               decoration: BoxDecoration(
                 color: widget.isMe
-                    ? AppColors.white.withOpacity(0.2)
+                   ? AppColors.white.withOpacity(0.2)
                     : AppColors.primary.withOpacity(0.15),
                 shape: BoxShape.circle,
               ),
               child: _isLoading
-                  ? Padding(
+                 ? Padding(
                       padding: const EdgeInsets.all(8),
                       child: CircularProgressIndicator(
                           strokeWidth: 2, color: iconColor),
                     )
                   : Icon(
                       _isPlaying
-                          ? Icons.pause_rounded
+                         ? Icons.pause_rounded
                           : Icons.play_arrow_rounded,
                       color: iconColor,
                       size: 20,
@@ -149,14 +149,15 @@ class _AudioMessageWidgetState extends State<AudioMessageWidget> {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                SizedBox(
-                  width: 120,
-                  height: 20,
-                  child: CustomPaint(
-                    painter: _WaveformPainter(
-                      progress: _progress,
-                      trackColor: trackColor,
-                      fillColor: fillColor,
+                Expanded(
+                  child: SizedBox(
+                    height: 20,
+                    child: CustomPaint(
+                      painter: _WaveformPainter(
+                        progress: _progress,
+                        trackColor: trackColor,
+                        fillColor: fillColor,
+                      ),
                     ),
                   ),
                 ),
@@ -169,7 +170,7 @@ class _AudioMessageWidgetState extends State<AudioMessageWidget> {
                       style: TextStyle(
                         fontFamily: 'Tajawal',
                         color: widget.isMe
-                            ? AppColors.white.withOpacity(0.8)
+                           ? AppColors.white.withOpacity(0.8)
                             : AppColors.textSub,
                         fontSize: 10,
                       ),
@@ -179,7 +180,7 @@ class _AudioMessageWidgetState extends State<AudioMessageWidget> {
                       style: TextStyle(
                         fontFamily: 'Tajawal',
                         color: widget.isMe
-                            ? AppColors.white.withOpacity(0.5)
+                           ? AppColors.white.withOpacity(0.5)
                             : AppColors.textSub,
                         fontSize: 10,
                       ),
@@ -224,8 +225,8 @@ class _WaveformPainter extends CustomPainter {
       final x = i * (barW + spacing);
       final top = (size.height - h) / 2;
       final paint = Paint()
-        ..color = i < filled ? fillColor : trackColor
-        ..style = PaintingStyle.fill;
+       ..color = i < filled? fillColor : trackColor
+       ..style = PaintingStyle.fill;
       canvas.drawRRect(
         RRect.fromRectAndRadius(
           Rect.fromLTWH(x, top, barW, h),
@@ -238,5 +239,5 @@ class _WaveformPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_WaveformPainter old) =>
-      old.progress != progress || old.trackColor != trackColor;
+      old.progress!= progress || old.trackColor!= trackColor;
 }
