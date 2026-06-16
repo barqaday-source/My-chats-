@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:just_audio/just_audio.dart';
+import 'package:audioplayers/audioplayers.dart';
 import '../../core/constants/app_colors.dart';
 
 class AudioMessageWidget extends StatefulWidget {
@@ -20,53 +20,48 @@ class AudioMessageWidget extends StatefulWidget {
 }
 
 class _AudioMessageWidgetState extends State<AudioMessageWidget> {
-  late AudioPlayer _player;
+  final AudioPlayer _player = AudioPlayer();
   bool _isPlaying = false;
   bool _isLoading = false;
   Duration _position = Duration.zero;
   Duration _total = Duration.zero;
-  StreamSubscription? _playerSub;
-  StreamSubscription? _positionSub;
-  StreamSubscription? _durationSub;
+  StreamSubscription? _stateSub;
+  StreamSubscription? _posSub;
+  StreamSubscription? _durSub;
 
   @override
   void initState() {
     super.initState();
-    _player = AudioPlayer();
     _total = Duration(seconds: widget.duration);
 
-    _playerSub = _player.playerStateStream.listen((state) {
+    _stateSub = _player.onPlayerStateChanged.listen((state) {
       if (!mounted) return;
       setState(() {
-        _isPlaying = state.playing;
-        _isLoading =
-            state.processingState == ProcessingState.loading ||
-            state.processingState == ProcessingState.buffering;
-        if (state.processingState == ProcessingState.completed) {
+        _isPlaying = state == PlayerState.playing;
+        _isLoading = false;
+        if (state == PlayerState.completed) {
           _position = Duration.zero;
           _isPlaying = false;
-          _player.seek(Duration.zero);
-          _player.stop();
         }
       });
     });
 
-    _positionSub = _player.positionStream.listen((pos) {
+    _posSub = _player.onPositionChanged.listen((pos) {
       if (!mounted) return;
       setState(() => _position = pos);
     });
 
-    _durationSub = _player.durationStream.listen((dur) {
+    _durSub = _player.onDurationChanged.listen((dur) {
       if (!mounted) return;
-      if (dur != null) setState(() => _total = dur);
+      setState(() => _total = dur);
     });
   }
 
   @override
   void dispose() {
-    _playerSub?.cancel();
-    _positionSub?.cancel();
-    _durationSub?.cancel();
+    _stateSub?.cancel();
+    _posSub?.cancel();
+    _durSub?.cancel();
     _player.dispose();
     super.dispose();
   }
@@ -77,9 +72,9 @@ class _AudioMessageWidgetState extends State<AudioMessageWidget> {
     } else {
       try {
         setState(() => _isLoading = true);
-        await _player.setUrl(widget.audioUrl);
-        await _player.play();
-      } catch (e) {
+        await _player.play(UrlSource(widget.audioUrl));
+      } catch (_) {
+        setState(() => _isLoading = false);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -107,10 +102,10 @@ class _AudioMessageWidgetState extends State<AudioMessageWidget> {
   @override
   Widget build(BuildContext context) {
     final iconColor = widget.isMe ? AppColors.white : AppColors.primary;
-    final trackColor =
-        widget.isMe ? AppColors.white.withOpacity(0.3) : AppColors.glassBorder;
-    final fillColor =
-        widget.isMe ? AppColors.white : AppColors.primary;
+    final trackColor = widget.isMe
+        ? AppColors.white.withOpacity(0.3)
+        : AppColors.glassBorder;
+    final fillColor = widget.isMe ? AppColors.white : AppColors.primary;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -137,9 +132,7 @@ class _AudioMessageWidgetState extends State<AudioMessageWidget> {
                   ? Padding(
                       padding: const EdgeInsets.all(8),
                       child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: iconColor,
-                      ),
+                          strokeWidth: 2, color: iconColor),
                     )
                   : Icon(
                       _isPlaying
@@ -207,9 +200,13 @@ class _WaveformPainter extends CustomPainter {
   final Color trackColor;
   final Color fillColor;
 
-  static const _bars = [4, 8, 12, 7, 16, 11, 5, 9, 14, 8, 13, 6, 15, 10, 7, 12, 5, 9, 8, 4, 6, 11, 14, 7, 10];
+  static const _bars = [
+    4, 8, 12, 7, 16, 11, 5, 9, 14, 8,
+    13, 6, 15, 10, 7, 12, 5, 9, 8, 4,
+    6, 11, 14, 7, 10
+  ];
 
-  _WaveformPainter({
+  const _WaveformPainter({
     required this.progress,
     required this.trackColor,
     required this.fillColor,
@@ -217,22 +214,21 @@ class _WaveformPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final count = _bars.length;
-    final barWidth = 2.0;
-    final spacing = (size.width - count * barWidth) / (count - 1);
-    final maxBarH = size.height;
-    final filledBars = (count * progress).round();
+    const count = 25;
+    const barW = 2.0;
+    final spacing = (size.width - count * barW) / (count - 1);
+    final filled = (count * progress).round();
 
     for (int i = 0; i < count; i++) {
-      final h = (_bars[i] / 16.0) * maxBarH;
-      final x = i * (barWidth + spacing);
-      final top = (maxBarH - h) / 2;
+      final h = (_bars[i] / 16.0) * size.height;
+      final x = i * (barW + spacing);
+      final top = (size.height - h) / 2;
       final paint = Paint()
-        ..color = i < filledBars ? fillColor : trackColor
+        ..color = i < filled ? fillColor : trackColor
         ..style = PaintingStyle.fill;
       canvas.drawRRect(
         RRect.fromRectAndRadius(
-          Rect.fromLTWH(x, top, barWidth, h),
+          Rect.fromLTWH(x, top, barW, h),
           const Radius.circular(1),
         ),
         paint,
