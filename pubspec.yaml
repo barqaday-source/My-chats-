@@ -36,7 +36,7 @@ dependencies:
 
 # ✅ هذا هو الإصلاح - يُجبر record_linux على نسخة متوافقة
 dependency_overrides:
-  record_linux: ^0.8.1
+  record_linux: 1.0.3
 
 dev_dependencies:
   flutter_test:
