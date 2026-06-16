@@ -21,28 +21,15 @@ jobs:
           channel: 'stable'
           cache: true
 
-      - name: Backup project files
+      - name: Configure and Fix Android Project
         run: |
-          # نحفظ ملفاتك قبل ما flutter create يمسحها
-          mkdir -p /tmp/backup
-          cp -r lib /tmp/backup/ || true
-          cp pubspec.yaml /tmp/backup/ || true
-          cp -r assets /tmp/backup/ || true
-
-      - name: Create Android + Fix Kotlin 2.2.0
-        run: |
-          flutter create --platforms=android --project-name cchat --org com.seachat .
+          # توليد أو إصلاح ملفات أندرويد دون المساس بملفات المشروع الأصلية
+          flutter create --platforms=android .
           
-          # نرجع ملفاتك الأصلية
-          rm -rf lib
-          cp -r /tmp/backup/lib ./ || true
-          cp /tmp/backup/pubspec.yaml ./ || true
-          cp -r /tmp/backup/assets ./ || true
-          
-          # احذف settings.gradle.kts
+          # حذف ملف settings.gradle.kts القديم لمنع التعارض إذا وُجد
           rm -f android/settings.gradle.kts
           
-          # Kotlin 2.2.0
+          # إعادة كتابة settings.gradle لدعم Kotlin 2.2.0 وتوافق الفلاتر الجديد
           cat > android/settings.gradle << 'EOF'
           pluginManagement {
               def flutterSdkPath = {
@@ -72,7 +59,7 @@ jobs:
           include ":app"
           EOF
 
-          # build.gradle.kts
+          # ضبط إعدادات build.gradle.kts الخاصة بالتطبيق بدقة وتفعيل الـ Desugaring لجافا 17
           cat > android/app/build.gradle.kts << 'EOF'
           plugins {
               id("com.android.application")
@@ -111,11 +98,13 @@ jobs:
           }
           EOF
 
-          # صلاحيات
+          # حقن الصلاحيات المطلوبة (الصوت، الكاميرا، الصور) داخل الـ AndroidManifest.xml بشكل آمن
           sed -i '/<\/manifest>/i \    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />\n    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />' android/app/src/main/AndroidManifest.xml
 
-      - name: Get dependencies
-        run: flutter pub get
+      - name: Install Dependencies
+        run: |
+          flutter pub pubcache repair || true
+          flutter pub get
 
       - name: Build APK
         run: flutter build apk --release
