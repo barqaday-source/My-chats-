@@ -37,7 +37,10 @@ dependencies:
 
   # ✅ تسجيل الصوت - مستقر مع Android CI
   record: ^5.1.2
-
+  
+dependency_overrides:
+  record_linux: ^0.8.1
+  
 dev_dependencies:
   flutter_test:
     sdk: flutter
