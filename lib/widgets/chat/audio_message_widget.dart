@@ -20,7 +20,7 @@ class AudioMessageWidget extends StatefulWidget {
 }
 
 class _AudioMessageWidgetState extends State<AudioMessageWidget> {
-  final AudioPlayer _player = AudioPlayer();
+  late final AudioPlayer _player;
   bool _isPlaying = false;
   bool _isLoading = false;
   Duration _position = Duration.zero;
@@ -32,23 +32,28 @@ class _AudioMessageWidgetState extends State<AudioMessageWidget> {
   @override
   void initState() {
     super.initState();
+    _player = AudioPlayer();
     _total = Duration(seconds: widget.duration);
 
     _stateSub = _player.onPlayerStateChanged.listen((state) {
       if (!mounted) return;
       setState(() {
         _isPlaying = state == PlayerState.playing;
-        _isLoading = false;
+        _isLoading = state == PlayerState.playing && _position == Duration.zero;
         if (state == PlayerState.completed) {
           _position = Duration.zero;
           _isPlaying = false;
+          _isLoading = false;
         }
       });
     });
 
     _posSub = _player.onPositionChanged.listen((pos) {
       if (!mounted) return;
-      setState(() => _position = pos);
+      setState(() {
+        _position = pos;
+        if (_isLoading && pos > Duration.zero) _isLoading = false;
+      });
     });
 
     _durSub = _player.onDurationChanged.listen((dur) {
@@ -67,23 +72,23 @@ class _AudioMessageWidgetState extends State<AudioMessageWidget> {
   }
 
   Future<void> _togglePlay() async {
-    if (_isPlaying) {
-      await _player.pause();
-    } else {
-      try {
+    try {
+      if (_isPlaying) {
+        await _player.pause();
+      } else {
         setState(() => _isLoading = true);
         await _player.play(UrlSource(widget.audioUrl));
-      } catch (_) {
-        setState(() => _isLoading = false);
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('تعذّر تشغيل الصوت',
-                  style: TextStyle(fontFamily: 'Tajawal')),
-              duration: Duration(seconds: 2),
-            ),
-          );
-        }
+      }
+    } catch (e) {
+      setState(() => _isLoading = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('تعذّر تشغيل الصوت',
+                style: TextStyle(fontFamily: 'Tajawal')),
+            duration: Duration(seconds: 2),
+          ),
+        );
       }
     }
   }
@@ -108,6 +113,7 @@ class _AudioMessageWidgetState extends State<AudioMessageWidget> {
     final fillColor = widget.isMe? AppColors.white : AppColors.primary;
 
     return Container(
+      constraints: const BoxConstraints(maxWidth: 250),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: widget.isMe? AppColors.primary : AppColors.bgCard,
@@ -149,15 +155,13 @@ class _AudioMessageWidgetState extends State<AudioMessageWidget> {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Expanded(
-                  child: SizedBox(
-                    height: 20,
-                    child: CustomPaint(
-                      painter: _WaveformPainter(
-                        progress: _progress,
-                        trackColor: trackColor,
-                        fillColor: fillColor,
-                      ),
+                SizedBox(
+                  height: 20,
+                  child: CustomPaint(
+                    painter: _WaveformPainter(
+                      progress: _progress,
+                      trackColor: trackColor,
+                      fillColor: fillColor,
                     ),
                   ),
                 ),
@@ -217,7 +221,9 @@ class _WaveformPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     const count = 25;
     const barW = 2.0;
-    final spacing = (size.width - count * barW) / (count - 1);
+    final spacing = size.width > count * barW
+       ? (size.width - count * barW) / (count - 1)
+        : 1.0;
     final filled = (count * progress).round();
 
     for (int i = 0; i < count; i++) {
@@ -239,5 +245,5 @@ class _WaveformPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_WaveformPainter old) =>
-      old.progress!= progress || old.trackColor!= trackColor;
+      old.progress!= progress || old.trackColor!= trackColor || old.fillColor!= fillColor;
 }
