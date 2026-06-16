@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' as sb;
 import '../models/user_model.dart';
+import '../core/constants/supabase_config.dart'; // استدعاء الكونفج لتوحيد أسماء الجداول
 
 class AuthProvider extends ChangeNotifier {
   final sb.SupabaseClient _supabase = sb.Supabase.instance.client;
@@ -14,7 +15,7 @@ class AuthProvider extends ChangeNotifier {
 
   bool get initialized => _initialized;
   bool get isLoggedIn => _isLoggedIn;
-  bool get loading =>!_initialized;
+  bool get loading => !_initialized;
   UserModel? get user => _currentUser;
   UserModel? get currentUser => _currentUser;
   String? get error => _errorMessage;
@@ -40,7 +41,7 @@ class AuthProvider extends ChangeNotifier {
     final event = data.event;
     final session = data.session;
 
-    if ((event == sb.AuthChangeEvent.signedIn || event == sb.AuthChangeEvent.tokenRefreshed) && session!= null) {
+    if ((event == sb.AuthChangeEvent.signedIn || event == sb.AuthChangeEvent.tokenRefreshed) && session != null) {
       _isLoggedIn = true;
       await _loadUserProfile(session.user.id, session.user.email);
     } else if (event == sb.AuthChangeEvent.signedOut) {
@@ -52,23 +53,36 @@ class AuthProvider extends ChangeNotifier {
 
   Future<void> _loadUserProfile(String userId, String? email) async {
     try {
-      final data = await _supabase.from('profiles').select().eq('id', userId).maybeSingle();
-      if (data!= null) {
+      // 🛠️ تم التصحيح: استدعاء جدول users المتوافق مع قاعدتك الـ SQL بدلاً من profiles
+      final data = await _supabase.from(SupabaseConfig.tUsers).select().eq('id', userId).maybeSingle();
+      
+      if (data != null) {
         _currentUser = UserModel.fromMap(data);
       } else {
-        final fallback = await _supabase.from('profiles').upsert({
+        // دعم حسابات الزوار (Anonymous) لكي لا ينهار التطبيق في حالة الـ Email Null
+        String defaultUsername = 'user_${userId.substring(0, 6)}';
+        if (email != null && email.contains('@')) {
+          defaultUsername = email.split('@').first;
+        }
+
+        final fallback = await _supabase.from(SupabaseConfig.tUsers).upsert({
           'id': userId,
           'email': email,
-          'username': email?.split('@').first?? 'user_${userId.substring(0, 6)}',
+          'username': defaultUsername,
           'role': 'user',
         }).select().single();
         _currentUser = UserModel.fromMap(fallback);
       }
     } catch (e) {
+      debugPrint("Error loading user profile: $e");
+      String defaultUsername = 'user_${userId.substring(0, 6)}';
+      if (email != null && email.contains('@')) {
+        defaultUsername = email.split('@').first;
+      }
       _currentUser = UserModel(
         id: userId,
         email: email,
-        username: email?.split('@').first?? 'user',
+        username: defaultUsername,
         role: 'user',
         isOnline: true,
         createdAt: DateTime.now(),
@@ -79,10 +93,23 @@ class AuthProvider extends ChangeNotifier {
   Future<bool> checkSession() async {
     try {
       final session = _supabase.auth.currentSession;
-      if (session == null || session.isExpired) {
+      if (session == null) {
         _isLoggedIn = false;
         _currentUser = null;
       } else {
+        // 🛠️ تم التصحيح: محاولة تجديد الجلسة تلقائياً إذا كانت منتهية بدلاً من الطرد الفوري
+        if (session.isExpired) {
+          try {
+            final refreshedSession = await _supabase.auth.refreshSession();
+            if (refreshedSession.session != null) {
+              _isLoggedIn = true;
+              await _loadUserProfile(refreshedSession.session!.user.id, refreshedSession.session!.user.email);
+              return _isLoggedIn;
+            }
+          } catch (_) {
+            // فشل التجديد الشبكي
+          }
+        }
         _isLoggedIn = true;
         await _loadUserProfile(session.user.id, session.user.email);
       }
@@ -125,7 +152,7 @@ class AuthProvider extends ChangeNotifier {
         password: password,
         data: {'username': username.trim()},
       );
-      return res.user!= null;
+      return res.user != null;
     } on sb.AuthException catch (_) {
       _errorMessage = 'فشل إنشاء الحساب';
       _isLoggedIn = false;
@@ -139,7 +166,6 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  // ✅ هذي الدالة اللي كانت ناقصة
   Future<bool> register(String email, String password, String username) async {
     return await signUp(email, password, username);
   }
@@ -149,12 +175,13 @@ class AuthProvider extends ChangeNotifier {
       _errorMessage = null;
       if (_currentUser == null) return false;
 
+      // 🛠️ تم التصحيح: استدعاء جدول users لتحديث البروفايل بنجاح
       final updated = await _supabase
-         .from('profiles')
-         .update(data)
-         .eq('id', _currentUser!.id)
-         .select()
-         .single();
+          .from(SupabaseConfig.tUsers)
+          .update(data)
+          .eq('id', _currentUser!.id)
+          .select()
+          .single();
 
       _currentUser = UserModel.fromMap(updated);
       notifyListeners();
@@ -182,3 +209,4 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
   }
 }
+
