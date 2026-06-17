@@ -69,7 +69,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
          .single();
 
       final role = userData['role'] as String?? 'user';
-      final isMod = userData['is_mod'] as bool??? false;
+      final isMod = userData['is_mod'] as bool?? false;
       _myRole = role;
 
       if (role == 'admin' || role == 'moderator' || isMod) {
