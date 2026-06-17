@@ -46,8 +46,8 @@ class _ChatsListScreenState extends State<ChatsListScreen> {
   void _listenToMessages() {
     final me = context.read<AuthProvider>().user!;
     _supabase
-       .channel('public:messages')
-       .onPostgresChanges(
+     .channel('public:messages')
+     .onPostgresChanges(
           event: PostgresChangeEvent.insert,
           schema: 'public',
           table: 'messages',
@@ -58,7 +58,7 @@ class _ChatsListScreenState extends State<ChatsListScreen> {
             }
           },
         )
-       .subscribe();
+     .subscribe();
   }
 
   Future<void> _load() async {
@@ -76,12 +76,12 @@ class _ChatsListScreenState extends State<ChatsListScreen> {
 
         // جيب آخر رسالة
         final lastMsgRes = await _supabase
-           .from('messages')
-           .select()
-           .eq('chat_id', chatId)
-           .order('created_at', ascending: false)
-           .limit(1)
-           .maybeSingle();
+         .from('messages')
+         .select()
+         .eq('chat_id', chatId)
+         .order('created_at', ascending: false)
+         .limit(1)
+         .maybeSingle();
 
         MessageModel? lastMsg;
         if (lastMsgRes!= null) {
@@ -90,11 +90,11 @@ class _ChatsListScreenState extends State<ChatsListScreen> {
 
         // جيب عدد الغير مقروءة
         final unreadRes = await _supabase
-           .from('messages')
-           .select()
-           .eq('chat_id', chatId)
-           .eq('receiver_id', me.id)
-           .eq('is_read', false);
+         .from('messages')
+         .select()
+         .eq('chat_id', chatId)
+         .eq('receiver_id', me.id)
+         .eq('is_read', false);
 
         final unreadCount = (unreadRes as List).length;
 
@@ -146,8 +146,8 @@ class _ChatsListScreenState extends State<ChatsListScreen> {
   @override
   Widget build(BuildContext context) {
     final filtered = _chats
-       .where((c) => c.user.username.contains(_search))
-       .toList();
+     .where((c) => c.user.username.contains(_search))
+     .toList();
 
     return Container(
       decoration: BoxDecoration(gradient: AppColors.bgGrad),
@@ -198,12 +198,12 @@ class _ChatsListScreenState extends State<ChatsListScreen> {
           ),
           Expanded(
             child: _loading
-               ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+             ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
                 : RefreshIndicator(
                     onRefresh: _load,
                     color: AppColors.primary,
                     child: filtered.isEmpty
-                       ? const Center(
+                     ? const Center(
                             child: Text(
                               'لا توجد محادثات',
                               style: TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub),
@@ -217,7 +217,11 @@ class _ChatsListScreenState extends State<ChatsListScreen> {
                               onTap: () => Navigator.push(
                                 context,
                                 MaterialPageRoute(
-                                  builder: (_) => PrivateChatScreen(other: filtered[i].user),
+                                  builder: (_) => PrivateChatScreen(
+                                    peerId: filtered[i].user.id,
+                                    peerName: filtered[i].user.username?? 'مجهول',
+                                    peerAvatar: filtered[i].user.avatarUrl,
+                                  ),
                                 ),
                               ).then((_) => _load()),
                             ),
@@ -286,9 +290,9 @@ class _ChatTile extends StatelessWidget {
           Expanded(
             child: Text(
               lastMsg!= null
-                 ? _getLastMessageText(lastMsg)
+               ? _getLastMessageText(lastMsg)
                   : user.isOnline
-                     ? 'متصل الآن'
+                   ? 'متصل الآن'
                       : 'غير متصل',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
