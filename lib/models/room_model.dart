@@ -53,7 +53,7 @@ class RoomModel {
       ownerName: json['owner_name'] as String,
       ownerAvatar: json['owner_avatar'] as String?,
       members: json['members']!= null
-         ? List<String>.from(json['members'] as List)
+        ? List<String>.from(json['members'] as List)
           : [],
       isOfficial: json['is_official'] as bool??? false,
       isLocked: json['is_locked'] as bool??? false,
@@ -67,8 +67,7 @@ class RoomModel {
     );
   }
 
-  // التعديل 1: لا نرسل id, created_at, updated_at, is_approved, member_count, online_count
-  // Supabase يولدها تلقائي
+  // التعديل: لا نرسل الحقول اللي Supabase يولدها
   Map<String, dynamic> toJson() {
     return {
       // 'id': id, // محذوف
@@ -83,10 +82,10 @@ class RoomModel {
       'members': members,
       'is_official': isOfficial,
       'is_locked': isLocked,
-      // 'is_approved': isApproved, // محذوف - القاعدة تحطه false
+      // 'is_approved': isApproved, // محذوف - default false
       'is_follow_enabled': isFollowEnabled,
-      // 'online_count': onlineCount, // محذوف
-      // 'member_count': memberCount, // محذوف
+      // 'online_count': onlineCount, // محذوف - default 0
+      // 'member_count': memberCount, // محذوف - default 1
       'followers_count': followersCount,
       // 'created_at': createdAt.toIso8601String(), // محذوف
       // 'updated_at': updatedAt.toIso8601String(), // محذوف
