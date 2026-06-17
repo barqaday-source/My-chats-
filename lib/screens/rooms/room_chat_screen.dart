@@ -41,6 +41,7 @@ class _RoomChatScreenState extends State<RoomChatScreen> {
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       chatId: widget.room.id,
       senderId: user.id,
+      receiverId: '', // فاضي للغرف
       senderName: auth.userProfile?['username']?? user.email?.split('@')[0]?? 'مجهول',
       senderAvatar: auth.userProfile?['avatar_url'],
       content: text,
@@ -113,7 +114,7 @@ class _RoomChatScreenState extends State<RoomChatScreen> {
                             children: [
                               if (!isMe)
                                 Text(
-                                  msg.senderName,
+                                  msg.senderName?? 'مجهول', // ضفنا??
                                   style: const TextStyle(
                                     fontFamily: 'Tajawal',
                                     color: AppColors.primary,
