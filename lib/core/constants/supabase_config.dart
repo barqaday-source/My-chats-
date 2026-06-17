@@ -10,19 +10,22 @@ class SupabaseConfig {
   static const tUsers = 'users';
   static const tRooms = 'rooms';
   static const tMessages = 'messages';
+  static const tPrivateMessages = 'private_messages'; // ضيف هذا
+  static const tRoomMessages = 'room_messages'; // ضيف هذا
   static const tNotifications = 'notifications';
   static const tReports = 'reports';
   static const tRoomMembers = 'room_members';
   static const tPrivateChats = 'private_chats';
   static const tBlockedUsers = 'blocked_users'; 
   static const tContactInfo = 'contact_info';
-  static const tBlocks = 'blocks'; 
+  static const tBlocks = 'blocks';
+  static const tAdmins = 'admins'; // ضيف هذا
 
-  // Storage buckets
+  // Storage buckets - محدثة للأسماء الجديدة
   static const bucketAvatars = 'avatars';
   static const bucketRooms = 'room-images'; 
-  static const bucketMedia = 'chat-media'; 
-  static const bucketAudio = 'audio-messages'; 
+  static const bucketMedia = 'chat_images'; // كان chat-media
+  static const bucketAudio = 'voice_messages'; // كان audio-messages
 
   static bool _initialized = false;
 
@@ -30,7 +33,6 @@ class SupabaseConfig {
     if (_initialized) return true;
     
     try {
-      // تم حذف authFlowType لأنها مفعّلة تلقائياً في الإصدارات الحديثة
       await Supabase.initialize(
         url: url,
         anonKey: anonKey,
