@@ -29,7 +29,7 @@ void main() async {
 
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
 
-  // تهيئة Supabase من الكونفج
+  // تهيئة Supabase
   await SupabaseConfig.init();
   
   // تهيئة الإشعارات
