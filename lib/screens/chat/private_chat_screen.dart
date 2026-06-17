@@ -61,10 +61,10 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
   Future<void> _loadMessages() async {
     try {
       final response = await _supabase
-        .from('private_messages')
-        .select()
-        .eq('chat_id', _chatId)
-        .order('created_at', ascending: true);
+       .from('private_messages')
+       .select()
+       .eq('chat_id', _chatId)
+       .order('created_at', ascending: true);
 
       setState(() => _messages = List<Map<String, dynamic>>.from(response));
       _scrollToBottom();
@@ -79,8 +79,8 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
 
   void _subscribeToMessages() {
     _messageChannel = _supabase
-    .channel('public:private_messages:chat_id=eq.$_chatId')
-    .onPostgresChanges(
+   .channel('public:private_messages:chat_id=eq.$_chatId')
+   .onPostgresChanges(
           event: PostgresChangeEvent.insert,
           schema: 'public',
           table: 'private_messages',
@@ -94,7 +94,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
             _scrollToBottom();
           },
         )
-    .subscribe();
+   .subscribe();
   }
 
   void _scrollToBottom() {
@@ -230,10 +230,10 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
                 radius: 18,
                 backgroundColor: AppColors.bgCard2,
                 backgroundImage: widget.peerAvatar!= null
-                ? CachedNetworkImageProvider(widget.peerAvatar!)
+               ? CachedNetworkImageProvider(widget.peerAvatar!)
                     : null,
                 child: widget.peerAvatar == null
-                ? Text(
+               ? Text(
                         widget.peerName[0].toUpperCase(),
                         style: const TextStyle(
                           fontFamily: 'Tajawal',
@@ -264,7 +264,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
         children: [
           Expanded(
             child: _messages.isEmpty
-            ? Center(
+           ? Center(
                     child: Text(
                       'ابدأ المحادثة',
                       style: TextStyle(
@@ -347,7 +347,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
             ),
             const SizedBox(width: 8),
             hasText
-            ? GestureDetector(
+           ? GestureDetector(
                     onTap: _sendMessage,
                     child: Container(
                       width: 42,
