@@ -47,9 +47,9 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       chatId: '${user.id}_${widget.peerId}',
       senderId: user.id,
-      senderName: auth.userProfile?['username']?? auth.user!.email?.split('@')[0]?? 'مجهول',
+      senderName: auth.userProfile?['username']?? user.email?.split('@')[0]?? 'مجهول',
       senderAvatar: auth.userProfile?['avatar_url'],
-      text: text,
+      content: text,
       createdAt: DateTime.now(),
     );
 
@@ -79,10 +79,10 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
             CircleAvatar(
               radius: 18,
               backgroundImage: widget.peerAvatar!= null
-                ? NetworkImage(widget.peerAvatar!)
+               ? NetworkImage(widget.peerAvatar!)
                   : null,
               child: widget.peerAvatar == null
-                ? Text(widget.peerName[0].toUpperCase())
+               ? Text(widget.peerName[0].toUpperCase())
                   : null,
             ),
             const SizedBox(width: 12),
@@ -133,7 +133,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
                                   ),
                                 ),
                               Text(
-                                msg.text,
+                                msg.content,
                                 style: TextStyle(
                                   fontFamily: 'Tajawal',
                                   color: isMe? AppColors.white : AppColors.text,
