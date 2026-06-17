@@ -30,11 +30,10 @@ class SupabaseConfig {
     if (_initialized) return true;
     
     try {
-      // 🔥 تم تعديل التهيئة هنا لتعمل بشكل متوافق 100% مع حزمتك وتجدد الجلسة تلقائياً
+      // تم حذف authFlowType لأنها مفعّلة تلقائياً في الإصدارات الحديثة
       await Supabase.initialize(
         url: url,
         anonKey: anonKey,
-        authFlowType: AuthFlowType.pkce, // ضبط آلية التحقق الحديثة والمستقرة
         realtimeClientOptions: const RealtimeClientOptions(
           eventsPerSecond: 10,
         ),
