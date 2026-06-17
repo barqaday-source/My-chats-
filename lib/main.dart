@@ -14,6 +14,9 @@ import 'screens/auth/welcome_screen.dart';
 import 'screens/home/home_screen.dart';
 import 'services/notification_service.dart';
 
+// هذا الـ Key مهم عشان نقدر نستخدم Navigator من أي مكان
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -42,6 +45,7 @@ class MyChatApp extends StatelessWidget {
     return ChangeNotifierProvider(
       create: (_) => AuthProvider()..checkSession(),
       child: MaterialApp(
+        navigatorKey: navigatorKey, // ضفناه هنا
         title: 'محادثاتي',
         theme: AppTheme.lightTheme,
         darkTheme: AppTheme.lightTheme,
@@ -74,6 +78,7 @@ class MyChatApp extends StatelessWidget {
           '/admin': (_) => const AdminPanelScreen(),
           '/welcome': (_) => const WelcomeScreen(),
           '/home': (_) => const HomeScreen(),
+          '/login': (_) => const WelcomeScreen(), // ضفنا هذا عشان signOut يشتغل
         },
       ),
     );
