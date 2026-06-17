@@ -47,7 +47,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       chatId: '${user.id}_${widget.peerId}',
       senderId: user.id,
-      receiverId: widget.peerId, // ضفناه
+      receiverId: widget.peerId,
       senderName: auth.userProfile?['username']?? user.email?.split('@')[0]?? 'مجهول',
       senderAvatar: auth.userProfile?['avatar_url'],
       content: text,
@@ -80,10 +80,10 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
             CircleAvatar(
               radius: 18,
               backgroundImage: widget.peerAvatar!= null
-              ? NetworkImage(widget.peerAvatar!)
+            ? NetworkImage(widget.peerAvatar!)
                   : null,
               child: widget.peerAvatar == null
-              ? Text(widget.peerName[0].toUpperCase())
+            ? Text(widget.peerName[0].toUpperCase())
                   : null,
             ),
             const SizedBox(width: 12),
@@ -125,7 +125,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
                             children: [
                               if (!isMe)
                                 Text(
-                                  msg.senderName?? 'مجهول', // ضفنا??
+                                  msg.senderName?? 'مجهول',
                                   style: const TextStyle(
                                     fontFamily: 'Tajawal',
                                     color: AppColors.textSub,
@@ -151,40 +151,43 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
               ),
             ),
             Container(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+              padding: EdgeInsets.fromLTRB(16, 8, 16, 16 + MediaQuery.of(context).padding.bottom),
               decoration: BoxDecoration(
                 color: AppColors.bgCard,
                 border: Border(top: BorderSide(color: AppColors.divider)),
               ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _msgCtrl,
-                      style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.text),
-                      decoration: InputDecoration(
-                        hintText: 'اكتب رسالة...',
-                        hintStyle: const TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub),
-                        filled: true,
-                        fillColor: AppColors.bgCard2,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(24),
-                          borderSide: BorderSide.none,
+              child: SafeArea(
+                top: false,
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _msgCtrl,
+                        style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.text),
+                        decoration: InputDecoration(
+                          hintText: 'اكتب رسالة...',
+                          hintStyle: const TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub),
+                          filled: true,
+                          fillColor: AppColors.bgCard2,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(24),
+                            borderSide: BorderSide.none,
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                         ),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                        onSubmitted: (_) => _sendMessage(),
                       ),
-                      onSubmitted: (_) => _sendMessage(),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  IconButton(
-                    onPressed: _sendMessage,
-                    icon: const Icon(Icons.send_rounded, color: AppColors.primary),
-                    style: IconButton.styleFrom(
-                      backgroundColor: AppColors.primary.withOpacity(0.1),
+                    const SizedBox(width: 8),
+                    IconButton(
+                      onPressed: _sendMessage,
+                      icon: const Icon(Icons.send_rounded, color: AppColors.primary),
+                      style: IconButton.styleFrom(
+                        backgroundColor: AppColors.primary.withOpacity(0.1),
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ],
