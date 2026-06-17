@@ -10,7 +10,7 @@ import '../../services/auth_service.dart';
 import '../../services/notification_service.dart';
 import '../../widgets/user_avatar.dart';
 import '../../providers/auth_provider.dart';
-import 'edit_contact_screen.dart'; // استيراد صفحة تعديل التواصل
+import 'edit_contact_screen.dart';
 
 class AdminPanelScreen extends StatefulWidget {
   const AdminPanelScreen({super.key});
@@ -53,20 +53,39 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     if (user == null) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('فشل الطلب', style: TextStyle(fontFamily: 'Tajawal')), backgroundColor: Colors.red),
+          const SnackBar(content: Text('يرجى تسجيل الدخول', style: TextStyle(fontFamily: 'Tajawal')), backgroundColor: Colors.red),
         );
         Navigator.pop(context);
       }
       return;
     }
 
-    if (user.role == 'admin' || user.role == 'moderator' || user.isMod) {
-      _isAdmin = true;
-      await _load();
-    } else {
+    try {
+      final userData = await _sb
+        .from(SupabaseConfig.tUsers)
+        .select('role, is_mod')
+        .eq('id', user.id)
+        .single();
+
+      final role = userData['role'] as String?;
+      final isMod = userData['is_mod'] as bool?? false;
+
+      if (role == 'admin' || role == 'moderator' || isMod) {
+        _isAdmin = true;
+        await _load();
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('ليس لديك صلاحية', style: TextStyle(fontFamily: 'Tajawal')), backgroundColor: Colors.red),
+          );
+          Navigator.pop(context);
+        }
+      }
+    } catch (e) {
+      debugPrint('Check admin error: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('فشل الطلب', style: TextStyle(fontFamily: 'Tajawal')), backgroundColor: Colors.red),
+          const SnackBar(content: Text('فشل التحقق من الصلاحية', style: TextStyle(fontFamily: 'Tajawal')), backgroundColor: Colors.red),
         );
         Navigator.pop(context);
       }
@@ -80,17 +99,16 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
       _users = rawUsers.map((json) => UserModel.fromMap(json)).toList();
 
       final rep = await _sb.from(SupabaseConfig.tReports)
-         .select('*, reporter:reporter_id(username, avatar_url), reported:reported_id(username, avatar_url)')
-         .order('created_at', ascending: false);
+        .select('*, reporter:reporter_id(username, avatar_url), reported:reported_id(username, avatar_url)')
+        .order('created_at', ascending: false);
       _reports = List<Map<String, dynamic>>.from(rep);
 
       final roomsData = await _sb.from(SupabaseConfig.tRooms)
-         .select()
-         .eq('is_approved', false)
-         .order('created_at', ascending: false);
+        .select()
+        .eq('is_approved', false)
+        .order('created_at', ascending: false);
       _pendingRooms = List<Map<String, dynamic>>.from(roomsData);
 
-      // تحميل معلومات التواصل من الجدول
       final contactData = await _sb.from('app_contact').select().eq('id', 1).maybeSingle();
       if (contactData!= null) {
         adminPhone = contactData['whatsapp_number']?? '';
@@ -112,8 +130,8 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
   Future<void> _blockUser(String uid, String username) async {
     try {
       await _sb.from(SupabaseConfig.tUsers)
-         .update({'is_blocked': true, 'blocked_at': DateTime.now().toIso8601String()})
-         .eq('id', uid);
+        .update({'is_blocked': true, 'blocked_at': DateTime.now().toIso8601String()})
+        .eq('id', uid);
 
       await _notifSvc.sendNotification(NotificationModel(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
@@ -139,8 +157,8 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
   Future<void> _unblockUser(String uid, String username) async {
     try {
       await _sb.from(SupabaseConfig.tUsers)
-         .update({'is_blocked': false, 'blocked_at': null})
-         .eq('id', uid);
+        .update({'is_blocked': false, 'blocked_at': null})
+        .eq('id', uid);
 
       await _notifSvc.sendNotification(NotificationModel(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
@@ -166,8 +184,8 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
   Future<void> _replyReport(String reportId, String userId, String reply) async {
     try {
       await _sb.from(SupabaseConfig.tReports)
-         .update({'reply': reply, 'status': 'replied', 'updated_at': DateTime.now().toIso8601String()})
-         .eq('id', reportId);
+        .update({'reply': reply, 'status': 'replied', 'updated_at': DateTime.now().toIso8601String()})
+        .eq('id', reportId);
 
       await _notifSvc.sendNotification(NotificationModel(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
@@ -191,8 +209,8 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
   Future<void> _changeRole(String userId, String role) async {
     try {
       await _sb.from(SupabaseConfig.tUsers)
-         .update({'role': role, 'is_mod': role == 'admin' || role == 'moderator'})
-         .eq('id', userId);
+        .update({'role': role, 'is_mod': role == 'admin' || role == 'moderator'})
+        .eq('id', userId);
       await _notifSvc.showNotification('تم التحديث', 'تم تغيير الصلاحية بنجاح');
       _load();
     } catch (e) {
@@ -207,8 +225,8 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
   Future<void> _approveRoom(String roomId, String ownerId) async {
     try {
       await _sb.from(SupabaseConfig.tRooms)
-         .update({'is_approved': true})
-         .eq('id', roomId);
+        .update({'is_approved': true})
+        .eq('id', roomId);
 
       await _notifSvc.sendNotification(NotificationModel(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
@@ -263,7 +281,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
             ),
             Expanded(
               child: _loading
-                 ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+                ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
                   : TabBarView(controller: _tabs, children: [
                       _UsersTab(
                           users: _users,
@@ -281,7 +299,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                             context,
                             MaterialPageRoute(builder: (_) => const EditContactScreen()),
                           );
-                          _load(); // حدث البيانات بعد الرجوع
+                          _load();
                         },
                       ),
                     ]),
