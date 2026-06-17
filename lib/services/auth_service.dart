@@ -12,15 +12,10 @@ class AuthService {
     required String email,
     required String password,
   }) async {
-    try {
-      final response = await _supabase.auth.signInWithPassword(
-        email: email,
-        password: password,
-      );
-      return response;
-    } catch (e) {
-      rethrow;
-    }
+    return await _supabase.auth.signInWithPassword(
+      email: email,
+      password: password,
+    );
   }
 
   Future<AuthResponse> signUpWithEmail({
@@ -28,31 +23,37 @@ class AuthService {
     required String password,
     Map<String, dynamic>? data,
   }) async {
-    try {
-      final response = await _supabase.auth.signUp(
-        email: email,
-        password: password,
-        data: data,
-      );
-      return response;
-    } catch (e) {
-      rethrow;
-    }
+    return await _supabase.auth.signUp(
+      email: email,
+      password: password,
+      data: data,
+    );
   }
 
   Future<void> signOut() async {
-    try {
-      await _supabase.auth.signOut();
-    } catch (e) {
-      rethrow;
-    }
+    await _supabase.auth.signOut();
   }
 
   Future<void> resetPassword(String email) async {
+    await _supabase.auth.resetPasswordForEmail(email);
+  }
+
+  // هذي الدالة كانت موجودة قبل - نرجعها
+  Future<List<Map<String, dynamic>>> getAllUsers() async {
+    final response = await _supabase.from('users').select();
+    return List<Map<String, dynamic>>.from(response);
+  }
+
+  // هذي هم كانت موجودة
+  Future<bool> updateProfile(Map<String, dynamic> data) async {
     try {
-      await _supabase.auth.resetPasswordForEmail(email);
+      final userId = _supabase.auth.currentUser?.id;
+      if (userId == null) return false;
+      
+      await _supabase.from('users').update(data).eq('id', userId);
+      return true;
     } catch (e) {
-      rethrow;
+      return false;
     }
   }
 }
