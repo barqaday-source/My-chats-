@@ -1,4 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter/foundation.dart';
 import '../core/constants/supabase_config.dart';
 
 class AuthService {
@@ -12,10 +13,14 @@ class AuthService {
     required String email,
     required String password,
   }) async {
-    return await _supabase.auth.signInWithPassword(
-      email: email,
-      password: password,
-    );
+    try {
+      final res = await _supabase.auth.signInWithPassword(email: email, password: password);
+      if (res.user == null) throw Exception('Login failed: user null');
+      return res;
+    } on AuthException catch (e, s) {
+      debugPrint('❌ Auth Error - signIn\nCode: ${e.statusCode}\nMessage: ${e.message}\n$s');
+      rethrow;
+    }
   }
 
   Future<AuthResponse> signUpWithEmail({
@@ -23,11 +28,25 @@ class AuthService {
     required String password,
     Map<String, dynamic>? data,
   }) async {
-    return await _supabase.auth.signUp(
-      email: email,
-      password: password,
-      data: data,
-    );
+    try {
+      final res = await _supabase.auth.signUp(email: email, password: password, data: data);
+      if (res.user!= null) {
+        // التعديل 5: إنشاء user بـ جدول users مباشرة بعد التسجيل
+        await _supabase.from('users').insert({
+          'id': res.user!.id,
+          'email': email,
+          'username': data?['username']?? email.split('@')[0],
+          'created_at': DateTime.now().toIso8601String(),
+        });
+      }
+      return res;
+    } on AuthException catch (e, s) {
+      debugPrint('❌ Auth Error - signUp\nCode: ${e.statusCode}\nMessage: ${e.message}\n$s');
+      rethrow;
+    } on PostgrestException catch (e, s) {
+      debugPrint('❌ Supabase Error - signUp insert user\nCode: ${e.code}\nMessage: ${e.message}\nDetails: ${e.details}\nHint: ${e.hint}\n$s');
+      rethrow;
+    }
   }
 
   Future<void> signOut() async {
@@ -39,18 +58,35 @@ class AuthService {
   }
 
   Future<List<Map<String, dynamic>>> getAllUsers() async {
-    final response = await _supabase.from(SupabaseConfig.tUsers).select();
-    return List<Map<String, dynamic>>.from(response);
+    try {
+      final response = await _supabase.from('users').select();
+      return List<Map<String, dynamic>>.from(response);
+    } on PostgrestException catch (e, s) {
+      debugPrint('❌ Supabase Error - getAllUsers\nCode: ${e.code}\nMessage: ${e.message}\nDetails: ${e.details}\nHint: ${e.hint}\n$s');
+      return [];
+    }
   }
 
+  // التعديل 6: تحديث users مو profiles + Logging
   Future<bool> updateProfile(Map<String, dynamic> data) async {
     try {
       final userId = _supabase.auth.currentUser?.id;
-      if (userId == null) return false;
-      
-      await _supabase.from(SupabaseConfig.tUsers).update(data).eq('id', userId);
+      if (userId == null) throw Exception('No authenticated user');
+
+      await _supabase.from('users').update(data).eq('id', userId).select();
       return true;
-    } catch (e) {
+    } on PostgrestException catch (e, s) {
+      debugPrint('''
+      ❌ Supabase Error - updateProfile
+      Code: ${e.code}
+      Message: ${e.message}
+      Details: ${e.details}
+      Hint: ${e.hint}
+      $s
+      ''');
+      return false;
+    } catch (e, s) {
+      debugPrint('❌ Unknown Error - updateProfile: $e\n$s');
       return false;
     }
   }
