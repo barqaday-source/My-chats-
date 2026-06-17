@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import 'core/theme/app_theme.dart';
+import 'core/constants/supabase_config.dart';
 import 'providers/auth_provider.dart';
 import 'screens/pages/privacy_screen.dart';
 import 'screens/pages/contact_screen.dart';
@@ -14,7 +14,6 @@ import 'screens/auth/welcome_screen.dart';
 import 'screens/home/home_screen.dart';
 import 'services/notification_service.dart';
 
-// هذا الـ Key مهم عشان نقدر نستخدم Navigator من أي مكان
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
@@ -30,12 +29,9 @@ void main() async {
 
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
 
-  // تهيئة Supabase
-  await Supabase.initialize(
-    url: 'https://vohlleqcuomudoryiwkc.supabase.cohttps://vohlleqcuomudoryiwkc.supabase.co', // حط الرابط مالتك هنا
-    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZvaGxsZXFjdW9tdWRvcnlpd2tjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE2MjE3NzAsImV4cCI6MjA5NzE5Nzc3MH0.VNUs7_WXzAeSz5TC_aD56FfzFQkmc_p99PY_b7hPZYU', // حط المفتاح مالتك هنا
-  );
-
+  // تهيئة Supabase من الكونفج
+  await SupabaseConfig.init();
+  
   // تهيئة الإشعارات
   await NotificationService.init();
   
