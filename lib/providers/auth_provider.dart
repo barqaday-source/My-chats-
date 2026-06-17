@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/auth_service.dart';
+import '../core/constants/supabase_config.dart';
 import '../main.dart';
 
 class AuthProvider with ChangeNotifier {
@@ -18,15 +19,15 @@ class AuthProvider with ChangeNotifier {
   bool get loading => _isLoading;
   String? get error => _error;
   bool get initialized => _initialized;
-  bool get isLoggedIn => _user != null;
-  bool get isAuthenticated => _user != null;
+  bool get isLoggedIn => _user!= null;
+  bool get isAuthenticated => _user!= null;
   Map<String, dynamic>? get userProfile => _userProfile;
 
   AuthProvider() {
     checkSession();
     _authService.authStateChanges.listen((data) async {
       _user = data.session?.user;
-      if (_user != null) {
+      if (_user!= null) {
         await _loadUserProfile();
       } else {
         _userProfile = null;
@@ -37,7 +38,7 @@ class AuthProvider with ChangeNotifier {
 
   Future<void> checkSession() async {
     _user = _authService.currentUser;
-    if (_user != null) {
+    if (_user!= null) {
       await _loadUserProfile();
     }
     _initialized = true;
@@ -48,10 +49,10 @@ class AuthProvider with ChangeNotifier {
     try {
       if (_user == null) return;
       final res = await SupabaseConfig.client
-          .from(SupabaseConfig.tUsers)
-          .select()
-          .eq('id', _user!.id)
-          .single();
+         .from(SupabaseConfig.tUsers)
+         .select()
+         .eq('id', _user!.id)
+         .single();
       _userProfile = res;
     } catch (e) {
       _userProfile = null;
@@ -63,9 +64,9 @@ class AuthProvider with ChangeNotifier {
       _isLoading = true;
       _error = null;
       notifyListeners();
-      
+
       await _authService.signInWithEmail(email: email, password: password);
-      
+
       _isLoading = false;
       notifyListeners();
       return true;
@@ -82,21 +83,21 @@ class AuthProvider with ChangeNotifier {
       _isLoading = true;
       _error = null;
       notifyListeners();
-      
+
       final res = await _authService.signUpWithEmail(
-        email: email, 
-        password: password, 
+        email: email,
+        password: password,
         data: {'username': name}
       );
-      
-      if (res.user != null) {
+
+      if (res.user!= null) {
         await SupabaseConfig.client.from(SupabaseConfig.tUsers).insert({
           'id': res.user!.id,
           'email': email,
           'username': name,
         });
       }
-      
+
       _isLoading = false;
       notifyListeners();
       return true;
@@ -113,7 +114,7 @@ class AuthProvider with ChangeNotifier {
   }
 
   Future<void> signUp(String email, String password, Map<String, dynamic>? data) async {
-    await register(email, password, data?['username'] ?? '');
+    await register(email, password, data?['username']?? '');
   }
 
   Future<void> logout() async {
@@ -124,12 +125,12 @@ class AuthProvider with ChangeNotifier {
     try {
       _isLoading = true;
       notifyListeners();
-      
+
       await _authService.signOut();
       _userProfile = null;
-      
+
       navigatorKey.currentState?.pushNamedAndRemoveUntil('/login', (route) => false);
-      
+
       _isLoading = false;
       notifyListeners();
     } catch (e) {
@@ -143,12 +144,12 @@ class AuthProvider with ChangeNotifier {
     try {
       _isLoading = true;
       notifyListeners();
-      
+
       final success = await _authService.updateProfile(data);
       if (success) {
         await _loadUserProfile();
       }
-      
+
       _isLoading = false;
       notifyListeners();
       return success;
