@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/auth_service.dart';
-import '../core/routes/app_routes.dart';
-import '../main.dart'; // عشان navigatorKey
+import '../main.dart';
 
 class AuthProvider with ChangeNotifier {
   final AuthService _authService = AuthService();
@@ -11,6 +10,7 @@ class AuthProvider with ChangeNotifier {
   bool _isLoading = false;
   String? _error;
   bool _initialized = false;
+  Map<String, dynamic>? _userProfile;
 
   User? get currentUser => _user;
   User? get user => _user;
@@ -20,19 +20,42 @@ class AuthProvider with ChangeNotifier {
   bool get initialized => _initialized;
   bool get isLoggedIn => _user != null;
   bool get isAuthenticated => _user != null;
+  Map<String, dynamic>? get userProfile => _userProfile;
 
   AuthProvider() {
     checkSession();
-    _authService.authStateChanges.listen((data) {
+    _authService.authStateChanges.listen((data) async {
       _user = data.session?.user;
+      if (_user != null) {
+        await _loadUserProfile();
+      } else {
+        _userProfile = null;
+      }
       notifyListeners();
     });
   }
 
   Future<void> checkSession() async {
     _user = _authService.currentUser;
+    if (_user != null) {
+      await _loadUserProfile();
+    }
     _initialized = true;
     notifyListeners();
+  }
+
+  Future<void> _loadUserProfile() async {
+    try {
+      if (_user == null) return;
+      final res = await SupabaseConfig.client
+          .from(SupabaseConfig.tUsers)
+          .select()
+          .eq('id', _user!.id)
+          .single();
+      _userProfile = res;
+    } catch (e) {
+      _userProfile = null;
+    }
   }
 
   Future<bool> login(String email, String password) async {
@@ -60,11 +83,19 @@ class AuthProvider with ChangeNotifier {
       _error = null;
       notifyListeners();
       
-      await _authService.signUpWithEmail(
+      final res = await _authService.signUpWithEmail(
         email: email, 
         password: password, 
         data: {'username': name}
       );
+      
+      if (res.user != null) {
+        await SupabaseConfig.client.from(SupabaseConfig.tUsers).insert({
+          'id': res.user!.id,
+          'email': email,
+          'username': name,
+        });
+      }
       
       _isLoading = false;
       notifyListeners();
@@ -95,8 +126,8 @@ class AuthProvider with ChangeNotifier {
       notifyListeners();
       
       await _authService.signOut();
+      _userProfile = null;
       
-      // التوجيه بدون GetX - يستخدم navigatorKey من main.dart
       navigatorKey.currentState?.pushNamedAndRemoveUntil('/login', (route) => false);
       
       _isLoading = false;
@@ -114,6 +145,9 @@ class AuthProvider with ChangeNotifier {
       notifyListeners();
       
       final success = await _authService.updateProfile(data);
+      if (success) {
+        await _loadUserProfile();
+      }
       
       _isLoading = false;
       notifyListeners();
