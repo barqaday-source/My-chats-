@@ -1,497 +1,531 @@
-import 'dart:io';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:flutter_sound/flutter_sound.dart';
-import 'package:audioplayers/audioplayers.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../core/constants/app_colors.dart';
+import '../../models/user_model.dart';
 import '../../providers/auth_provider.dart';
-import '../../services/chat_service.dart';
-import '../../models/message_model.dart';
+import '../../widgets/user_avatar.dart';
+import '../chat/private_chat_screen.dart';
 
-class PrivateChatScreen extends StatefulWidget {
-  final String peerId;
-  final String peerName;
-  final String? peerAvatar;
-
-  const PrivateChatScreen({
-    super.key,
-    required this.peerId,
-    required this.peerName,
-    this.peerAvatar,
-  });
+class UserProfileScreen extends StatefulWidget {
+  final String userId;
+  const UserProfileScreen({super.key, required this.userId});
 
   @override
-  State<PrivateChatScreen> createState() => _PrivateChatScreenState();
+  State<UserProfileScreen> createState() => _UserProfileScreenState();
 }
 
-class _PrivateChatScreenState extends State<PrivateChatScreen> {
-  final _chatSvc = ChatService();
-  final _msgCtrl = TextEditingController();
-  final _scrollCtrl = ScrollController();
-  final _recorder = FlutterSoundRecorder();
-  final _player = AudioPlayer();
-  final _picker = ImagePicker();
+class _UserProfileScreenState extends State<UserProfileScreen> {
   final _supabase = Supabase.instance.client;
-
-  bool _isRecording = false;
-  bool _isSending = false;
-  String? _recordingPath;
-  int _recordDuration = 0;
-  String _inputText = '';
+  UserModel? _user;
+  bool _loading = true;
+  bool _isBlockedByMe = false;
+  bool _isAdmin = false;
+  bool _isMod = false;
 
   @override
   void initState() {
     super.initState();
-    _initRecorder();
-    _msgCtrl.addListener(() {
-      setState(() => _inputText = _msgCtrl.text);
-    });
+    _loadUserFullData();
   }
 
-  @override
-  void dispose() {
-    _msgCtrl.dispose();
-    _scrollCtrl.dispose();
-    _recorder.closeRecorder();
-    _player.dispose();
-    super.dispose();
-  }
-
-  Future<void> _initRecorder() async {
-    await _recorder.openRecorder();
-  }
-
-  Future<void> _startRecording() async {
+  Future<void> _loadUserFullData() async {
+    setState(() => _loading = true);
     try {
-      await _recorder.startRecorder(toFile: 'audio.aac');
-      setState(() {
-        _isRecording = true;
-        _recordDuration = 0;
-      });
-      _startTimer();
+      final me = context.read<AuthProvider>().user!;
+
+      final res = await _supabase
+     .from('users')
+     .select()
+     .eq('id', widget.userId)
+     .single();
+      _user = UserModel.fromJson(res);
+
+      final blockRes = await _supabase
+     .from('blocks')
+     .select()
+     .eq('blocker_id', me.id)
+     .eq('blocked_id', widget.userId)
+     .maybeSingle();
+      _isBlockedByMe = blockRes!= null;
+
+      final adminRes = await _supabase
+     .from('admins')
+     .select()
+     .eq('user_id', widget.userId)
+     .maybeSingle();
+      _isAdmin = adminRes!= null;
+
+      _isMod = _user?.role == 'moderator' || (_user?.isMod?? false);
+
     } catch (e) {
-      debugPrint('Start recording error: $e');
+      debugPrint('Load user profile error: $e');
+    }
+    if (mounted) setState(() => _loading = false);
+  }
+
+  Future<void> _toggleBlock() async {
+    final me = context.read<AuthProvider>().user!;
+    if (me.id == widget.userId) return;
+
+    try {
+      if (_isBlockedByMe) {
+        await _supabase
+     .from('blocks')
+     .delete()
+     .eq('blocker_id', me.id)
+     .eq('blocked_id', widget.userId);
+      } else {
+        await _supabase.from('blocks').insert({
+          'blocker_id': me.id,
+          'blocked_id': widget.userId,
+        });
+      }
+      setState(() => _isBlockedByMe =!_isBlockedByMe);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('فشل بدء التسجيل - تأكد من الصلاحيات')),
+          SnackBar(content: Text(_isBlockedByMe? 'تم الحظر' : 'تم إلغاء الحظر')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('فشل العملية')),
         );
       }
     }
   }
 
-  void _startTimer() {
-    Future.doWhile(() async {
-      await Future.delayed(const Duration(seconds: 1));
-      if (!_isRecording) return false;
-      setState(() => _recordDuration++);
-      return true;
-    });
-  }
+  Future<void> _reportUser() async {
+    final textCtrl = TextEditingController();
+    String reportType = 'spam';
 
-  Future<void> _stopRecording() async {
-    try {
-      final path = await _recorder.stopRecorder();
-      setState(() {
-        _isRecording = false;
-        _recordingPath = path;
-      });
-      if (path!= null) _sendAudio(path);
-    } catch (e) {
-      debugPrint('Stop recording error: $e');
-    }
-  }
-
-  Future<void> _sendAudio(String path) async {
-    final auth = context.read<AuthProvider>();
-    final user = auth.user;
-    if (user == null) return;
-
-    setState(() => _isSending = true);
-    try {
-      final fileName = 'voice_${user.id}_${DateTime.now().millisecondsSinceEpoch}.aac';
-      final fileBytes = await File(path).readAsBytes();
-
-      await _supabase.storage.from('voice_messages').uploadBinary(
-        fileName,
-        fileBytes,
-        fileOptions: const FileOptions(upsert: true),
-      );
-      final audioUrl = _supabase.storage.from('voice_messages').getPublicUrl(fileName);
-
-      final message = MessageModel(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        chatId: MessageModel.generateChatId(user.id, widget.peerId),
-        senderId: user.id,
-        receiverId: widget.peerId,
-        senderName: auth.userProfile?['username']?? user.email?.split('@')[0]?? 'مجهول',
-        senderAvatar: auth.userProfile?['avatar_url'],
-        content: 'رسالة صوتية',
-        type: MsgType.audio,
-        audioUrl: audioUrl,
-        duration: _recordDuration,
-        createdAt: DateTime.now(),
-      );
-
-      await _chatSvc.sendPrivateMessage(widget.peerId, message);
-      _scrollToBottom();
-    } catch (e) {
-      debugPrint('Send audio error: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('فشل إرسال الرسالة الصوتية')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isSending = false);
-    }
-  }
-
-  Future<void> _pickAndSendImage() async {
-    try {
-      final picked = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
-      if (picked == null) return;
-
-      final auth = context.read<AuthProvider>();
-      final user = auth.user;
-      if (user == null) return;
-
-      setState(() => _isSending = true);
-
-      final fileName = 'img_${user.id}_${DateTime.now().millisecondsSinceEpoch}.jpg';
-      final fileBytes = await picked.readAsBytes();
-
-      await _supabase.storage.from('chat_images').uploadBinary(
-        fileName,
-        fileBytes,
-        fileOptions: const FileOptions(upsert: true),
-      );
-      final imageUrl = _supabase.storage.from('chat_images').getPublicUrl(fileName);
-
-      final message = MessageModel(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        chatId: MessageModel.generateChatId(user.id, widget.peerId),
-        senderId: user.id,
-        receiverId: widget.peerId,
-        senderName: auth.userProfile?['username']?? user.email?.split('@')[0]?? 'مجهول',
-        senderAvatar: auth.userProfile?['avatar_url'],
-        content: '📷 صورة',
-        type: MsgType.image,
-        mediaUrl: imageUrl,
-        createdAt: DateTime.now(),
-      );
-
-      await _chatSvc.sendPrivateMessage(widget.peerId, message);
-      _scrollToBottom();
-    } catch (e) {
-      debugPrint('Send image error: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('فشل إرسال الصورة - تأكد من إنشاء bucket chat_images')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isSending = false);
-    }
-  }
-
-  Future<void> _sendMessage() async {
-    final text = _msgCtrl.text.trim();
-    if (text.isEmpty || _isSending) return;
-
-    final auth = context.read<AuthProvider>();
-    final user = auth.user;
-    if (user == null) return;
-
-    _msgCtrl.clear();
-    setState(() => _inputText = '');
-
-    final message = MessageModel(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
-      chatId: MessageModel.generateChatId(user.id, widget.peerId),
-      senderId: user.id,
-      receiverId: widget.peerId,
-      senderName: auth.userProfile?['username']?? user.email?.split('@')[0]?? 'مجهول',
-      senderAvatar: auth.userProfile?['avatar_url'],
-      content: text,
-      createdAt: DateTime.now(),
-    );
-
-    await _chatSvc.sendPrivateMessage(widget.peerId, message);
-    _scrollToBottom();
-  }
-
-  void _scrollToBottom() {
-    if (_scrollCtrl.hasClients) {
-      _scrollCtrl.animateTo(
-        0,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut,
-      );
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final auth = context.watch<AuthProvider>();
-    final currentUserId = auth.user!.id;
-    final hasText = _inputText.trim().isNotEmpty;
-
-    return Scaffold(
-      appBar: AppBar(
-        title: Row(
-          children: [
-            CircleAvatar(
-              radius: 18,
-              backgroundImage: widget.peerAvatar!= null
-           ? NetworkImage(widget.peerAvatar!)
-                  : null,
-              child: widget.peerAvatar == null
-           ? Text(widget.peerName[0].toUpperCase())
-                  : null,
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (context) => Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+        child: StatefulBuilder(
+          builder: (context, setDialogState) => Container(
+            decoration: BoxDecoration(
+              color: AppColors.bgCard,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
             ),
-            const SizedBox(width: 12),
-            Text(widget.peerName, style: const TextStyle(fontFamily: 'Tajawal')),
-          ],
-        ),
-      ),
-      body: Container(
-        decoration: const BoxDecoration(gradient: AppColors.bgGrad),
-        child: Column(
-          children: [
-            Expanded(
-              child: StreamBuilder<List<MessageModel>>(
-                stream: _chatSvc.getPrivateMessages(widget.peerId),
-                builder: (context, snapshot) {
-                  if (!snapshot.hasData) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-                  final messages = snapshot.data!;
-                  return ListView.builder(
-                    controller: _scrollCtrl,
-                    reverse: true,
-                    padding: const EdgeInsets.all(16),
-                    itemCount: messages.length,
-                    itemBuilder: (_, i) {
-                      final msg = messages[i];
-                      final isMe = msg.senderId == currentUserId;
-                      return _MessageBubble(msg: msg, isMe: isMe, player: _player);
-                    },
-                  );
-                },
-              ),
-            ),
-            Container(
-              padding: EdgeInsets.fromLTRB(8, 8, 8, 8 + MediaQuery.of(context).padding.bottom),
-              decoration: BoxDecoration(
-                color: AppColors.bgCard,
-                border: Border(top: BorderSide(color: AppColors.divider)),
-              ),
-              child: SafeArea(
-                top: false,
-                child: Row(
+            child: SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    IconButton(
-                      onPressed: _isSending? null : _pickAndSendImage,
-                      icon: const Icon(Icons.image_rounded, color: AppColors.primary),
+                    Container(
+                      width: 40,
+                      height: 4,
+                      margin: const EdgeInsets.only(bottom: 16),
+                      decoration: BoxDecoration(
+                          color: AppColors.textSub, borderRadius: BorderRadius.circular(2)),
                     ),
-                    Expanded(
-                      child: _isRecording
-                   ? Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                          decoration: BoxDecoration(
-                            color: AppColors.danger.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(24),
-                          ),
-                          child: Row(
-                            children: [
-                              const Icon(Icons.mic, color: AppColors.danger, size: 20),
-                              const SizedBox(width: 8),
-                              Text(
-                                'جاري التسجيل ${_recordDuration ~/ 60}:${(_recordDuration % 60).toString().padLeft(2, '0')}',
-                                style: const TextStyle(color: AppColors.danger, fontFamily: 'Tajawal'),
-                              ),
-                            ],
+                    Text('إبلاغ عن ${_user!.username}',
+                        style: const TextStyle(
+                            fontFamily: 'Tajawal',
+                            color: AppColors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 16),
+                    DropdownButtonFormField<String>(
+                      value: reportType,
+                      dropdownColor: AppColors.bgCard2,
+                      style: const TextStyle(color: AppColors.white, fontFamily: 'Tajawal'),
+                      decoration: InputDecoration(
+                        labelText: 'نوع البلاغ',
+                        labelStyle: const TextStyle(color: AppColors.textSub),
+                        filled: true,
+                        fillColor: AppColors.bgCard2,
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none),
+                      ),
+                      items: const [
+                        DropdownMenuItem(value: 'spam', child: Text('رسائل مزعجة')),
+                        DropdownMenuItem(value: 'harassment', child: Text('تحرش أو تنمر')),
+                        DropdownMenuItem(value: 'fake', child: Text('حساب وهمي')),
+                        DropdownMenuItem(value: 'inappropriate', child: Text('محتوى غير لائق')),
+                        DropdownMenuItem(value: 'other', child: Text('سبب آخر')),
+                      ],
+                      onChanged: (val) => setDialogState(() => reportType = val!),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: textCtrl,
+                      style: const TextStyle(color: AppColors.white),
+                      maxLines: 3,
+                      decoration: InputDecoration(
+                        hintText: 'اكتب تفاصيل البلاغ...',
+                        hintStyle: const TextStyle(color: AppColors.textSub),
+                        filled: true,
+                        fillColor: AppColors.bgCard2,
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextButton(
+                              onPressed: () => Navigator.pop(context),
+                              child: const Text('إلغاء')),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                                backgroundColor: AppColors.danger,
+                                shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12))),
+                            onPressed: () async {
+                              if (textCtrl.text.trim().isEmpty) return;
+                              final me = context.read<AuthProvider>().user!;
+                              await _supabase.from('reports').insert({
+                                'reporter_id': me.id,
+                                'reported_id': _user!.id,
+                                'reason': '[$reportType] ${textCtrl.text.trim()}',
+                                'status': 'pending',
+                              });
+                              if (context.mounted) {
+                                Navigator.pop(context);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('تم إرسال البلاغ للإدارة')),
+                                );
+                              }
+                            },
+                            child: const Text('إرسال'),
                           ),
                         )
-                          : TextField(
-                              controller: _msgCtrl,
-                              enabled:!_isSending,
-                              style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.text),
-                              decoration: InputDecoration(
-                                hintText: 'اكتب رسالة...',
-                                hintStyle: const TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub),
-                                filled: true,
-                                fillColor: AppColors.bgCard2,
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(24),
-                                  borderSide: BorderSide.none,
-                                ),
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                              ),
-                              onSubmitted: (_) => _sendMessage(),
-                            ),
+                      ],
                     ),
-                    const SizedBox(width: 8),
-                    _isRecording
-                   ? IconButton(
-                        onPressed: _stopRecording,
-                        icon: const Icon(Icons.stop_rounded, color: AppColors.danger),
-                        style: IconButton.styleFrom(
-                          backgroundColor: AppColors.danger.withOpacity(0.1),
-                        ),
-                      )
-                      : hasText
-                   ? IconButton(
-                        onPressed: _isSending? null : _sendMessage,
-                        icon: _isSending
-                         ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.send_rounded, color: AppColors.primary),
-                        style: IconButton.styleFrom(
-                          backgroundColor: AppColors.primary.withOpacity(0.1),
-                        ),
-                      )
-                      : GestureDetector(
-                          onLongPressStart: (_) => _startRecording(),
-                          onLongPressEnd: (_) => _stopRecording(),
-                          child: IconButton(
-                            onPressed: null,
-                            icon: const Icon(Icons.mic_rounded, color: AppColors.primary),
-                            style: IconButton.styleFrom(
-                              backgroundColor: AppColors.primary.withOpacity(0.1),
-                            ),
-                          ),
-                        ),
                   ],
                 ),
               ),
             ),
-          ],
+          ),
         ),
       ),
     );
   }
-}
 
-class _MessageBubble extends StatefulWidget {
-  final MessageModel msg;
-  final bool isMe;
-  final AudioPlayer player;
-
-  const _MessageBubble({required this.msg, required this.isMe, required this.player});
-
-  @override
-  State<_MessageBubble> createState() => _MessageBubbleState();
-}
-
-class _MessageBubbleState extends State<_MessageBubble> {
-  bool _isPlaying = false;
-
-  String _fmtDur(int seconds) {
-    final m = seconds ~/ 60;
-    final s = seconds % 60;
-    return '$m:${s.toString().padLeft(2, '0')}';
+  Future<void> _openWhatsApp() async {
+    if (_user?.whatsapp == null || _user!.whatsapp!.isEmpty) return;
+    final phone = _user!.whatsapp!.replaceAll(RegExp(r'[^0-9]'), '');
+    final url = Uri.parse('https://wa.me/$phone');
+    if (await canLaunchUrl(url)) {
+      await launchUrl(url, mode: LaunchMode.externalApplication);
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('تعذر فتح واتساب')),
+        );
+      }
+    }
   }
 
-  Future<void> _playAudio() async {
-    if (widget.msg.audioUrl == null) return;
-    if (_isPlaying) {
-      await widget.player.stop();
-      setState(() => _isPlaying = false);
+  Future<void> _sendEmail() async {
+    if (_user?.email?.isEmpty?? true) return;
+    final url = Uri.parse('mailto:${_user!.email}');
+    if (await canLaunchUrl(url)) {
+      await launchUrl(url);
     } else {
-      await widget.player.play(UrlSource(widget.msg.audioUrl!));
-      setState(() => _isPlaying = true);
-      widget.player.onPlayerComplete.listen((_) {
-        if (mounted) setState(() => _isPlaying = false);
-      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('تعذر فتح الإيميل')),
+        );
+      }
     }
+  }
+
+  void _openChat() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PrivateChatScreen(
+          peerId: _user!.id,
+          peerName: _user!.username,
+          peerAvatar: _user!.avatarUrl,
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    return Align(
-      alignment: widget.isMe? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-          color: widget.isMe? AppColors.primary : AppColors.bgCard,
-          borderRadius: BorderRadius.circular(16),
+    final me = context.watch<AuthProvider>().user;
+    final isMe = me?.id == widget.userId;
+
+    return Scaffold(
+      extendBodyBehindAppBar: true,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: AppColors.white),
+          onPressed: () => Navigator.pop(context),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (!widget.isMe)
-              Text(
-                widget.msg.senderName?? 'مجهول',
-                style: const TextStyle(
+        title: const Text('البروفايل',
+            style: TextStyle(fontFamily: 'Tajawal', color: AppColors.white)),
+        actions: [
+          if (!isMe && _user!= null)
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert, color: AppColors.white),
+              color: AppColors.bgCard2,
+              onSelected: (value) {
+                if (value == 'block') _toggleBlock();
+                if (value == 'report') _reportUser();
+              },
+              itemBuilder: (context) => [
+                PopupMenuItem(
+                  value: 'block',
+                  child: Text(_isBlockedByMe? 'إلغاء الحظر' : 'حظر المستخدم'),
+                ),
+                const PopupMenuItem(value: 'report', child: Text('إبلاغ')),
+              ],
+            ),
+        ],
+      ),
+      body: Container(
+        decoration: BoxDecoration(gradient: AppColors.bgGrad),
+        child: SafeArea(
+          bottom: false,
+          child: _loading
+       ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+              : _user == null
+         ? const Center(
+                    child: Text('تعذر تحميل البيانات',
+                        style: TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub)))
+                  : SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(16, 20, 16, 100),
+                      child: Column(children: [
+                        _buildProfileHeader(),
+                        const SizedBox(height: 24),
+                        _buildInfoCard(),
+                        if (!isMe)...[
+                          const SizedBox(height: 24),
+                          _buildContactButtons(),
+                          const SizedBox(height: 12),
+                          _buildActionButtons(),
+                        ]
+                      ]),
+                    ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProfileHeader() {
+    return Column(children: [
+      UserAvatar(
+        url: _user!.avatarUrl,
+        name: _user!.username,
+        size: 90,
+        isOnline: _user!.isOnline,
+      ),
+      const SizedBox(height: 12),
+      Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            _user!.username,
+            style: const TextStyle(
+              fontFamily: 'Tajawal',
+              color: AppColors.white,
+              fontSize: 22,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          if (_isAdmin || _isMod)...[
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: (_isAdmin? AppColors.primary : AppColors.accent).withOpacity(0.2),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                _isAdmin? '👑 مدير' : '🛡️ مشرف',
+                style: TextStyle(
                   fontFamily: 'Tajawal',
-                  color: AppColors.textSub,
+                  color: _isAdmin? AppColors.primary : AppColors.accent,
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
                 ),
               ),
-            if (widget.msg.type == MsgType.image && widget.msg.mediaUrl!= null)
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: Image.network(
-                  widget.msg.mediaUrl!,
-                  width: 200,
-                  height: 200,
-                  fit: BoxFit.cover,
-                  loadingBuilder: (context, child, loadingProgress) {
-                    if (loadingProgress == null) return child;
-                    return SizedBox(
-                      width: 200,
-                      height: 200,
-                      child: Center(
-                        child: CircularProgressIndicator(
-                          value: loadingProgress.expectedTotalBytes!= null
-                         ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes!
-                              : null,
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              )
-            else if (widget.msg.type == MsgType.audio)
-              GestureDetector(
-                onTap: _playAudio,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(_isPlaying? Icons.stop_rounded : Icons.play_arrow_rounded,
-                        color: widget.isMe? AppColors.white : AppColors.primary),
-                    const SizedBox(width: 8),
-                    Text(
-                      '🎤 ${_fmtDur(widget.msg.duration?? 0)}',
-                      style: TextStyle(
-                        fontFamily: 'Tajawal',
-                        color: widget.isMe? AppColors.white : AppColors.text,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ],
-                ),
-              )
-            else
-              Text(
-                widget.msg.content,
-                style: TextStyle(
-                  fontFamily: 'Tajawal',
-                  color: widget.isMe? AppColors.white : AppColors.text,
-                  fontSize: 14,
-                ),
-              ),
+            ),
           ],
+        ],
+      ),
+      const SizedBox(height: 4),
+      Text(
+        _user!.isOnline? 'متصل الآن' : 'غير متصل',
+        style: TextStyle(
+          fontFamily: 'Tajawal',
+          color: _user!.isOnline? AppColors.online : AppColors.textSub,
+          fontSize: 13,
         ),
       ),
+    ]);
+  }
+
+  Widget _buildInfoCard() {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(24),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: AppColors.bgCard.withOpacity(0.6),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: AppColors.glassBorder, width: 0.8),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (_user!.bio!= null && _user!.bio!.isNotEmpty)...[
+                _infoRow(Icons.info_outline_rounded, 'النبذة', _user!.bio!),
+                const SizedBox(height: 16),
+              ],
+              if (_user!.birthDate!= null)...[
+                _infoRow(Icons.cake_outlined, 'تاريخ الميلاد', _user!.birthDate?.toString().split(' ')[0]?? 'غير محدد'),
+                const SizedBox(height: 16),
+              ],
+              if (_user!.zodiac!= null && _user!.zodiac!.isNotEmpty)...[
+                _infoRow(Icons.auto_awesome_rounded, 'البرج', _user!.zodiac!),
+                const SizedBox(height: 16),
+              ],
+              if (_user!.whatsapp!= null && _user!.whatsapp!.isNotEmpty)
+                _infoRow(Icons.phone_rounded, 'واتساب', _user!.whatsapp!),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildContactButtons() {
+    return Row(
+      children: [
+        Expanded(
+          child: ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            onPressed: _openChat,
+            icon: const Icon(Icons.chat_rounded, size: 20),
+            label: const Text('مراسلة',
+                style: TextStyle(fontFamily: 'Tajawal', fontWeight: FontWeight.w700)),
+          ),
+        ),
+        if (_user!.whatsapp!= null && _user!.whatsapp!.isNotEmpty)...[
+          const SizedBox(width: 12),
+          Expanded(
+            child: ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF25D366),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              onPressed: _openWhatsApp,
+              icon: const Icon(Icons.phone_rounded, size: 20),
+              label: const Text('واتساب',
+                  style: TextStyle(fontFamily: 'Tajawal', fontWeight: FontWeight.w700)),
+            ),
+          ),
+        ],
+        if (_user!.email?.isNotEmpty?? false)...[
+          const SizedBox(width: 12),
+          Expanded(
+            child: ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.accent,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              onPressed: _sendEmail,
+              icon: const Icon(Icons.email_rounded, size: 20),
+              label: const Text('إيميل',
+                  style: TextStyle(fontFamily: 'Tajawal', fontWeight: FontWeight.w700)),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildActionButtons() {
+    return Row(
+      children: [
+        Expanded(
+          child: ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _isBlockedByMe? AppColors.textSub : AppColors.danger,
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            onPressed: _toggleBlock,
+            icon: Icon(_isBlockedByMe? Icons.lock_open_rounded : Icons.block_rounded, size: 20),
+            label: Text(_isBlockedByMe? 'إلغاء الحظر' : 'حظر',
+                style: const TextStyle(fontFamily: 'Tajawal', fontWeight: FontWeight.w700)),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.warning,
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            onPressed: _reportUser,
+            icon: const Icon(Icons.flag_rounded, size: 20),
+            label: const Text('إبلاغ',
+                style: TextStyle(fontFamily: 'Tajawal', fontWeight: FontWeight.w700)),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _infoRow(IconData icon, String label, String value) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, color: AppColors.primary, size: 20),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label,
+                  style: const TextStyle(
+                      fontFamily: 'Tajawal', color: AppColors.textSub, fontSize: 12)),
+              const SizedBox(height: 2),
+              Text(value,
+                  style: const TextStyle(
+                      fontFamily: 'Tajawal',
+                      color: AppColors.white,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600)),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
