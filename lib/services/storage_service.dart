@@ -4,11 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as path;
 
 class StorageService {
-  static const url = 'https://jmsmrojtlstppnpwmkkk.supabase.co';
-  static const anonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imptc21yb2p0bHN0cHBucHdta2trIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4MTg2NDAsImV4cCI6MjA4ODM5NDY0MH0.j7gxr5CvrfvbJJzK_pMwVHiCE2AqpXUTThpeLEBmsos';
-
-  // Tables
-  static const tUsers = 'profiles';
+  // التعديل 7: حذف tUsers = 'profiles' الخطأ
+  static const tUsers = 'users';
   static const tRooms = 'rooms';
   static const tMessages = 'messages';
   static const tNotifications = 'notifications';
@@ -24,64 +21,9 @@ class StorageService {
   static const bucketMedia = 'chat-media';
   static const bucketAudio = 'audio-messages';
 
-  static bool _initialized = false;
+  static SupabaseStorageClient get storage => Supabase.instance.client.storage;
 
-  static Future<bool> init() async {
-    if (_initialized) return true;
-    try {
-      await Supabase.initialize(
-        url: url,
-        anonKey: anonKey,
-        authOptions: const FlutterAuthClientOptions(
-          authFlowType: AuthFlowType.pkce,
-          autoRefreshToken: true,
-        ),
-        realtimeClientOptions: const RealtimeClientOptions(
-          eventsPerSecond: 10,
-        ),
-        debug: kDebugMode,
-      );
-      _initialized = true;
-      return true;
-    } catch (e) {
-      debugPrint("Supabase init failed: $e");
-      return false;
-    }
-  }
-
-  static SupabaseClient get client => Supabase.instance.client;
-  static GoTrueClient get auth => client.auth;
-  static SupabaseStorageClient get storage => client.storage;
-  static bool get isInitialized => _initialized;
-
-  // ===== الدوال اللي يطلبها البروفايدرز والشاشات =====
-
-  Future<String?> uploadChatMedia(String chatId, File file, String type) async {
-    try {
-      final fileExt = path.extension(file.path);
-      final fileName = '${DateTime.now().millisecondsSinceEpoch}_$type$fileExt';
-      final filePath = 'chats/$chatId/$fileName';
-      await storage.from(bucketMedia).upload(filePath, file);
-      return storage.from(bucketMedia).getPublicUrl(filePath);
-    } catch (e) {
-      debugPrint("uploadChatMedia error: $e");
-      return null;
-    }
-  }
-
-  Future<String?> uploadRoomImage(String roomId, File file) async {
-    try {
-      final fileExt = path.extension(file.path);
-      final fileName = '${DateTime.now().millisecondsSinceEpoch}_room$fileExt';
-      final filePath = 'rooms/$roomId/$fileName';
-      await storage.from(bucketRooms).upload(filePath, file);
-      return storage.from(bucketRooms).getPublicUrl(filePath);
-    } catch (e) {
-      debugPrint("uploadRoomImage error: $e");
-      return null;
-    }
-  }
-
+  // التعديل 8: Logging كامل + upsert
   Future<String?> uploadAvatar(String userId, File file) async {
     try {
       final fileExt = path.extension(file.path);
@@ -93,8 +35,43 @@ class StorageService {
         fileOptions: const FileOptions(upsert: true),
       );
       return storage.from(bucketAvatars).getPublicUrl(filePath);
-    } catch (e) {
-      debugPrint("uploadAvatar error: $e");
+    } on StorageException catch (e, s) {
+      debugPrint('''
+      ❌ Storage Error - uploadAvatar
+      StatusCode: ${e.statusCode}
+      Message: ${e.message}
+      Error: ${e.error}
+      $s
+      ''');
+      return null;
+    } catch (e, s) {
+      debugPrint('❌ Unknown Error - uploadAvatar: $e\n$s');
+      return null;
+    }
+  }
+
+  Future<String?> uploadChatMedia(String chatId, File file, String type) async {
+    try {
+      final fileExt = path.extension(file.path);
+      final fileName = '${DateTime.now().millisecondsSinceEpoch}_$type$fileExt';
+      final filePath = 'chats/$chatId/$fileName';
+      await storage.from(bucketMedia).upload(filePath, file);
+      return storage.from(bucketMedia).getPublicUrl(filePath);
+    } on StorageException catch (e, s) {
+      debugPrint('❌ Storage Error - uploadChatMedia\nStatusCode: ${e.statusCode}\nMessage: ${e.message}\nError: ${e.error}\n$s');
+      return null;
+    }
+  }
+
+  Future<String?> uploadRoomImage(String roomId, File file) async {
+    try {
+      final fileExt = path.extension(file.path);
+      final fileName = '${DateTime.now().millisecondsSinceEpoch}_room$fileExt';
+      final filePath = 'rooms/$roomId/$fileName';
+      await storage.from(bucketRooms).upload(filePath, file);
+      return storage.from(bucketRooms).getPublicUrl(filePath);
+    } on StorageException catch (e, s) {
+      debugPrint('❌ Storage Error - uploadRoomImage\nStatusCode: ${e.statusCode}\nMessage: ${e.message}\nError: ${e.error}\n$s');
       return null;
     }
   }
@@ -103,8 +80,8 @@ class StorageService {
     try {
       await storage.from(bucket).remove([filePath]);
       return true;
-    } catch (e) {
-      debugPrint("deleteFile error: $e");
+    } on StorageException catch (e, s) {
+      debugPrint('❌ Storage Error - deleteFile\nStatusCode: ${e.statusCode}\nMessage: ${e.message}\nError: ${e.error}\n$s');
       return false;
     }
   }
