@@ -6,11 +6,32 @@ class SupabaseConfig {
   static const anonKey =
       'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZvaGxsZXFjdW9tdWRvcnlpd2tjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE2MjE3NzAsImV4cCI6MjA5NzE5Nzc3MH0.VNUs7_WXzAeSz5TC_aD56FfzFQkmc_p99PY_b7hPZYU';
 
+  // Tables - رجعناهن حتى الملفات الثانية ما تصرخ
+  static const tUsers = 'users';
+  static const tRooms = 'rooms';
+  static const tMessages = 'messages';
+  static const tPrivateMessages = 'private_messages';
+  static const tRoomMessages = 'room_messages';
+  static const tNotifications = 'notifications';
+  static const tReports = 'reports';
+  static const tRoomMembers = 'room_members';
+  static const tPrivateChats = 'private_chats';
+  static const tBlockedUsers = 'blocked_users';
+  static const tContactInfo = 'contact_info';
+  static const tBlocks = 'blocks';
+  static const tAdmins = 'admins';
+
+  // Storage buckets - محدثة للأسماء الجديدة
+  static const bucketAvatars = 'avatars';
+  static const bucketRooms = 'room-images';
+  static const bucketMedia = 'chat_images';
+  static const bucketAudio = 'voice_messages';
+
   static bool _initialized = false;
 
   static Future<bool> init() async {
     if (_initialized) return true;
-    
+
     try {
       await Supabase.initialize(
         url: url,
@@ -20,7 +41,7 @@ class SupabaseConfig {
         ),
         debug: kDebugMode,
       );
-      
+
       _initialized = true;
       debugPrint("Supabase connected successfully");
       return true;
@@ -28,7 +49,7 @@ class SupabaseConfig {
       debugPrint("Supabase init failed: $e");
       return false;
     }
-  } 
+  }
 
   static SupabaseClient get client => Supabase.instance.client;
   static GoTrueClient get auth => client.auth;
