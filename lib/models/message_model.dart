@@ -36,8 +36,8 @@ class MessageModel {
       id: json['id'],
       chatId: json['chat_id'],
       senderId: json['sender_id'],
-      receiverId: json['receiver_id'],
-      content: json['content'],
+      receiverId: json['receiver_id']?? '',
+      content: json['content']?? json['text']?? '',
       type: MsgType.values.firstWhere(
         (e) => e.name == json['type'],
         orElse: () => MsgType.text,
@@ -76,4 +76,7 @@ class MessageModel {
     final sorted = [user1, user2]..sort();
     return '${sorted[0]}_${sorted[1]}';
   }
+
+  // Getter للتوافق مع الكود القديم
+  String get text => content;
 }
