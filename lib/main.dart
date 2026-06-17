@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import 'core/theme/app_theme.dart';
-import 'core/constants/supabase_config.dart';
 import 'providers/auth_provider.dart';
 import 'screens/pages/privacy_screen.dart';
 import 'screens/pages/contact_screen.dart';
@@ -30,8 +30,16 @@ void main() async {
 
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
 
-  await SupabaseConfig.init();
+  // تهيئة Supabase
+  await Supabase.initialize(
+    url: 'YOUR_SUPABASE_URL', // حط الرابط مالتك هنا
+    anonKey: 'YOUR_SUPABASE_ANON_KEY', // حط المفتاح مالتك هنا
+  );
+
+  // تهيئة الإشعارات
   await NotificationService.init();
+  
+  // تهيئة timeago للعربي
   timeago.setLocaleMessages('ar', timeago.ArMessages());
 
   runApp(const MyChatApp());
@@ -45,7 +53,7 @@ class MyChatApp extends StatelessWidget {
     return ChangeNotifierProvider(
       create: (_) => AuthProvider()..checkSession(),
       child: MaterialApp(
-        navigatorKey: navigatorKey, // ضفناه هنا
+        navigatorKey: navigatorKey,
         title: 'محادثاتي',
         theme: AppTheme.lightTheme,
         darkTheme: AppTheme.lightTheme,
@@ -78,7 +86,7 @@ class MyChatApp extends StatelessWidget {
           '/admin': (_) => const AdminPanelScreen(),
           '/welcome': (_) => const WelcomeScreen(),
           '/home': (_) => const HomeScreen(),
-          '/login': (_) => const WelcomeScreen(), // ضفنا هذا عشان signOut يشتغل
+          '/login': (_) => const WelcomeScreen(),
         },
       ),
     );
