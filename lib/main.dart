@@ -32,8 +32,8 @@ void main() async {
 
   // تهيئة Supabase
   await Supabase.initialize(
-    url: 'YOUR_SUPABASE_URL', // حط الرابط مالتك هنا
-    anonKey: 'YOUR_SUPABASE_ANON_KEY', // حط المفتاح مالتك هنا
+    url: 'https://vohlleqcuomudoryiwkc.supabase.cohttps://vohlleqcuomudoryiwkc.supabase.co', // حط الرابط مالتك هنا
+    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZvaGxsZXFjdW9tdWRvcnlpd2tjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE2MjE3NzAsImV4cCI6MjA5NzE5Nzc3MH0.VNUs7_WXzAeSz5TC_aD56FfzFQkmc_p99PY_b7hPZYU', // حط المفتاح مالتك هنا
   );
 
   // تهيئة الإشعارات
