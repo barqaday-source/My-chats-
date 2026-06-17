@@ -1,4 +1,5 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/notification_model.dart';
 
 class NotificationService {
@@ -7,6 +8,7 @@ class NotificationService {
   NotificationService._internal();
 
   static final _plugin = FlutterLocalNotificationsPlugin();
+  final _supabase = Supabase.instance.client;
 
   static Future<void> init() async {
     const android = AndroidInitializationSettings('@mipmap/ic_launcher');
@@ -25,18 +27,57 @@ class NotificationService {
      ?.createNotificationChannel(channel);
   }
 
+  // جلب عدد الإشعارات غير المقروءة من Supabase
   Future<int> unreadCount(String uid) async {
-    return 0;
+    try {
+      final response = await _supabase
+          .from('notifications')
+          .select()
+          .eq('user_id', uid)
+          .eq('is_read', false);
+      return response.length;
+    } catch (e) {
+      return 0;
+    }
   }
 
-  Future<void> markAllRead(String uid) async {}
-
-  Stream<List<NotificationModel>> userNotifications(String uid) async* {
-    yield [];
+  // تعليم كل الإشعارات كمقروءة
+  Future<void> markAllRead(String uid) async {
+    try {
+      await _supabase
+          .from('notifications')
+          .update({'is_read': true})
+          .eq('user_id', uid)
+          .eq('is_read', false);
+    } catch (e) {
+      print('markAllRead error: $e');
+    }
   }
 
-  Future<void> sendNotification(NotificationModel notification) async {}
+  // ستريم الإشعارات للمستخدم
+  Stream<List<NotificationModel>> userNotifications(String uid) {
+    return _supabase
+        .from('notifications')
+        .stream(primaryKey: ['id'])
+        .eq('user_id', uid)
+        .order('created_at', ascending: false)
+        .map((maps) => maps.map((map) => NotificationModel.fromJson(map)).toList());
+  }
 
+  // ارسال إشعار جديد لقاعدة البيانات + عرض محلي
+  Future<void> sendNotification(NotificationModel notification) async {
+    try {
+      // 1. احفظ بقاعدة البيانات
+      await _supabase.from('notifications').insert(notification.toJson());
+      
+      // 2. اعرض إشعار محلي
+      await showNotification(notification.title, notification.body);
+    } catch (e) {
+      print('sendNotification error: $e');
+    }
+  }
+
+  // عرض إشعار محلي
   Future<void> showNotification(String title, String body) async {
     const android = AndroidNotificationDetails(
       'messages_channel',
