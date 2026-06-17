@@ -31,14 +31,16 @@ class SupabaseConfig {
     
     try {
       await Supabase.initialize(
-        url: url, // كان supabaseUrl
-        anonKey: anonKey, // كان supabaseAnonKey
-        authFlowType: AuthFlowType.pkce,
+        url: url,
+        anonKey: anonKey,
+        authOptions: const FlutterAuthOptions(
+          authFlowType: AuthFlowType.pkce,
+        ),
         realtimeClientOptions: const RealtimeClientOptions(
           eventsPerSecond: 10,
         ),
         debug: kDebugMode,
-      ); // القوس يتسكر هنا بعد كل الباراميترز
+      );
       
       _initialized = true;
       debugPrint("Supabase connected successfully");
