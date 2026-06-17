@@ -119,21 +119,14 @@ jobs:
           }
           EOF
 
-          # 4. حقن الـ Manifest الشامل بالصلاحيات والإعدادات الصحيحة
-          cat > android/app/src/main/AndroidManifest.xml << 'EOF'
+          # 4. حقن الـ Manifest مع فحص الصلاحيات الناقصة وإضافتها تلقائياً
+          MANIFEST_PATH="android/app/src/main/AndroidManifest.xml"
+          
+          # أنشئ Manifest أساسي لو مو موجود
+          if [ ! -f "$MANIFEST_PATH" ]; then
+            mkdir -p android/app/src/main/
+            cat > "$MANIFEST_PATH" << 'EOF'
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-              <uses-permission android:name="android.permission.INTERNET" />
-              <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-              <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
-              <uses-permission android:name="android.permission.RECORD_AUDIO" />
-              <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
-              <uses-permission android:name="android.permission.CAMERA" />
-              <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
-              <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />
-              <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
-              <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-              <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-              <uses-permission android:name="android.permission.WAKE_LOCK" />
               <application
                   android:label="SeaChat"
                   android:name="${applicationName}"
@@ -156,6 +149,38 @@ jobs:
               </application>
           </manifest>
           EOF
+          fi
+
+          # دالة تضيف الصلاحية لو مو موجودة
+          add_permission() {
+            local permission="$1"
+            if ! grep -q "$permission" "$MANIFEST_PATH"; then
+              sed -i "/<manifest/a \    $permission" "$MANIFEST_PATH"
+              echo "Added: $permission"
+            fi
+          }
+
+          # كل الصلاحيات المطلوبة للتطبيق + flutter_sound + image_picker + url_launcher
+          add_permission '<uses-permission android:name="android.permission.INTERNET" />'
+          add_permission '<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />'
+          add_permission '<uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />'
+          add_permission '<uses-permission android:name="android.permission.RECORD_AUDIO" />'
+          add_permission '<uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />'
+          add_permission '<uses-permission android:name="android.permission.CAMERA" />'
+          add_permission '<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />'
+          add_permission '<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />'
+          add_permission '<uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />'
+          add_permission '<uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />'
+          add_permission '<uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />'
+          add_permission '<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />'
+          add_permission '<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />'
+          add_permission '<uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />'
+          add_permission '<uses-permission android:name="android.permission.WAKE_LOCK" />'
+
+          # تأكد usesCleartextTraffic موجود لـ Supabase
+          if ! grep -q 'android:usesCleartextTraffic="true"' "$MANIFEST_PATH"; then
+            sed -i 's/<application/<application android:usesCleartextTraffic="true"/' "$MANIFEST_PATH"
+          fi
 
           # 5. إنشاء وحقن الـ MainActivity.kt لتجنب أي نقص في الكود المصدري للأندرويد
           mkdir -p android/app/src/main/kotlin/com/seachat/app/
