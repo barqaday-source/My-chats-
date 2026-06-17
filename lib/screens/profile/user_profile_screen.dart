@@ -2,10 +2,12 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../core/constants/app_colors.dart';
 import '../../models/user_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../widgets/user_avatar.dart';
+import '../chat/private_chat_screen.dart';
 
 class UserProfileScreen extends StatefulWidget {
   final String userId;
@@ -33,27 +35,27 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     setState(() => _loading = true);
     try {
       final me = context.read<AuthProvider>().user!;
-      
+
       final res = await _supabase
-         .from('users')
-         .select()
-         .eq('id', widget.userId)
-         .single();
+        .from('users')
+        .select()
+        .eq('id', widget.userId)
+        .single();
       _user = UserModel.fromJson(res);
 
       final blockRes = await _supabase
-         .from('blocks')
-         .select()
-         .eq('blocker_id', me.id)
-         .eq('blocked_id', widget.userId)
-         .maybeSingle();
+        .from('blocks')
+        .select()
+        .eq('blocker_id', me.id)
+        .eq('blocked_id', widget.userId)
+        .maybeSingle();
       _isBlockedByMe = blockRes!= null;
 
       final adminRes = await _supabase
-         .from('admins')
-         .select()
-         .eq('user_id', widget.userId)
-         .maybeSingle();
+        .from('admins')
+        .select()
+        .eq('user_id', widget.userId)
+        .maybeSingle();
       _isAdmin = adminRes!= null;
 
       _isMod = _user?.role == 'moderator' || (_user?.isMod?? false);
@@ -71,10 +73,10 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     try {
       if (_isBlockedByMe) {
         await _supabase
-           .from('blocks')
-           .delete()
-           .eq('blocker_id', me.id)
-           .eq('blocked_id', widget.userId);
+          .from('blocks')
+          .delete()
+          .eq('blocker_id', me.id)
+          .eq('blocked_id', widget.userId);
       } else {
         await _supabase.from('blocks').insert({
           'blocker_id': me.id,
@@ -217,6 +219,48 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     );
   }
 
+  Future<void> _openWhatsApp() async {
+    if (_user?.whatsapp == null || _user!.whatsapp!.isEmpty) return;
+    final phone = _user!.whatsapp!.replaceAll(RegExp(r'[^0-9]'), '');
+    final url = Uri.parse('https://wa.me/$phone');
+    if (await canLaunchUrl(url)) {
+      await launchUrl(url, mode: LaunchMode.externalApplication);
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('تعذر فتح واتساب')),
+        );
+      }
+    }
+  }
+
+  Future<void> _sendEmail() async {
+    if (_user?.email == null || _user!.email.isEmpty) return;
+    final url = Uri.parse('mailto:${_user!.email}');
+    if (await canLaunchUrl(url)) {
+      await launchUrl(url);
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('تعذر فتح الإيميل')),
+        );
+      }
+    }
+  }
+
+  void _openChat() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PrivateChatScreen(
+          peerId: _user!.id,
+          peerName: _user!.username,
+          peerAvatar: _user!.avatarUrl,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final me = context.watch<AuthProvider>().user;
@@ -257,11 +301,11 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         child: SafeArea(
           bottom: false,
           child: _loading
-             ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+          ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
               : _user == null
-                 ? const Center(
-                      child: Text('تعذر تحميل البيانات',
-                          style: TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub)))
+              ? const Center(
+                    child: Text('تعذر تحميل البيانات',
+                        style: TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub)))
                   : SingleChildScrollView(
                       padding: const EdgeInsets.fromLTRB(16, 20, 16, 100),
                       child: Column(children: [
@@ -270,6 +314,8 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                         _buildInfoCard(),
                         if (!isMe)...[
                           const SizedBox(height: 24),
+                          _buildContactButtons(),
+                          const SizedBox(height: 12),
                           _buildActionButtons(),
                         ]
                       ]),
@@ -367,6 +413,58 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildContactButtons() {
+    return Row(
+      children: [
+        Expanded(
+          child: ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            onPressed: _openChat,
+            icon: const Icon(Icons.chat_rounded, size: 20),
+            label: const Text('مراسلة',
+                style: TextStyle(fontFamily: 'Tajawal', fontWeight: FontWeight.w700)),
+          ),
+        ),
+        if (_user!.whatsapp!= null && _user!.whatsapp!.isNotEmpty)...[
+          const SizedBox(width: 12),
+          Expanded(
+            child: ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF25D366),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              onPressed: _openWhatsApp,
+              icon: const Icon(Icons.phone_rounded, size: 20),
+              label: const Text('واتساب',
+                  style: TextStyle(fontFamily: 'Tajawal', fontWeight: FontWeight.w700)),
+            ),
+          ),
+        ],
+        if (_user!.email.isNotEmpty)...[
+          const SizedBox(width: 12),
+          Expanded(
+            child: ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.accent,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              onPressed: _sendEmail,
+              icon: const Icon(Icons.email_rounded, size: 20),
+              label: const Text('إيميل',
+                  style: TextStyle(fontFamily: 'Tajawal', fontWeight: FontWeight.w700)),
+            ),
+          ),
+        ],
+      ],
     );
   }
 
