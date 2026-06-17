@@ -68,6 +68,11 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
       _startTimer();
     } catch (e) {
       debugPrint('Start recording error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('فشل بدء التسجيل')),
+        );
+      }
     }
   }
 
@@ -90,6 +95,11 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
       if (path!= null) _sendAudio(path);
     } catch (e) {
       debugPrint('Stop recording error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('فشل إيقاف التسجيل')),
+        );
+      }
     }
   }
 
@@ -99,7 +109,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
     if (user == null) return;
 
     try {
-      final fileName = '${DateTime.now().millisecondsSinceEpoch}.aac';
+      final fileName = 'voice_${DateTime.now().millisecondsSinceEpoch}.aac';
       final fileBytes = await File(path).readAsBytes();
       await _supabase.storage.from('voice_messages').uploadBinary(fileName, fileBytes);
       final audioUrl = _supabase.storage.from('voice_messages').getPublicUrl(fileName);
@@ -122,19 +132,24 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
       _scrollToBottom();
     } catch (e) {
       debugPrint('Send audio error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('فشل إرسال الرسالة الصوتية')),
+        );
+      }
     }
   }
 
   Future<void> _pickAndSendImage() async {
     try {
-      final picked = await _picker.pickImage(source: ImageSource.gallery);
+      final picked = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
       if (picked == null) return;
 
       final auth = context.read<AuthProvider>();
       final user = auth.user;
       if (user == null) return;
 
-      final fileName = '${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final fileName = 'img_${DateTime.now().millisecondsSinceEpoch}.jpg';
       final fileBytes = await picked.readAsBytes();
       await _supabase.storage.from('chat_images').uploadBinary(fileName, fileBytes);
       final imageUrl = _supabase.storage.from('chat_images').getPublicUrl(fileName);
@@ -156,6 +171,11 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
       _scrollToBottom();
     } catch (e) {
       debugPrint('Send image error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('فشل إرسال الصورة')),
+        );
+      }
     }
   }
 
@@ -206,10 +226,10 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
             CircleAvatar(
               radius: 18,
               backgroundImage: widget.peerAvatar!= null
-           ? NetworkImage(widget.peerAvatar!)
+            ? NetworkImage(widget.peerAvatar!)
                   : null,
               child: widget.peerAvatar == null
-           ? Text(widget.peerName[0].toUpperCase())
+            ? Text(widget.peerName[0].toUpperCase())
                   : null,
             ),
             const SizedBox(width: 12),
@@ -244,7 +264,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
               ),
             ),
             Container(
-              padding: EdgeInsets.fromLTRB(8, 8 + MediaQuery.of(context).padding.bottom),
+              padding: EdgeInsets.fromLTRB(8, 8, 8, 8 + MediaQuery.of(context).padding.bottom),
               decoration: BoxDecoration(
                 color: AppColors.bgCard,
                 border: Border(top: BorderSide(color: AppColors.divider)),
@@ -259,7 +279,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
                     ),
                     Expanded(
                       child: _isRecording
-                     ? Container(
+                    ? Container(
                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                           decoration: BoxDecoration(
                             color: AppColors.danger.withOpacity(0.1),
@@ -298,9 +318,9 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
                       onLongPress: _startRecording,
                       onLongPressUp: _stopRecording,
                       child: IconButton(
-                        onPressed: _sendMessage,
+                        onPressed: _isRecording? null : _sendMessage,
                         icon: Icon(
-                          _msgCtrl.text.trim().isEmpty? Icons.mic_rounded : Icons.send_rounded,
+                          _msgCtrl.text.trim().isEmpty &&!_isRecording? Icons.mic_rounded : Icons.send_rounded,
                           color: AppColors.primary,
                         ),
                         style: IconButton.styleFrom(
@@ -385,6 +405,20 @@ class _MessageBubbleState extends State<_MessageBubble> {
                   width: 200,
                   height: 200,
                   fit: BoxFit.cover,
+                  loadingBuilder: (context, child, loadingProgress) {
+                    if (loadingProgress == null) return child;
+                    return SizedBox(
+                      width: 200,
+                      height: 200,
+                      child: Center(
+                        child: CircularProgressIndicator(
+                          value: loadingProgress.expectedTotalBytes!= null
+                            ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes!
+                              : null,
+                        ),
+                      ),
+                    );
+                  },
                 ),
               )
             else if (widget.msg.type == MsgType.audio)
