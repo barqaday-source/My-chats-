@@ -30,12 +30,11 @@ class SupabaseConfig {
     if (_initialized) return true;
     
     try {
+      // 🔥 تم تعديل التهيئة هنا لتعمل بشكل متوافق 100% مع حزمتك وتجدد الجلسة تلقائياً
       await Supabase.initialize(
         url: url,
         anonKey: anonKey,
-        authOptions: const FlutterAuthOptions(
-          authFlowType: AuthFlowType.pkce,
-        ),
+        authFlowType: AuthFlowType.pkce, // ضبط آلية التحقق الحديثة والمستقرة
         realtimeClientOptions: const RealtimeClientOptions(
           eventsPerSecond: 10,
         ),
