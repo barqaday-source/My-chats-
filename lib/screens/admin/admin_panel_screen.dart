@@ -28,6 +28,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
   List<Map<String, dynamic>> _pendingRooms = [];
   bool _loading = true;
   bool _isAdmin = false;
+  String _myRole = 'user';
 
   String adminPhone = '';
   String adminEmail = '';
@@ -62,13 +63,14 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
 
     try {
       final userData = await _sb
-        .from(SupabaseConfig.tUsers)
-        .select('role, is_mod')
-        .eq('id', user.id)
-        .single();
+         .from(SupabaseConfig.tUsers)
+         .select('role, is_mod')
+         .eq('id', user.id)
+         .single();
 
-      final role = userData['role'] as String?;
-      final isMod = userData['is_mod'] as bool?? false;
+      final role = userData['role'] as String??? 'user';
+      final isMod = userData['is_mod'] as bool??? false;
+      _myRole = role;
 
       if (role == 'admin' || role == 'moderator' || isMod) {
         _isAdmin = true;
@@ -99,14 +101,14 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
       _users = rawUsers.map((json) => UserModel.fromMap(json)).toList();
 
       final rep = await _sb.from(SupabaseConfig.tReports)
-        .select('*, reporter:reporter_id(username, avatar_url), reported:reported_id(username, avatar_url)')
-        .order('created_at', ascending: false);
+         .select('*, reporter:reporter_id(username, avatar_url), reported:reported_id(username, avatar_url)')
+         .order('created_at', ascending: false);
       _reports = List<Map<String, dynamic>>.from(rep);
 
       final roomsData = await _sb.from(SupabaseConfig.tRooms)
-        .select()
-        .eq('is_approved', false)
-        .order('created_at', ascending: false);
+         .select()
+         .eq('is_approved', false)
+         .order('created_at', ascending: false);
       _pendingRooms = List<Map<String, dynamic>>.from(roomsData);
 
       final contactData = await _sb.from('app_contact').select().eq('id', 1).maybeSingle();
@@ -115,7 +117,6 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
         adminEmail = contactData['contact_email']?? '';
         adminMessage = contactData['support_message']?? '';
       }
-
     } catch (e) {
       debugPrint('Load admin data error: $e');
       if (mounted) {
@@ -130,19 +131,19 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
   Future<void> _blockUser(String uid, String username) async {
     try {
       await _sb.from(SupabaseConfig.tUsers)
-        .update({'is_blocked': true, 'blocked_at': DateTime.now().toIso8601String()})
-        .eq('id', uid);
+         .update({'is_blocked': true, 'blocked_at': DateTime.now().toIso8601String()})
+         .eq('id', uid);
 
       await _notifSvc.sendNotification(NotificationModel(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         userId: uid,
         title: 'تم حظر حسابك',
-        body: 'تم حظر حسابك نهائياً من قبل الإدارة. للمراجعة تواصل معنا.',
+        body: 'تم حظر حسابك من قبل الإدارة. للمراجعة تواصل معنا.',
         type: 'account_blocked',
         createdAt: DateTime.now(),
       ));
 
-      await _notifSvc.showNotification('تم الحظر', 'تم حظر $username نهائياً');
+      await _notifSvc.showNotification('تم الحظر', 'تم حظر $username');
       _load();
     } catch (e) {
       debugPrint('Block user error: $e');
@@ -157,8 +158,8 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
   Future<void> _unblockUser(String uid, String username) async {
     try {
       await _sb.from(SupabaseConfig.tUsers)
-        .update({'is_blocked': false, 'blocked_at': null})
-        .eq('id', uid);
+         .update({'is_blocked': false, 'blocked_at': null})
+         .eq('id', uid);
 
       await _notifSvc.sendNotification(NotificationModel(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
@@ -184,8 +185,8 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
   Future<void> _replyReport(String reportId, String userId, String reply) async {
     try {
       await _sb.from(SupabaseConfig.tReports)
-        .update({'reply': reply, 'status': 'replied', 'updated_at': DateTime.now().toIso8601String()})
-        .eq('id', reportId);
+         .update({'reply': reply, 'status': 'replied', 'updated_at': DateTime.now().toIso8601String()})
+         .eq('id', reportId);
 
       await _notifSvc.sendNotification(NotificationModel(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
@@ -209,8 +210,8 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
   Future<void> _changeRole(String userId, String role) async {
     try {
       await _sb.from(SupabaseConfig.tUsers)
-        .update({'role': role, 'is_mod': role == 'admin' || role == 'moderator'})
-        .eq('id', userId);
+         .update({'role': role, 'is_mod': role == 'admin' || role == 'moderator'})
+         .eq('id', userId);
       await _notifSvc.showNotification('تم التحديث', 'تم تغيير الصلاحية بنجاح');
       _load();
     } catch (e) {
@@ -225,8 +226,8 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
   Future<void> _approveRoom(String roomId, String ownerId) async {
     try {
       await _sb.from(SupabaseConfig.tRooms)
-        .update({'is_approved': true})
-        .eq('id', roomId);
+         .update({'is_approved': true})
+         .eq('id', roomId);
 
       await _notifSvc.sendNotification(NotificationModel(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
@@ -252,7 +253,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
   Widget build(BuildContext context) {
     if (!_isAdmin &&!_loading) {
       return const Scaffold(
-        body: Center(child: Text('فشل الطلب', style: TextStyle(fontFamily: 'Tajawal', color: AppColors.text))),
+        body: Center(child: Text('ليس لديك صلاحية', style: TextStyle(fontFamily: 'Tajawal', color: AppColors.text))),
       );
     }
 
@@ -281,10 +282,12 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
             ),
             Expanded(
               child: _loading
-                ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+                 ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
                   : TabBarView(controller: _tabs, children: [
                       _UsersTab(
                           users: _users,
+                          myRole: _myRole,
+                          myId: Supabase.instance.client.auth.currentUser?.id?? '',
                           onBlock: _blockUser,
                           onUnblock: _unblockUser,
                           onChangeRole: _changeRole),
@@ -313,96 +316,138 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
 
 class _UsersTab extends StatelessWidget {
   final List<UserModel> users;
+  final String myRole;
+  final String myId;
   final Function(String, String) onBlock;
   final Function(String, String) onUnblock;
   final Function(String, String) onChangeRole;
-  const _UsersTab({required this.users, required this.onBlock, required this.onUnblock, required this.onChangeRole});
+
+  const _UsersTab({
+    required this.users,
+    required this.myRole,
+    required this.myId,
+    required this.onBlock,
+    required this.onUnblock,
+    required this.onChangeRole,
+  });
 
   @override
-  Widget build(BuildContext context) => ListView.builder(
-        padding: const EdgeInsets.all(12),
-        itemCount: users.length,
-        itemBuilder: (_, i) {
-          final u = users[i];
-          final isAdmin = u.role == 'admin';
-          final isMod = u.role == 'moderator' || u.isMod;
-          final isBlocked = u.isBlocked;
+  Widget build(BuildContext context) {
+    return ListView.builder(
+      padding: const EdgeInsets.all(12),
+      itemCount: users.length,
+      itemBuilder: (_, i) {
+        final u = users[i];
+        final isAdmin = u.role == 'admin';
+        final isMod = u.role == 'moderator' || u.isMod;
+        final isBlocked = u.isBlocked;
+        final isMe = u.id == myId;
 
-          return Container(
-            margin: const EdgeInsets.only(bottom: 8),
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: isBlocked? AppColors.danger.withOpacity(0.1) : AppColors.bgCard,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: isBlocked? AppColors.danger.withOpacity(0.5) : AppColors.glassBorder,
-                width: 0.8,
-              ),
+        return Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: isBlocked? AppColors.danger.withOpacity(0.1) : AppColors.bgCard,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: isBlocked? AppColors.danger.withOpacity(0.5) : AppColors.glassBorder,
+              width: 0.8,
             ),
-            child: Row(children: [
-              UserAvatar(url: u.avatarUrl, name: u.username, size: 42, isOnline: u.isOnline),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(u.username, style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.white, fontSize: 14, fontWeight: FontWeight.w600)),
-                  Text(u.email?? '', style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub, fontSize: 11), overflow: TextOverflow.ellipsis),
-                  const SizedBox(height: 4),
-                  Row(children: [
+          ),
+          child: Row(children: [
+            UserAvatar(url: u.avatarUrl, name: u.username, size: 42, isOnline: u.isOnline),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(u.username, style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.white, fontSize: 14, fontWeight: FontWeight.w600)),
+                Text(u.email?? '', style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub, fontSize: 11), overflow: TextOverflow.ellipsis),
+                const SizedBox(height: 4),
+                Row(children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: (isAdmin? AppColors.primary : isMod? AppColors.accent : AppColors.bgCard2).withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      isAdmin? 'مدير' : isMod? 'مشرف' : 'عضو',
+                      style: TextStyle(
+                        fontFamily: 'Tajawal',
+                        color: isAdmin? AppColors.primary : isMod? AppColors.accent : AppColors.textSub,
+                        fontSize: 10,
+                      ),
+                    ),
+                  ),
+                  if (isBlocked)...[
+                    const SizedBox(width: 6),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                       decoration: BoxDecoration(
-                        color: (isAdmin? AppColors.primary : isMod? AppColors.accent : AppColors.bgCard2).withOpacity(0.2),
+                        color: AppColors.danger.withOpacity(0.2),
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: Text(
-                        isAdmin? 'مدير' : isMod? 'مشرف' : 'عضو',
-                        style: TextStyle(
-                          fontFamily: 'Tajawal',
-                          color: isAdmin? AppColors.primary : isMod? AppColors.accent : AppColors.textSub,
-                          fontSize: 10,
-                        ),
-                      ),
-                    ),
-                    if (isBlocked)...[
-                      const SizedBox(width: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: AppColors.danger.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Text('محظور', style: TextStyle(fontFamily: 'Tajawal', color: AppColors.danger, fontSize: 10)),
-                      ),
-                    ],
-                  ]),
-                ]),
-              ),
-              if (!isAdmin)
-                PopupMenuButton<String>(
-                  color: AppColors.bgCard2,
-                  onSelected: (v) {
-                    if (v == 'block') onBlock(u.id, u.username);
-                    else if (v == 'unblock') onUnblock(u.id, u.username);
-                    else onChangeRole(u.id, v);
-                  },
-                  itemBuilder: (_) => [
-                    const PopupMenuItem(value: 'admin', child: Text('جعله مدير', style: TextStyle(fontFamily: 'Tajawal', color: AppColors.primary))),
-                    const PopupMenuItem(value: 'moderator', child: Text('جعله مشرف', style: TextStyle(fontFamily: 'Tajawal', color: AppColors.accent))),
-                    const PopupMenuItem(value: 'user', child: Text('جعله عضو عادي', style: TextStyle(fontFamily: 'Tajawal', color: AppColors.text))),
-                    PopupMenuItem(
-                      value: isBlocked? 'unblock' : 'block',
-                      child: Text(
-                        isBlocked? 'إلغاء الحظر' : 'حظر نهائي',
-                        style: TextStyle(fontFamily: 'Tajawal', color: isBlocked? AppColors.success : AppColors.danger),
-                      ),
+                      child: const Text('محظور', style: TextStyle(fontFamily: 'Tajawal', color: AppColors.danger, fontSize: 10)),
                     ),
                   ],
-                  child: const Icon(Icons.more_vert_rounded, color: AppColors.textSub),
-                ),
-            ]),
-          );
-        },
-      );
+                ]),
+              ]),
+            ),
+            // الزر يبقى دائماً إلا على نفسك
+            if (!isMe)
+              PopupMenuButton<String>(
+                color: AppColors.bgCard2,
+                onSelected: (v) {
+                  if (v == 'block') onBlock(u.id, u.username);
+                  else if (v == 'unblock') onUnblock(u.id, u.username);
+                  else onChangeRole(u.id, v);
+                },
+                itemBuilder: (_) {
+                  List<PopupMenuEntry<String>> items = [];
+
+                  // الأدمن: يقدر يسوي كلشي إلا يحظر أدمن ثاني
+                  if (myRole == 'admin') {
+                    if (!isAdmin) {
+                      items.add(const PopupMenuItem(value: 'admin', child: Text('جعله مدير', style: TextStyle(fontFamily: 'Tajawal', color: AppColors.primary))));
+                    }
+                    if (!isMod &&!isAdmin) {
+                      items.add(const PopupMenuItem(value: 'moderator', child: Text('جعله مشرف', style: TextStyle(fontFamily: 'Tajawal', color: AppColors.accent))));
+                    }
+                    if (isMod || isAdmin) {
+                      items.add(const PopupMenuItem(value: 'user', child: Text('إزالة الإشراف', style: TextStyle(fontFamily: 'Tajawal', color: AppColors.text))));
+                    }
+                    if (!isAdmin) { // الأدمن ما يحظر أدمن
+                      items.add(PopupMenuItem(
+                        value: isBlocked? 'unblock' : 'block',
+                        child: Text(
+                          isBlocked? 'إلغاء الحظر' : 'حظر نهائي',
+                          style: TextStyle(fontFamily: 'Tajawal', color: isBlocked? AppColors.success : AppColors.danger),
+                        ),
+                      ));
+                    }
+                  }
+
+                  // المشرف: بس يحظر أعضاء عاديين
+                  if (myRole == 'moderator') {
+                    if (!isAdmin &&!isMod) {
+                      items.add(PopupMenuItem(
+                        value: isBlocked? 'unblock' : 'block',
+                        child: Text(
+                          isBlocked? 'إلغاء الحظر' : 'حظر المستخدم',
+                          style: TextStyle(fontFamily: 'Tajawal', color: isBlocked? AppColors.success : AppColors.danger),
+                        ),
+                      ));
+                    }
+                  }
+
+                  return items;
+                },
+                child: const Icon(Icons.more_vert_rounded, color: AppColors.textSub),
+              ),
+          ]),
+        );
+      },
+    );
+  }
 }
 
 class _ReportsTab extends StatelessWidget {
