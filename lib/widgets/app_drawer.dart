@@ -17,8 +17,12 @@ class AppDrawer extends StatelessWidget {
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
     final user = auth.currentUser;
-    final isAdmin = user?.role == 'admin';
-    final isMod = user?.role == 'moderator' || (user?.isMod ?? false);
+    final profile = auth.userProfile;
+    
+    final role = profile?['role'] as String?;
+    final isModFlag = profile?['is_mod'] as bool?? false;
+    final isAdmin = role == 'admin';
+    final isMod = role == 'moderator' || isModFlag;
     final hasPrivileges = isAdmin || isMod;
 
     return Drawer(
@@ -35,10 +39,10 @@ class AppDrawer extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: Row(children: [
                     UserAvatar(
-                      url: user?.avatarUrl,
-                      name: user?.username ?? '',
+                      url: profile?['avatar_url'],
+                      name: profile?['username']?? '',
                       size: 52,
-                      isOnline: user?.isOnline ?? false,
+                      isOnline: profile?['is_online']?? false,
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -46,7 +50,7 @@ class AppDrawer extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            user?.username ?? 'زائر',
+                            profile?['username']?? 'زائر',
                             style: const TextStyle(
                               fontFamily: 'Tajawal',
                               color: AppColors.white,
@@ -55,7 +59,7 @@ class AppDrawer extends StatelessWidget {
                             ),
                           ),
                           Text(
-                            user?.email ?? '',
+                            user?.email?? '',
                             style: const TextStyle(
                               fontFamily: 'Tajawal',
                               color: AppColors.textSub,
@@ -63,7 +67,7 @@ class AppDrawer extends StatelessWidget {
                             ),
                             overflow: TextOverflow.ellipsis,
                           ),
-                          if (hasPrivileges) ...[
+                          if (hasPrivileges)...[
                             const SizedBox(height: 4),
                             Container(
                               padding: const EdgeInsets.symmetric(
@@ -72,7 +76,7 @@ class AppDrawer extends StatelessWidget {
                                 color: (isAdmin
                                         ? AppColors.primary
                                         : AppColors.accent)
-                                    .withOpacity(0.2),
+                                   .withOpacity(0.2),
                                 borderRadius: BorderRadius.circular(8),
                                 border: Border.all(
                                   color: (isAdmin
@@ -83,7 +87,7 @@ class AppDrawer extends StatelessWidget {
                                 ),
                               ),
                               child: Text(
-                                isAdmin ? '👑 مدير' : '🛡️ مشرف',
+                                isAdmin? '👑 مدير' : '🛡️ مشرف',
                                 style: TextStyle(
                                   fontFamily: 'Tajawal',
                                   color: isAdmin
@@ -137,7 +141,7 @@ class AppDrawer extends StatelessWidget {
                         context,
                         MaterialPageRoute(
                             builder: (_) => const AdminPanelScreen())),
-                    color: isAdmin ? AppColors.primary : AppColors.accent,
+                    color: isAdmin? AppColors.primary : AppColors.accent,
                   ),
                 const Spacer(),
                 Padding(
@@ -164,11 +168,11 @@ class AppDrawer extends StatelessWidget {
   Widget _tile(BuildContext ctx, IconData icon, String label, VoidCallback onTap,
           {Color? color}) =>
       ListTile(
-        leading: Icon(icon, color: color ?? AppColors.white70, size: 22),
+        leading: Icon(icon, color: color?? AppColors.white70, size: 22),
         title: Text(label,
             style: TextStyle(
                 fontFamily: 'Tajawal',
-                color: color ?? AppColors.text,
+                color: color?? AppColors.text,
                 fontSize: 15,
                 fontWeight: FontWeight.w500)),
         onTap: onTap,
