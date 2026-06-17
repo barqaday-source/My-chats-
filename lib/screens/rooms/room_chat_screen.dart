@@ -41,9 +41,9 @@ class _RoomChatScreenState extends State<RoomChatScreen> {
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       chatId: widget.room.id,
       senderId: user.id,
-      senderName: auth.userProfile?['username']?? auth.user!.email?.split('@')[0]?? 'مجهول',
+      senderName: auth.userProfile?['username']?? user.email?.split('@')[0]?? 'مجهول',
       senderAvatar: auth.userProfile?['avatar_url'],
-      text: text,
+      content: text,
       createdAt: DateTime.now(),
     );
 
@@ -122,7 +122,7 @@ class _RoomChatScreenState extends State<RoomChatScreen> {
                                   ),
                                 ),
                               Text(
-                                msg.text,
+                                msg.content,
                                 style: TextStyle(
                                   fontFamily: 'Tajawal',
                                   color: isMe? AppColors.white : AppColors.text,
