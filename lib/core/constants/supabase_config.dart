@@ -2,12 +2,11 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart';
 
 class SupabaseConfig {
-  static const url = 'https://vohlleqcuomudoryiwkc.supabase.co';
-  static const anonKey =
-      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZvaGxsZXFjdW9tdWRvcnlpd2tjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE2MjE3NzAsImV4cCI6MjA5NzE5Nzc3MH0.VNUs7_WXzAeSz5TC_aD56FfzFQkmc_p99PY_b7hPZYU';
+  static const url = 'https://jmsmrojtlstppnpwmkkk.supabase.co';
+  static const anonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imptc21yb2p0bHN0cHBucHdta2trIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4MTg2NDAsImV4cCI6MjA4ODM5NDY0MH0.j7gxr5CvrfvbJJzK_pMwVHiCE2AqpXUTThpeLEBmsos';
 
-  // Tables - رجعناهن حتى الملفات الثانية ما تصرخ
-  static const tUsers = 'users';
+  // Tables - موحد
+  static const tUsers = 'users'; // كان profiles
   static const tRooms = 'rooms';
   static const tMessages = 'messages';
   static const tPrivateMessages = 'private_messages';
@@ -21,27 +20,29 @@ class SupabaseConfig {
   static const tBlocks = 'blocks';
   static const tAdmins = 'admins';
 
-  // Storage buckets - محدثة للأسماء الجديدة
+  // Storage buckets - موحد
   static const bucketAvatars = 'avatars';
   static const bucketRooms = 'room-images';
-  static const bucketMedia = 'chat_images';
-  static const bucketAudio = 'voice_messages';
+  static const bucketMedia = 'chat-media';
+  static const bucketAudio = 'audio-messages';
 
   static bool _initialized = false;
 
   static Future<bool> init() async {
     if (_initialized) return true;
-
     try {
       await Supabase.initialize(
         url: url,
         anonKey: anonKey,
+        authOptions: const FlutterAuthClientOptions(
+          authFlowType: AuthFlowType.pkce,
+          autoRefreshToken: true,
+        ),
         realtimeClientOptions: const RealtimeClientOptions(
           eventsPerSecond: 10,
         ),
         debug: kDebugMode,
       );
-
       _initialized = true;
       debugPrint("Supabase connected successfully");
       return true;
