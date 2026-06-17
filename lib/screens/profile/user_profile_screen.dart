@@ -37,25 +37,25 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       final me = context.read<AuthProvider>().user!;
 
       final res = await _supabase
-    .from('users')
-    .select()
-    .eq('id', widget.userId)
-    .single();
+     .from('users')
+     .select()
+     .eq('id', widget.userId)
+     .single();
       _user = UserModel.fromJson(res);
 
       final blockRes = await _supabase
-    .from('blocks')
-    .select()
-    .eq('blocker_id', me.id)
-    .eq('blocked_id', widget.userId)
-    .maybeSingle();
+     .from('blocks')
+     .select()
+     .eq('blocker_id', me.id)
+     .eq('blocked_id', widget.userId)
+     .maybeSingle();
       _isBlockedByMe = blockRes!= null;
 
       final adminRes = await _supabase
-    .from('admins')
-    .select()
-    .eq('user_id', widget.userId)
-    .maybeSingle();
+     .from('admins')
+     .select()
+     .eq('user_id', widget.userId)
+     .maybeSingle();
       _isAdmin = adminRes!= null;
 
       _isMod = _user?.role == 'moderator' || (_user?.isMod?? false);
@@ -73,10 +73,10 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     try {
       if (_isBlockedByMe) {
         await _supabase
-      .from('blocks')
-      .delete()
-      .eq('blocker_id', me.id)
-      .eq('blocked_id', widget.userId);
+     .from('blocks')
+     .delete()
+     .eq('blocker_id', me.id)
+     .eq('blocked_id', widget.userId);
       } else {
         await _supabase.from('blocks').insert({
           'blocker_id': me.id,
@@ -235,7 +235,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   }
 
   Future<void> _sendEmail() async {
-    if (_user?.email.isEmpty?? true) return;
+    if (_user?.email?.isEmpty?? true) return;
     final url = Uri.parse('mailto:${_user!.email}');
     if (await canLaunchUrl(url)) {
       await launchUrl(url);
@@ -303,7 +303,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
           child: _loading
        ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
               : _user == null
-           ? const Center(
+         ? const Center(
                     child: Text('تعذر تحميل البيانات',
                         style: TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub)))
                   : SingleChildScrollView(
@@ -448,7 +448,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
             ),
           ),
         ],
-        if (_user!.email.isNotEmpty)...[
+        if (_user!.email?.isNotEmpty?? false)...[
           const SizedBox(width: 12),
           Expanded(
             child: ElevatedButton.icon(
