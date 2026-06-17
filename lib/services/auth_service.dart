@@ -38,19 +38,17 @@ class AuthService {
     await _supabase.auth.resetPasswordForEmail(email);
   }
 
-  // هذي الدالة كانت موجودة قبل - نرجعها
   Future<List<Map<String, dynamic>>> getAllUsers() async {
-    final response = await _supabase.from('users').select();
+    final response = await _supabase.from(SupabaseConfig.tUsers).select();
     return List<Map<String, dynamic>>.from(response);
   }
 
-  // هذي هم كانت موجودة
   Future<bool> updateProfile(Map<String, dynamic> data) async {
     try {
       final userId = _supabase.auth.currentUser?.id;
       if (userId == null) return false;
       
-      await _supabase.from('users').update(data).eq('id', userId);
+      await _supabase.from(SupabaseConfig.tUsers).update(data).eq('id', userId);
       return true;
     } catch (e) {
       return false;
