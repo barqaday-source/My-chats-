@@ -7,7 +7,7 @@ class SupabaseConfig {
       'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZvaGxsZXFjdW9tdWRvcnlpd2tjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE2MjE3NzAsImV4cCI6MjA5NzE5Nzc3MH0.VNUs7_WXzAeSz5TC_aD56FfzFQkmc_p99PY_b7hPZYU';
 
   // Tables
-  static const tUsers = 'users'; // 👈 هذا هو اسم الجدول الصحيح في قاعدتك
+  static const tUsers = 'users';
   static const tRooms = 'rooms';
   static const tMessages = 'messages';
   static const tNotifications = 'notifications';
@@ -31,18 +31,15 @@ class SupabaseConfig {
     
     try {
       await Supabase.initialize(
-        url: url,
-        anonKey: anonKey,
-        // 🔥 الإعداد المتقدم لتشغيل تجديد الجلسة للأبد وحفظ توكن الأندرويد بنجاح
-        authOptions: const FlutterAuthOptions(
-          persistSession: true,       // تفعيل حفظ الجلسة على الهاتف
-          autoRefreshToken: true,    // تفعيل التجديد الصامت التلقائي للجلسات
-        ),
+        url: url, // كان supabaseUrl
+        anonKey: anonKey, // كان supabaseAnonKey
+        authFlowType: AuthFlowType.pkce,
         realtimeClientOptions: const RealtimeClientOptions(
           eventsPerSecond: 10,
         ),
         debug: kDebugMode,
-      );
+      ); // القوس يتسكر هنا بعد كل الباراميترز
+      
       _initialized = true;
       debugPrint("Supabase connected successfully");
       return true;
