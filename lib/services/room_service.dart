@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/constants/supabase_config.dart';
 import '../models/room_model.dart';
+import '../models/message_model.dart';
 
 class RoomService {
   final _sb = Supabase.instance.client;
@@ -10,9 +11,9 @@ class RoomService {
     try {
       // RLS بيخلي اليوزر العادي يشوف بس is_approved = true
       final data = await _sb.from(SupabaseConfig.tRooms).select()
-         .order('is_official', ascending: false)
-         .order('online_count', ascending: false)
-         .order('member_count', ascending: false);
+        .order('is_official', ascending: false)
+        .order('online_count', ascending: false)
+        .order('member_count', ascending: false);
       return (data as List).map((e) => RoomModel.fromJson(e as Map<String, dynamic>)).toList();
     } catch (e) {
       debugPrint('getRooms error: $e');
@@ -64,7 +65,7 @@ class RoomService {
   Future<bool> isMember(String roomId, String userId) async {
     try {
       final data = await _sb.from(SupabaseConfig.tRoomMembers)
-         .select().eq('room_id', roomId).eq('user_id', userId).maybeSingle();
+        .select().eq('room_id', roomId).eq('user_id', userId).maybeSingle();
       return data!= null;
     } catch (e) {
       debugPrint('isMember error: $e');
@@ -84,11 +85,26 @@ class RoomService {
   Future<void> approveRoom(String roomId) async {
     try {
       await _sb.from(SupabaseConfig.tRooms)
-         .update({'is_approved': true})
-         .eq('id', roomId);
+        .update({'is_approved': true})
+        .eq('id', roomId);
     } catch (e) {
       debugPrint('approveRoom error: $e');
       rethrow;
     }
+  }
+
+  // ======= دوال الرسائل المضافة =======
+
+  Future<void> sendRoomMessage(String roomId, MessageModel message) async {
+    await _sb.from('room_messages').insert(message.toJson());
+  }
+
+  Stream<List<MessageModel>> getRoomMessages(String roomId) {
+    return _sb
+      .from('room_messages')
+      .stream(primaryKey: ['id'])
+      .eq('chat_id', roomId)
+      .order('created_at', ascending: false)
+      .map((maps) => maps.map((map) => MessageModel.fromJson(map)).toList());
   }
 }
