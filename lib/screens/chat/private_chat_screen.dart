@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:image_picker/image_picker.dart';
@@ -70,10 +69,10 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
   Future<void> _loadMessages() async {
     try {
       final response = await _supabase
-         .from('private_messages')
-         .select()
-         .eq('chat_id', _chatId)
-         .order('created_at', ascending: true);
+        .from('private_messages')
+        .select()
+        .eq('chat_id', _chatId)
+        .order('created_at', ascending: true);
 
       setState(() => _messages = List<Map<String, dynamic>>.from(response));
       _scrollToBottom();
@@ -88,8 +87,8 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
 
   void _subscribeToMessages() {
     _supabase
-       .channel('public:private_messages:chat_id=eq.$_chatId')
-       .onPostgresChanges(
+      .channel('public:private_messages:chat_id=eq.$_chatId')
+      .onPostgresChanges(
           event: PostgresChangeEvent.insert,
           schema: 'public',
           table: 'private_messages',
@@ -103,7 +102,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
             _scrollToBottom();
           },
         )
-       .subscribe();
+      .subscribe();
   }
 
   void _scrollToBottom() {
@@ -311,10 +310,10 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
                 radius: 18,
                 backgroundColor: AppColors.bgCard2,
                 backgroundImage: widget.peerAvatar!= null
-            ? CachedNetworkImageProvider(widget.peerAvatar!)
+           ? CachedNetworkImageProvider(widget.peerAvatar!)
                     : null,
                 child: widget.peerAvatar == null
-            ? Text(
+           ? Text(
                         widget.peerName[0].toUpperCase(),
                         style: const TextStyle(
                           fontFamily: 'Tajawal',
@@ -417,7 +416,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: _isRecording
-             ? [Colors.red, Colors.red.shade700]
+            ? [Colors.red, Colors.red.shade700]
                         : [AppColors.primary, AppColors.primaryDark],
                   ),
                   shape: BoxShape.circle,
@@ -461,7 +460,7 @@ class _MessageBubble extends StatelessWidget {
         ),
         decoration: BoxDecoration(
           gradient: isMe
-             ? const LinearGradient(colors: [AppColors.primary, AppColors.primaryDark])
+            ? const LinearGradient(colors: [AppColors.primary, AppColors.primaryDark])
               : null,
           color: isMe? null : AppColors.bgCard,
           borderRadius: BorderRadius.only(
