@@ -4,7 +4,7 @@ class MessageModel {
   final String id;
   final String chatId;
   final String senderId;
-  final String receiverId;
+  final String receiverId; // للخاص فقط
   final String content;
   final MsgType type;
   final String? mediaUrl;
@@ -19,9 +19,9 @@ class MessageModel {
     required this.id,
     required this.chatId,
     required this.senderId,
-    required this.receiverId,
+    this.receiverId = '', // صار اختياري - فاضي للغرف
     required this.content,
-    required this.type,
+    this.type = MsgType.text,
     this.mediaUrl,
     this.audioUrl,
     this.duration,
@@ -77,6 +77,5 @@ class MessageModel {
     return '${sorted[0]}_${sorted[1]}';
   }
 
-  // Getter للتوافق مع الكود القديم
   String get text => content;
 }
