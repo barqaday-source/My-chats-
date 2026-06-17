@@ -36,13 +36,18 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
   final _supabase = Supabase.instance.client;
 
   bool _isRecording = false;
+  bool _isSending = false;
   String? _recordingPath;
   int _recordDuration = 0;
+  String _inputText = '';
 
   @override
   void initState() {
     super.initState();
     _initRecorder();
+    _msgCtrl.addListener(() {
+      setState(() => _inputText = _msgCtrl.text);
+    });
   }
 
   @override
@@ -70,7 +75,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
       debugPrint('Start recording error: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('فشل بدء التسجيل')),
+          const SnackBar(content: Text('فشل بدء التسجيل - تأكد من الصلاحيات')),
         );
       }
     }
@@ -95,11 +100,6 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
       if (path!= null) _sendAudio(path);
     } catch (e) {
       debugPrint('Stop recording error: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('فشل إيقاف التسجيل')),
-        );
-      }
     }
   }
 
@@ -108,10 +108,16 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
     final user = auth.user;
     if (user == null) return;
 
+    setState(() => _isSending = true);
     try {
-      final fileName = 'voice_${DateTime.now().millisecondsSinceEpoch}.aac';
+      final fileName = 'voice_${user.id}_${DateTime.now().millisecondsSinceEpoch}.aac';
       final fileBytes = await File(path).readAsBytes();
-      await _supabase.storage.from('voice_messages').uploadBinary(fileName, fileBytes);
+
+      await _supabase.storage.from('voice_messages').uploadBinary(
+        fileName,
+        fileBytes,
+        fileOptions: const FileOptions(upsert: true),
+      );
       final audioUrl = _supabase.storage.from('voice_messages').getPublicUrl(fileName);
 
       final message = MessageModel(
@@ -137,6 +143,8 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
           const SnackBar(content: Text('فشل إرسال الرسالة الصوتية')),
         );
       }
+    } finally {
+      if (mounted) setState(() => _isSending = false);
     }
   }
 
@@ -149,9 +157,16 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
       final user = auth.user;
       if (user == null) return;
 
-      final fileName = 'img_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      setState(() => _isSending = true);
+
+      final fileName = 'img_${user.id}_${DateTime.now().millisecondsSinceEpoch}.jpg';
       final fileBytes = await picked.readAsBytes();
-      await _supabase.storage.from('chat_images').uploadBinary(fileName, fileBytes);
+
+      await _supabase.storage.from('chat_images').uploadBinary(
+        fileName,
+        fileBytes,
+        fileOptions: const FileOptions(upsert: true),
+      );
       final imageUrl = _supabase.storage.from('chat_images').getPublicUrl(fileName);
 
       final message = MessageModel(
@@ -173,21 +188,24 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
       debugPrint('Send image error: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('فشل إرسال الصورة')),
+          const SnackBar(content: Text('فشل إرسال الصورة - تأكد من إنشاء bucket chat_images')),
         );
       }
+    } finally {
+      if (mounted) setState(() => _isSending = false);
     }
   }
 
   Future<void> _sendMessage() async {
     final text = _msgCtrl.text.trim();
-    if (text.isEmpty) return;
+    if (text.isEmpty || _isSending) return;
 
     final auth = context.read<AuthProvider>();
     final user = auth.user;
     if (user == null) return;
 
     _msgCtrl.clear();
+    setState(() => _inputText = '');
 
     final message = MessageModel(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
@@ -218,6 +236,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
     final currentUserId = auth.user!.id;
+    final hasText = _inputText.trim().isNotEmpty;
 
     return Scaffold(
       appBar: AppBar(
@@ -226,10 +245,10 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
             CircleAvatar(
               radius: 18,
               backgroundImage: widget.peerAvatar!= null
-            ? NetworkImage(widget.peerAvatar!)
+           ? NetworkImage(widget.peerAvatar!)
                   : null,
               child: widget.peerAvatar == null
-            ? Text(widget.peerName[0].toUpperCase())
+           ? Text(widget.peerName[0].toUpperCase())
                   : null,
             ),
             const SizedBox(width: 12),
@@ -274,12 +293,12 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
                 child: Row(
                   children: [
                     IconButton(
-                      onPressed: _pickAndSendImage,
+                      onPressed: _isSending? null : _pickAndSendImage,
                       icon: const Icon(Icons.image_rounded, color: AppColors.primary),
                     ),
                     Expanded(
                       child: _isRecording
-                    ? Container(
+                   ? Container(
                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                           decoration: BoxDecoration(
                             color: AppColors.danger.withOpacity(0.1),
@@ -298,6 +317,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
                         )
                           : TextField(
                               controller: _msgCtrl,
+                              enabled:!_isSending,
                               style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.text),
                               decoration: InputDecoration(
                                 hintText: 'اكتب رسالة...',
@@ -314,20 +334,39 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
                             ),
                     ),
                     const SizedBox(width: 8),
-                    GestureDetector(
-                      onLongPress: _startRecording,
-                      onLongPressUp: _stopRecording,
-                      child: IconButton(
-                        onPressed: _isRecording? null : _sendMessage,
-                        icon: Icon(
-                          _msgCtrl.text.trim().isEmpty &&!_isRecording? Icons.mic_rounded : Icons.send_rounded,
-                          color: AppColors.primary,
+                    _isRecording
+                   ? IconButton(
+                        onPressed: _stopRecording,
+                        icon: const Icon(Icons.stop_rounded, color: AppColors.danger),
+                        style: IconButton.styleFrom(
+                          backgroundColor: AppColors.danger.withOpacity(0.1),
                         ),
+                      )
+                      : hasText
+                   ? IconButton(
+                        onPressed: _isSending? null : _sendMessage,
+                        icon: _isSending
+                         ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.send_rounded, color: AppColors.primary),
                         style: IconButton.styleFrom(
                           backgroundColor: AppColors.primary.withOpacity(0.1),
                         ),
-                      ),
-                    ),
+                      )
+                      : GestureDetector(
+                          onLongPressStart: (_) => _startRecording(),
+                          onLongPressEnd: (_) => _stopRecording(),
+                          child: IconButton(
+                            onPressed: null,
+                            icon: const Icon(Icons.mic_rounded, color: AppColors.primary),
+                            style: IconButton.styleFrom(
+                              backgroundColor: AppColors.primary.withOpacity(0.1),
+                            ),
+                          ),
+                        ),
                   ],
                 ),
               ),
@@ -413,7 +452,7 @@ class _MessageBubbleState extends State<_MessageBubble> {
                       child: Center(
                         child: CircularProgressIndicator(
                           value: loadingProgress.expectedTotalBytes!= null
-                            ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes!
+                         ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes!
                               : null,
                         ),
                       ),
