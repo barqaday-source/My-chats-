@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../chat/chats_list_screen.dart';
 import '../rooms/rooms_screen.dart';
 import '../profile/profile_screen.dart';
@@ -19,16 +20,19 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int _tab = 1; // نبدأ بالغرف
   int _notifCount = 0;
-  final _notifService = NotificationService();
+  late final NotificationService _notifService;
+  late final AuthProvider _authProvider;
 
   @override
   void initState() {
     super.initState();
+    _authProvider = context.read<AuthProvider>();
+    _notifService = NotificationService();
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadNotifCount());
   }
 
-  void _loadNotifCount() async {
-    final uid = context.read<AuthProvider>().user?.id;
+  Future<void> _loadNotifCount() async {
+    final uid = _authProvider.user?.id;
     if (uid == null) return;
     try {
       final count = await _notifService.unreadCount(uid);
@@ -54,16 +58,15 @@ class _HomeScreenState extends State<HomeScreen> {
       case 1: return const RoomsScreen();
       case 2: return const ProfileScreen();
       case 3: return NotificationsScreen(onRead: () => setState(() => _notifCount = 0));
-      default: return const RoomsScreen(); // ✅ شلنا _MenuPage
+      default: return const RoomsScreen();
     }
   }
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        drawer: const AppDrawer(), // ✅ المنيو هنا بس
+        drawer: const AppDrawer(),
         appBar: AppBar(
           title: Text(_getTitle(_tab)),
-          // ✅ حذفنا أيقونة الإشعارات من هنا لأنها صارت تحت
         ),
         body: _page(_tab),
         bottomNavigationBar: AppBottomNav(
@@ -71,7 +74,7 @@ class _HomeScreenState extends State<HomeScreen> {
           notifCount: _notifCount,
           onTap: (i) {
             setState(() => _tab = i);
-            if (i == 3) _loadNotifCount(); // حدث العداد لما يفتح الإشعارات
+            if (i == 3) _loadNotifCount();
           },
         ),
       );
