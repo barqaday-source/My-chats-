@@ -11,14 +11,14 @@ class ChatService {
 
   Stream<List<MessageModel>> getPrivateMessages(String chatId) {
     return _supabase
-      .from('messages')
-      .stream(primaryKey: ['id'])
-      .eq('chat_id', chatId)
-      .order('created_at', ascending: true)
-      .map((data) => data.map((json) => MessageModel.fromJson(json)).toList());
+     .from('messages')
+     .stream(primaryKey: ['id'])
+     .eq('chat_id', chatId)
+     .order('created_at', ascending: true)
+     .map((data) => data.map((json) => MessageModel.fromJson(json)).toList());
   }
 
-  Future<void> sendPrivateMessage(MessageModel msg) async {
+  Future<void> sendPrivateMessage(String peerId, MessageModel msg) async {
     await _supabase.from('messages').insert(msg.toJson());
 
     await _supabase.from('chats').upsert({
@@ -40,7 +40,7 @@ class ChatService {
   }
 
   Future<void> sendMessage(MessageModel message) async {
-    await sendPrivateMessage(message);
+    await sendPrivateMessage('', message);
   }
 
   Stream<List<MessageModel>> privateMessages(String chatId) {
@@ -51,19 +51,19 @@ class ChatService {
 
   Stream<List<RoomModel>> getRooms() {
     return _supabase
-      .from('rooms')
-      .stream(primaryKey: ['id'])
-      .order('updated_at', ascending: false)
-      .map((data) => data.map((json) => RoomModel.fromJson(json)).toList());
+     .from('rooms')
+     .stream(primaryKey: ['id'])
+     .order('updated_at', ascending: false)
+     .map((data) => data.map((json) => RoomModel.fromJson(json)).toList());
   }
 
   Stream<List<MessageModel>> roomMessages(String roomId) {
     return _supabase
-      .from('messages')
-      .stream(primaryKey: ['id'])
-      .eq('chat_id', roomId)
-      .order('created_at', ascending: true)
-      .map((data) => data.map((json) => MessageModel.fromJson(json)).toList());
+     .from('messages')
+     .stream(primaryKey: ['id'])
+     .eq('chat_id', roomId)
+     .order('created_at', ascending: true)
+     .map((data) => data.map((json) => MessageModel.fromJson(json)).toList());
   }
 
   Future<void> sendRoomMessage(MessageModel msg) async {
@@ -96,14 +96,14 @@ class ChatService {
 
   Stream<List<UserModel>> getRoomMembers(String roomId) {
     return _supabase
-      .from('room_members')
-      .stream(primaryKey: ['id'])
-      .eq('room_id', roomId)
-      .asyncMap((members) async {
+     .from('room_members')
+     .stream(primaryKey: ['id'])
+     .eq('room_id', roomId)
+     .asyncMap((members) async {
         List<UserModel> users = [];
         for (var member in members) {
           final userData = await _supabase.from('users').select().eq('id', member['user_id']).single();
-          userData['is_online'] = member['is_online'] ?? false;
+          userData['is_online'] = member['is_online']?? false;
           users.add(UserModel.fromJson(userData));
         }
         return users;
@@ -112,10 +112,10 @@ class ChatService {
 
   Stream<int> roomOnlineCount(String roomId) {
     return _supabase
-        .from('room_members')
-        .stream(primaryKey: ['id'])
-        .eq('room_id', roomId)
-        .map((data) => data.where((m) => m['is_online'] == true).length);
+      .from('room_members')
+      .stream(primaryKey: ['id'])
+      .eq('room_id', roomId)
+      .map((data) => data.where((m) => m['is_online'] == true).length);
   }
 
   Future<void> updateRoom(RoomModel room) async {
