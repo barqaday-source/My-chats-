@@ -55,13 +55,13 @@ class RoomModel {
       members: json['members']!= null
         ? List<String>.from(json['members'] as List)
           : [],
-      isOfficial: json['is_official'] as bool??? false,
-      isLocked: json['is_locked'] as bool??? false,
-      isApproved: json['is_approved'] as bool??? true,
-      isFollowEnabled: json['is_follow_enabled'] as bool??? true,
-      onlineCount: json['online_count'] as int??? 0,
-      memberCount: json['member_count'] as int??? 0,
-      followersCount: json['followers_count'] as int??? 0,
+      isOfficial: json['is_official'] as bool?? false,
+      isLocked: json['is_locked'] as bool?? false,
+      isApproved: json['is_approved'] as bool?? true,
+      isFollowEnabled: json['is_follow_enabled'] as bool?? true,
+      onlineCount: json['online_count'] as int?? 0,
+      memberCount: json['member_count'] as int?? 0,
+      followersCount: json['followers_count'] as int?? 0,
       createdAt: DateTime.parse(json['created_at'] as String),
       updatedAt: DateTime.parse(json['updated_at'] as String),
     );
