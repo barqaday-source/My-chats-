@@ -15,6 +15,9 @@ class UserModel extends Equatable {
   final bool isMod;
   final DateTime? lastSeen;
   final DateTime createdAt;
+  final int followersCount;
+  final int followingCount;
+  final int postsCount;
 
   const UserModel({
     required this.id,
@@ -31,6 +34,9 @@ class UserModel extends Equatable {
     this.isMod = false,
     this.lastSeen,
     required this.createdAt,
+    this.followersCount = 0,
+    this.followingCount = 0,
+    this.postsCount = 0,
   });
 
   factory UserModel.fromJson(Map<String, dynamic> json) {
@@ -49,6 +55,9 @@ class UserModel extends Equatable {
       isMod: json['is_mod']?? false,
       lastSeen: json['last_seen']!= null? DateTime.parse(json['last_seen']) : null,
       createdAt: DateTime.parse(json['created_at']),
+      followersCount: json['followers_count']?? 0,
+      followingCount: json['following_count']?? 0,
+      postsCount: json['posts_count']?? 0,
     );
   }
 
@@ -70,6 +79,9 @@ class UserModel extends Equatable {
       'is_mod': isMod,
       'last_seen': lastSeen?.toIso8601String(),
       'created_at': createdAt.toIso8601String(),
+      'followers_count': followersCount,
+      'following_count': followingCount,
+      'posts_count': postsCount,
     };
   }
 
@@ -88,6 +100,9 @@ class UserModel extends Equatable {
     bool? isMod,
     DateTime? lastSeen,
     DateTime? createdAt,
+    int? followersCount,
+    int? followingCount,
+    int? postsCount,
   }) {
     return UserModel(
       id: id?? this.id,
@@ -104,12 +119,16 @@ class UserModel extends Equatable {
       isMod: isMod?? this.isMod,
       lastSeen: lastSeen?? this.lastSeen,
       createdAt: createdAt?? this.createdAt,
+      followersCount: followersCount?? this.followersCount,
+      followingCount: followingCount?? this.followingCount,
+      postsCount: postsCount?? this.postsCount,
     );
   }
 
   @override
   List<Object?> get props => [
-    id, username, email, avatarUrl, bio, whatsapp, 
-    birthDate, zodiac, role, isOnline, isBlocked, isMod, lastSeen, createdAt
+    id, username, email, avatarUrl, bio, whatsapp,
+    birthDate, zodiac, role, isOnline, isBlocked, isMod, lastSeen, createdAt,
+    followersCount, followingCount, postsCount
   ];
 }
