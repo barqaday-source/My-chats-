@@ -70,10 +70,10 @@ class _RoomChatScreenState extends State<RoomChatScreen> with WidgetsBindingObse
 
   void _subscribeToMembers() {
     _membersSub = _supabase
-  .from('room_members')
-  .stream(primaryKey: ['id'])
-  .eq('room_id', widget.room.id)
-  .listen((data) async {
+ .from('room_members')
+ .stream(primaryKey: ['id'])
+ .eq('room_id', widget.room.id)
+ .listen((data) async {
       final members = await _roomService.getRoomMembers(widget.room.id);
       if (!mounted) return;
       final onlineData = members.where((m) => m['is_online'] == true).toList();
@@ -83,20 +83,22 @@ class _RoomChatScreenState extends State<RoomChatScreen> with WidgetsBindingObse
     });
   }
 
-  Future<void> _sendMessage(String content, {String? audioUrl, int? duration}) async {
+  Future<void> _sendMessage(String content, {String? audioPath, int? duration}) async {
     final me = context.read<AuthProvider>().user!;
 
     final message = MessageModel(
       id: '',
       chatId: widget.room.id,
       senderId: me.id,
+      receiverId: widget.room.id,
       senderName: me.username,
       senderAvatar: me.avatarUrl,
       content: content,
-      type: audioUrl!= null? MessageType.audio : MessageType.text,
-      audioUrl: audioUrl,
+      type: audioPath!= null? MessageType.audio : MessageType.text,
+      audioUrl: audioPath,
       duration: duration,
       createdAt: DateTime.now(),
+      isRead: false,
     );
 
     await _chatService.sendMessageToRoom(widget.room.id, message);
@@ -189,7 +191,7 @@ class _RoomChatScreenState extends State<RoomChatScreen> with WidgetsBindingObse
                       final msg = MessageModel.fromJson(messages[index]);
                       final isMe = msg.senderId == _userId;
                       return MessageBubble(
-                        message: msg,
+                        message: msg.toJson(),
                         isMe: isMe,
                       );
                     },
@@ -198,8 +200,8 @@ class _RoomChatScreenState extends State<RoomChatScreen> with WidgetsBindingObse
               ),
             ),
             ChatInputBar(
-              onSend: (text) => _sendMessage(text),
-              onSendVoice: (path, dur) => _sendMessage('', audioUrl: path, duration: dur),
+              onSendText: (text) => _sendMessage(text),
+              onSendAudio: (path, dur) => _sendMessage('', audioPath: path, duration: dur),
             ),
           ],
         ),
@@ -237,7 +239,7 @@ class _RoomChatScreenState extends State<RoomChatScreen> with WidgetsBindingObse
                 const SizedBox(height: 2),
                 Text(
                   member.username.length > 6
-                ? '${member.username.substring(0, 6)}...'
+               ? '${member.username.substring(0, 6)}...'
                       : member.username,
                   style: const TextStyle(
                     fontFamily: 'Tajawal',
