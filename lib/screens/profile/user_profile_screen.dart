@@ -8,6 +8,7 @@ import '../../models/user_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../widgets/user_avatar.dart';
 import '../chat/private_chat_screen.dart';
+import 'blocked_users_screen.dart';
 
 class UserProfileScreen extends StatefulWidget {
   final String userId;
@@ -37,26 +38,26 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       final me = context.read<AuthProvider>().user!;
 
       final res = await _supabase
-    .from('users')
-    .select()
-    .eq('id', widget.userId)
-    .single();
+   .from('users')
+   .select()
+   .eq('id', widget.userId)
+   .single();
       _user = UserModel.fromJson(res);
 
-      // ✅ عدلنا من blocks إلى blocked_users + الأسماء الصحيحة
+      // ✅ فحص الحظر من جدول blocked_users
       final blockRes = await _supabase
-    .from('blocked_users')
-    .select()
-    .eq('blocker_id', me.id)
-    .eq('blocked_id', widget.userId)
-    .maybeSingle();
+   .from('blocked_users')
+   .select()
+   .eq('blocker_id', me.id)
+   .eq('blocked_id', widget.userId)
+   .maybeSingle();
       _isBlockedByMe = blockRes!= null;
 
       final adminRes = await _supabase
-    .from('admins')
-    .select()
-    .eq('user_id', widget.userId)
-    .maybeSingle();
+   .from('admins')
+   .select()
+   .eq('user_id', widget.userId)
+   .maybeSingle();
       _isAdmin = adminRes!= null;
 
       _isMod = _user?.role == 'moderator' || (_user?.isMod?? false);
@@ -67,30 +68,42 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     if (mounted) setState(() => _loading = false);
   }
 
+  // ✅ الحظر يوديك لقسم المحظورين مباشرة
   Future<void> _toggleBlock() async {
     final me = context.read<AuthProvider>().user!;
     if (me.id == widget.userId) return;
 
     try {
       if (_isBlockedByMe) {
-        // ✅ عدلنا الأسماء
         await _supabase
-    .from('blocked_users')
-    .delete()
-    .eq('blocker_id', me.id)
-    .eq('blocked_id', widget.userId);
+   .from('blocked_users')
+   .delete()
+   .eq('blocker_id', me.id)
+   .eq('blocked_id', widget.userId);
+
+        setState(() => _isBlockedByMe = false);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('تم إلغاء الحظر')),
+          );
+        }
       } else {
-        // ✅ عدلنا الأسماء
         await _supabase.from('blocked_users').insert({
           'blocker_id': me.id,
           'blocked_id': widget.userId,
         });
-      }
-      setState(() => _isBlockedByMe =!_isBlockedByMe);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(_isBlockedByMe? 'تم الحظر' : 'تم إلغاء الحظر')),
-        );
+
+        setState(() => _isBlockedByMe = true);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('تم الحظر')),
+          );
+          // ✅ يوديك لقسم المحظورين مباشرة
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => const BlockedUsersScreen()),
+          );
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -101,6 +114,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     }
   }
 
+  // ✅ البلاغ يروح للأدمن بجدول reports
   Future<void> _reportUser() async {
     final textCtrl = TextEditingController();
     String reportType = 'spam';
@@ -194,11 +208,13 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                             onPressed: () async {
                               if (textCtrl.text.trim().isEmpty) return;
                               final me = context.read<AuthProvider>().user!;
+                              // ✅ البلاغ يروح للأدمن
                               await _supabase.from('reports').insert({
                                 'reporter_id': me.id,
                                 'reported_id': _user!.id,
                                 'reason': '[$reportType] ${textCtrl.text.trim()}',
                                 'status': 'pending',
+                                'created_at': DateTime.now().toIso8601String(),
                               });
                               if (context.mounted) {
                                 Navigator.pop(context);
@@ -288,6 +304,12 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
               onSelected: (value) {
                 if (value == 'block') _toggleBlock();
                 if (value == 'report') _reportUser();
+                if (value == 'blocked_list') {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const BlockedUsersScreen()),
+                  );
+                }
               },
               itemBuilder: (context) => [
                 PopupMenuItem(
@@ -295,6 +317,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                   child: Text(_isBlockedByMe? 'إلغاء الحظر' : 'حظر المستخدم'),
                 ),
                 const PopupMenuItem(value: 'report', child: Text('إبلاغ')),
+                const PopupMenuItem(value: 'blocked_list', child: Text('قائمة المحظورين')),
               ],
             ),
         ],
@@ -304,9 +327,9 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         child: SafeArea(
           bottom: false,
           child: _loading
-      ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+     ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
               : _user == null
-        ? const Center(
+       ? const Center(
                     child: Text('تعذر تحميل البيانات',
                         style: TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub)))
                   : SingleChildScrollView(
@@ -447,22 +470,6 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
               onPressed: _openWhatsApp,
               icon: const Icon(Icons.phone_rounded, size: 20),
               label: const Text('واتساب',
-                  style: TextStyle(fontFamily: 'Tajawal', fontWeight: FontWeight.w700)),
-            ),
-          ),
-        ],
-        if (_user!.email?.isNotEmpty?? false)...[
-          const SizedBox(width: 12),
-          Expanded(
-            child: ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.accent,
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-              onPressed: _sendEmail,
-              icon: const Icon(Icons.email_rounded, size: 20),
-              label: const Text('إيميل',
                   style: TextStyle(fontFamily: 'Tajawal', fontWeight: FontWeight.w700)),
             ),
           ),
