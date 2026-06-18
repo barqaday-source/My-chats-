@@ -87,7 +87,7 @@ class _RoomChatScreenState extends State<RoomChatScreen> with WidgetsBindingObse
 
   Future<void> _sendMessage(String content, {String? audioPath, int? duration}) async {
     final user = context.read<AuthProvider>().user!;
-    final username = user.userMetadata?['username'] as String??? 'مستخدم';
+    final username = user.userMetadata?['username'] as String?? 'مستخدم';
     final avatarUrl = user.userMetadata?['avatar_url'] as String?;
 
     final message = MessageModel(
@@ -106,7 +106,7 @@ class _RoomChatScreenState extends State<RoomChatScreen> with WidgetsBindingObse
       isRead: false,
     );
 
-    await _chatService.sendMessageToRoom(widget.room.id, message);
+    await _chatService.sendMessage(message);
     setState(() => _replyToMessage = null);
 
     if (_scrollController.hasClients) {
@@ -174,7 +174,7 @@ class _RoomChatScreenState extends State<RoomChatScreen> with WidgetsBindingObse
             _buildOnlineBar(),
             Expanded(
               child: StreamBuilder<List<Map<String, dynamic>>>(
-                stream: _chatService.getRoomMessagesStream(widget.room.id),
+                stream: _chatService.getMessages(widget.room.id),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(
@@ -259,7 +259,7 @@ class _RoomChatScreenState extends State<RoomChatScreen> with WidgetsBindingObse
                 const SizedBox(height: 2),
                 Text(
                   member.username.length > 6
-             ? '${member.username.substring(0, 6)}...'
+           ? '${member.username.substring(0, 6)}...'
                       : member.username,
                   style: const TextStyle(
                     fontFamily: 'Tajawal',
