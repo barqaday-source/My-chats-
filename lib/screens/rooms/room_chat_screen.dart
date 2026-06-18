@@ -31,12 +31,14 @@ class _RoomChatScreenState extends State<RoomChatScreen> with WidgetsBindingObse
   List<UserModel> _onlineMembers = [];
   StreamSubscription? _membersSub;
   late String _userId;
+  MessageModel? _replyToMessage;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _userId = _supabase.auth.currentUser!.id;
+    final user = context.read<AuthProvider>().user!;
+    _userId = user.id;
     _joinRoom();
     _subscribeToMembers();
   }
@@ -70,10 +72,10 @@ class _RoomChatScreenState extends State<RoomChatScreen> with WidgetsBindingObse
 
   void _subscribeToMembers() {
     _membersSub = _supabase
-   .from('room_members')
-   .stream(primaryKey: ['id'])
-   .eq('room_id', widget.room.id)
-   .listen((data) async {
+ .from('room_members')
+ .stream(primaryKey: ['id'])
+ .eq('room_id', widget.room.id)
+ .listen((data) async {
       final members = await _roomService.getRoomMembers(widget.room.id);
       if (!mounted) return;
       final onlineData = members.where((m) => m['is_online'] == true).toList();
@@ -84,8 +86,8 @@ class _RoomChatScreenState extends State<RoomChatScreen> with WidgetsBindingObse
   }
 
   Future<void> _sendMessage(String content, {String? audioPath, int? duration}) async {
-    final user = _supabase.auth.currentUser!;
-    final username = user.userMetadata?['username'] as String? ?? 'مستخدم';
+    final user = context.read<AuthProvider>().user!;
+    final username = user.userMetadata?['username'] as String??? 'مستخدم';
     final avatarUrl = user.userMetadata?['avatar_url'] as String?;
 
     final message = MessageModel(
@@ -99,11 +101,13 @@ class _RoomChatScreenState extends State<RoomChatScreen> with WidgetsBindingObse
       type: audioPath!= null? 'voice' : 'text',
       audioUrl: audioPath,
       duration: duration,
+      replyToId: _replyToMessage?.id,
       createdAt: DateTime.now(),
       isRead: false,
     );
 
     await _chatService.sendMessageToRoom(widget.room.id, message);
+    setState(() => _replyToMessage = null);
 
     if (_scrollController.hasClients) {
       _scrollController.animateTo(
@@ -112,6 +116,14 @@ class _RoomChatScreenState extends State<RoomChatScreen> with WidgetsBindingObse
         curve: Curves.easeOut,
       );
     }
+  }
+
+  void _setReply(MessageModel message) {
+    setState(() => _replyToMessage = message);
+  }
+
+  void _cancelReply() {
+    setState(() => _replyToMessage = null);
   }
 
   @override
@@ -192,9 +204,12 @@ class _RoomChatScreenState extends State<RoomChatScreen> with WidgetsBindingObse
                     itemBuilder: (context, index) {
                       final msg = MessageModel.fromJson(messages[index]);
                       final isMe = msg.senderId == _userId;
-                      return MessageBubble(
-                        message: msg.toJson(),
-                        isMe: isMe,
+                      return GestureDetector(
+                        onLongPress: () => _setReply(msg),
+                        child: MessageBubble(
+                          message: msg.toJson(),
+                          isMe: isMe,
+                        ),
                       );
                     },
                   );
@@ -202,8 +217,11 @@ class _RoomChatScreenState extends State<RoomChatScreen> with WidgetsBindingObse
               ),
             ),
             ChatInputBar(
-              onSendText: (text) => _sendMessage(text),
-              onSendAudio: (path, dur) => _sendMessage('', audioPath: path, duration: dur),
+              onSendText: (text, replyId) => _sendMessage(text),
+              onSendAudio: (path, dur, replyId) => _sendMessage('', audioPath: path, duration: dur),
+              replyToId: _replyToMessage?.id,
+              replyToMessage: _replyToMessage,
+              onCancelReply: _cancelReply,
             ),
           ],
         ),
@@ -241,7 +259,7 @@ class _RoomChatScreenState extends State<RoomChatScreen> with WidgetsBindingObse
                 const SizedBox(height: 2),
                 Text(
                   member.username.length > 6
-               ? '${member.username.substring(0, 6)}...'
+             ? '${member.username.substring(0, 6)}...'
                       : member.username,
                   style: const TextStyle(
                     fontFamily: 'Tajawal',
