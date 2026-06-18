@@ -36,12 +36,13 @@ class AuthService {
     try {
       final res = await _supabase.auth.signUp(email: email, password: password, data: data);
       if (res.user!= null) {
-        // التعديل: إنشاء user بـ جدول users
-        await _supabase.from(SupabaseConfig.tUsers).insert({
+        // نستخدم upsert على جدول profiles
+        await _supabase.from('profiles').upsert({
           'id': res.user!.id,
           'email': email,
           'username': data?['username']?? email.split('@')[0],
           'created_at': DateTime.now().toIso8601String(),
+          'updated_at': DateTime.now().toIso8601String(),
         });
       }
       return res;
@@ -76,7 +77,7 @@ class AuthService {
 
   Future<List<Map<String, dynamic>>> getAllUsers() async {
     try {
-      final response = await _supabase.from(SupabaseConfig.tUsers).select();
+      final response = await _supabase.from('profiles').select();
       return List<Map<String, dynamic>>.from(response);
     } on PostgrestException catch (e, s) {
       debugPrint('''
@@ -91,13 +92,19 @@ class AuthService {
     }
   }
 
-  // التعديل: تحديث users + Logging
+  // تم التعديل: upsert على جدول profiles
   Future<bool> updateProfile(Map<String, dynamic> data) async {
     try {
       final userId = _supabase.auth.currentUser?.id;
       if (userId == null) throw Exception('No authenticated user');
 
-      await _supabase.from(SupabaseConfig.tUsers).update(data).eq('id', userId).select();
+      data['id'] = userId;
+      data['updated_at'] = DateTime.now().toIso8601String();
+
+      await _supabase.from('profiles')
+       .upsert(data)
+       .select();
+
       return true;
     } on PostgrestException catch (e, s) {
       debugPrint('''
