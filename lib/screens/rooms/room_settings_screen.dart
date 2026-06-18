@@ -184,7 +184,7 @@ class _RoomSettingsScreenState extends State<RoomSettingsScreen> {
       body: Container(
         decoration: BoxDecoration(gradient: AppColors.bgGrad),
         child: _loading
-      ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+     ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
             : ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
@@ -343,10 +343,10 @@ class _RoomSettingsScreenState extends State<RoomSettingsScreen> {
               return ListTile(
                 leading: CircleAvatar(
                   backgroundImage: member.avatarUrl!= null
-                ? NetworkImage(member.avatarUrl!)
+               ? NetworkImage(member.avatarUrl!)
                       : null,
                   child: member.avatarUrl == null
-                ? Text(member.username[0].toUpperCase())
+               ? Text(member.username[0].toUpperCase())
                       : null,
                 ),
                 title: Text(
@@ -354,13 +354,13 @@ class _RoomSettingsScreenState extends State<RoomSettingsScreen> {
                   style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.white),
                 ),
                 subtitle: isOwner
-              ? const Text(
+             ? const Text(
                         'المالك',
                         style: TextStyle(fontFamily: 'Tajawal', color: AppColors.primary, fontSize: 11),
                       )
                     : null,
                 trailing: _isOwner &&!isOwner
-              ? IconButton(
+             ? IconButton(
                         icon: const Icon(Icons.person_remove_rounded, color: AppColors.danger),
                         onPressed: () async {
                           await _roomService.removeRoomMember(widget.room.id, member.id);
