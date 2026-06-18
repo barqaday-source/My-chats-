@@ -1,15 +1,17 @@
-import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:image_picker/image_picker.dart';
-import 'package:cached_network_image/cached_network_image.dart';
-import 'package:timeago/timeago.dart' as timeago;
+import 'package:uuid/uuid.dart';
 import '../../core/constants/app_colors.dart';
+import '../../models/message_model.dart';
+import '../../models/user_model.dart';
+import '../../providers/auth_provider.dart';
+import '../../services/chat_service.dart';
+import '../../widgets/chat/chat_input_bar.dart';
 import '../../widgets/chat/message_bubble.dart';
-import '../../widgets/chat/voice_recorder_button.dart';
+import '../../widgets/chat/user_avatar.dart';
 import '../profile/user_profile_screen.dart';
-import '../../services/chat_service.dart'; // ✅ إضافة
 
 class PrivateChatScreen extends StatefulWidget {
   final String peerId;
@@ -28,204 +30,86 @@ class PrivateChatScreen extends StatefulWidget {
 }
 
 class _PrivateChatScreenState extends State<PrivateChatScreen> {
+  final _chatService = ChatService();
   final _supabase = Supabase.instance.client;
-  final _messageController = TextEditingController();
+  final _textFocusNode = FocusNode();
   final _scrollController = ScrollController();
-  final _chatService = ChatService(); // ✅ إضافة
 
-  List<Map<String, dynamic>> _messages = [];
-  bool _isUploading = false;
-  RealtimeChannel? _messageChannel;
-
-  String get _currentUserId => _supabase.auth.currentUser!.id;
-  String get _chatId {
-    final ids = [_currentUserId, widget.peerId]..sort();
-    return ids.join('_');
-  }
+  Stream<List<Map<String, dynamic>>>? _messagesStream;
+  UserModel? _peerUser;
+  String? _replyToId;
+  String? _replyToContent;
+  bool _isBlocked = false;
 
   @override
   void initState() {
     super.initState();
-    timeago.setLocaleMessages('ar', timeago.ArMessages());
-    _loadMessages();
-    _subscribeToMessages();
-    _markAsRead(); // ✅ التعديل الوحيد هنا
-    _messageController.addListener(() => setState(() {}));
-  }
-
-  // ✅ دالة جديدة فقط
-  void _markAsRead() {
-    final userId = _supabase.auth.currentUser!.id;
-    _chatService.markAsRead(_chatId, userId);
+    final me = context.read<AuthProvider>().user!;
+    _messagesStream = _chatService.getPrivateMessagesStream(me.id, widget.peerId);
+    _loadPeerUser();
+    _markMessagesAsRead();
+    _checkIfBlocked();
   }
 
   @override
   void dispose() {
-    _messageController.dispose();
+    _textFocusNode.dispose();
     _scrollController.dispose();
-    _messageChannel?.unsubscribe();
     super.dispose();
   }
 
-  Future<void> _loadMessages() async {
+  Future<void> _loadPeerUser() async {
     try {
-      final response = await _supabase
-     .from('private_messages')
-     .select()
-     .eq('chat_id', _chatId)
-     .order('created_at', ascending: true);
-
-      setState(() => _messages = List<Map<String, dynamic>>.from(response));
-      _scrollToBottom();
+      final res = await _supabase
+          .from('users')
+          .select()
+          .eq('id', widget.peerId)
+          .single();
+      if (mounted) setState(() => _peerUser = UserModel.fromJson(res));
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('خطأ في تحميل الرسائل: $e')),
-        );
-      }
+      debugPrint('Load peer error: $e');
     }
   }
 
-  void _subscribeToMessages() {
-    _messageChannel = _supabase
- .channel('public:private_messages:chat_id=eq.$_chatId')
- .onPostgresChanges(
-          event: PostgresChangeEvent.insert,
-          schema: 'public',
-          table: 'private_messages',
-          filter: PostgresChangeFilter(
-            type: PostgresChangeFilterType.eq,
-            column: 'chat_id',
-            value: _chatId,
-          ),
-          callback: (payload) {
-            setState(() => _messages.add(payload.newRecord));
-            _scrollToBottom();
-            _markAsRead(); // ✅ تمييز كمقروء عند وصول رسالة جديدة
-          },
-        )
- .subscribe();
+  Future<void> _markMessagesAsRead() async {
+    final me = context.read<AuthProvider>().user!;
+    await _chatService.markAsRead(me.id, widget.peerId);
+  }
+
+  Future<void> _checkIfBlocked() async {
+    final me = context.read<AuthProvider>().user!;
+    final res = await _supabase
+        .from('blocked_users')
+        .select()
+        .eq('blocker_id', me.id)
+        .eq('blocked_id', widget.peerId)
+        .maybeSingle();
+    if (mounted) setState(() => _isBlocked = res != null);
+  }
+
+  String _getChatId(String id1, String id2) {
+    final sorted = [id1, id2]..sort();
+    return sorted.join('_');
   }
 
   void _scrollToBottom() {
-    Future.delayed(const Duration(milliseconds: 100), () {
-      if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
-      }
-    });
-  }
-
-  Future<void> _sendMessage() async {
-    final text = _messageController.text.trim();
-    if (text.isEmpty) return;
-
-    _messageController.clear();
-    final currentUser = _supabase.auth.currentUser!;
-
-    try {
-      await _supabase.from('private_messages').insert({
-        'id': DateTime.now().millisecondsSinceEpoch.toString(),
-        'chat_id': _chatId,
-        'sender_id': currentUser.id,
-        'receiver_id': widget.peerId,
-        'sender_name': currentUser.userMetadata?['username']?? 'مجهول',
-        'sender_avatar': currentUser.userMetadata?['avatar_url'],
-        'content': text,
-        'type': 'text',
-        'created_at': DateTime.now().toIso8601String(),
-      });
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('فشل الإرسال: $e')),
-        );
-      }
-    }
-  }
-
-  Future<void> _uploadAudio(String path, int duration) async {
-    setState(() => _isUploading = true);
-    try {
-      final file = File(path);
-      final fileBytes = await file.readAsBytes();
-      final fileName = '${_currentUserId}_${DateTime.now().millisecondsSinceEpoch}.aac';
-
-      await _supabase.storage.from('voice_messages').uploadBinary(fileName, fileBytes);
-      final audioUrl = _supabase.storage.from('voice_messages').getPublicUrl(fileName);
-
-      final currentUser = _supabase.auth.currentUser!;
-      await _supabase.from('private_messages').insert({
-        'id': DateTime.now().millisecondsSinceEpoch.toString(),
-        'chat_id': _chatId,
-        'sender_id': currentUser.id,
-        'receiver_id': widget.peerId,
-        'sender_name': currentUser.userMetadata?['username']?? 'مجهول',
-        'sender_avatar': currentUser.userMetadata?['avatar_url'],
-        'type': 'voice',
-        'audio_url': audioUrl,
-        'duration': duration,
-        'created_at': DateTime.now().toIso8601String(),
-      });
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('فشل رفع الصوت: $e')),
-        );
-      }
-    } finally {
-      setState(() => _isUploading = false);
-    }
-  }
-
-  Future<void> _pickImage() async {
-    try {
-      final picker = ImagePicker();
-      final image = await picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
-      if (image == null) return;
-
-      setState(() => _isUploading = true);
-      final file = File(image.path);
-      final fileBytes = await file.readAsBytes();
-      final fileName = '${_currentUserId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
-
-      await _supabase.storage.from('chat_images').uploadBinary(fileName, fileBytes);
-      final imageUrl = _supabase.storage.from('chat_images').getPublicUrl(fileName);
-
-      final currentUser = _supabase.auth.currentUser!;
-      await _supabase.from('private_messages').insert({
-        'id': DateTime.now().millisecondsSinceEpoch.toString(),
-        'chat_id': _chatId,
-        'sender_id': currentUser.id,
-        'receiver_id': widget.peerId,
-        'sender_name': currentUser.userMetadata?['username']?? 'مجهول',
-        'sender_avatar': currentUser.userMetadata?['avatar_url'],
-        'type': 'image',
-        'media_url': imageUrl,
-        'created_at': DateTime.now().toIso8601String(),
-      });
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('فشل رفع الصورة: $e')),
-        );
-      }
-    } finally {
-      setState(() => _isUploading = false);
+    if (_scrollController.hasClients) {
+      _scrollController.animateTo(
+        0,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final me = context.watch<AuthProvider>().user!;
+
     return Scaffold(
-      backgroundColor: AppColors.bgPrimary,
       appBar: AppBar(
         backgroundColor: AppColors.bgCard,
-        elevation: 0,
-        title: GestureDetector(
+        title: InkWell(
           onTap: () {
             Navigator.push(
               context,
@@ -236,155 +120,176 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
           },
           child: Row(
             children: [
-              CircleAvatar(
-                radius: 18,
-                backgroundColor: AppColors.bgCard2,
-                backgroundImage: widget.peerAvatar!= null
-             ? CachedNetworkImageProvider(widget.peerAvatar!)
-                    : null,
-                child: widget.peerAvatar == null
-             ? Text(
-                        widget.peerName[0].toUpperCase(),
-                        style: const TextStyle(
-                          fontFamily: 'Tajawal',
-                          color: AppColors.white,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      )
-                    : null,
+              UserAvatar(
+                url: _peerUser?.avatarUrl ?? widget.peerAvatar,
+                name: widget.peerName,
+                size: 36,
+                isOnline: _peerUser?.isOnline ?? false,
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: Text(
-                  widget.peerName,
-                  style: const TextStyle(
-                    fontFamily: 'Tajawal',
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.white,
-                    fontSize: 16,
-                  ),
-                  overflow: TextOverflow.ellipsis,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      widget.peerName,
+                      style: const TextStyle(
+                        fontFamily: 'Tajawal',
+                        color: AppColors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    if (_peerUser != null)
+                      Text(
+                        _peerUser!.isOnline ? 'متصل الآن' : 'غير متصل',
+                        style: TextStyle(
+                          fontFamily: 'Tajawal',
+                          color: _peerUser!.isOnline
+                              ? AppColors.online
+                              : AppColors.textSub,
+                          fontSize: 12,
+                        ),
+                      ),
+                  ],
                 ),
               ),
             ],
           ),
         ),
       ),
-      body: Column(
-        children: [
-          Expanded(
-            child: _messages.isEmpty
-         ? Center(
-                    child: Text(
-                      'ابدأ المحادثة',
-                      style: TextStyle(
-                        fontFamily: 'Tajawal',
-                        color: AppColors.textSecondary,
-                        fontSize: 16,
-                      ),
-                    ),
-                  )
-                : ListView.builder(
-                    controller: _scrollController,
-                    padding: const EdgeInsets.all(16),
-                    itemCount: _messages.length,
-                    itemBuilder: (context, index) {
-                      final msg = _messages[index];
-                      final isMe = msg['sender_id'] == _currentUserId;
-                      return MessageBubble(
-                        message: msg,
-                        isMe: isMe,
-                      );
-                    },
-                  ),
-          ),
-          if (_isUploading)
-            const LinearProgressIndicator(
-              color: AppColors.primary,
-              minHeight: 2,
-            ),
-          _buildInputBar(),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildInputBar() {
-    final hasText = _messageController.text.trim().isNotEmpty;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-      decoration: BoxDecoration(
-        color: AppColors.bgCard,
-        border: Border(
-          top: BorderSide(color: AppColors.glassBorder, width: 0.5),
-        ),
-      ),
-      child: SafeArea(
-        child: Row(
+      body: Container(
+        decoration: BoxDecoration(gradient: AppColors.bgGrad),
+        child: Column(
           children: [
-            IconButton(
-              onPressed: _isUploading? null : _pickImage,
-              icon: const Icon(Icons.image_rounded, color: AppColors.textSecondary),
-              tooltip: 'إرسال صورة',
-            ),
-            Expanded(
-              child: Container(
-                decoration: BoxDecoration(
-                  color: AppColors.bgCard2,
-                  borderRadius: BorderRadius.circular(24),
-                ),
-                child: TextField(
-                  controller: _messageController,
-                  style: const TextStyle(
+            if (_isBlocked)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                color: AppColors.danger.withOpacity(0.2),
+                child: const Text(
+                  'لقد قمت بحظر هذا المستخدم. لا يمكنك المراسلة.',
+                  style: TextStyle(
                     fontFamily: 'Tajawal',
-                    color: AppColors.white,
+                    color: AppColors.danger,
+                    fontSize: 13,
                   ),
-                  decoration: const InputDecoration(
-                    hintText: 'اكتب رسالة...',
-                    hintStyle: TextStyle(
-                      fontFamily: 'Tajawal',
-                      color: AppColors.textSecondary,
-                    ),
-                    border: InputBorder.none,
-                    contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                  ),
-                  maxLines: 5,
-                  minLines: 1,
-                  textInputAction: TextInputAction.newline,
+                  textAlign: TextAlign.center,
                 ),
               ),
+            Expanded(
+              child: StreamBuilder<List<Map<String, dynamic>>>(
+                stream: _messagesStream,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(
+                      child: CircularProgressIndicator(color: AppColors.primary),
+                    );
+                  }
+                  if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                    return const Center(
+                      child: Text(
+                        'لا توجد رسائل',
+                        style: TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub),
+                      ),
+                    );
+                  }
+
+                  final messages = snapshot.data!;
+                  WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
+
+                  return ListView.builder(
+                    controller: _scrollController,
+                    reverse: true,
+                    padding: const EdgeInsets.only(top: 8, bottom: 8),
+                    itemCount: messages.length,
+                    itemBuilder: (context, index) {
+                      final msg = messages[index];
+                      final replyMsg = messages.firstWhere(
+                        (m) => m['id'] == msg['reply_to_id'],
+                        orElse: () => {},
+                      );
+
+                      return MessageBubble(
+                        message: msg,
+                        isMe: msg['sender_id'] == me.id,
+                        isRoom: false,
+                        replyToContent: replyMsg['content'],
+                        onReply: () {
+                          setState(() {
+                            _replyToId = msg['id'];
+                            _replyToContent = msg['content'];
+                          });
+                          _textFocusNode.requestFocus();
+                        },
+                      );
+                    },
+                  );
+                },
+              ),
             ),
-            const SizedBox(width: 8),
-            hasText
-         ? GestureDetector(
-                    onTap: _sendMessage,
-                    child: Container(
-                      width: 42,
-                      height: 42,
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [AppColors.primary, AppColors.primaryDark],
-                        ),
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: AppColors.primary.withOpacity(0.4),
-                            blurRadius: 10,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: const Icon(
-                        Icons.send_rounded,
-                        color: AppColors.white,
-                        size: 20,
-                      ),
-                    ),
-                  )
-                : VoiceRecorderButton(
-                    onRecordComplete: _uploadAudio,
-                  ),
+            if (!_isBlocked)
+              ChatInputBar(
+                replyToId: _replyToId,
+                replyToContent: _replyToContent,
+                onCancelReply: () => setState(() {
+                  _replyToId = null;
+                  _replyToContent = null;
+                }),
+                onSendText: (text, replyId) async {
+                  final chatId = _getChatId(me.id, widget.peerId);
+                  final msg = MessageModel(
+                    id: const Uuid().v4(),
+                    chatId: chatId,
+                    senderId: me.id,
+                    receiverId: widget.peerId,
+                    content: text,
+                    type: 'text',
+                    createdAt: DateTime.now(),
+                    replyToId: replyId,
+                  );
+                  await _chatService.sendPrivateMessage(widget.peerId, msg);
+                },
+                onSendImage: (file, replyId) async {
+                  final chatId = _getChatId(me.id, widget.peerId);
+                  final fileName = '${const Uuid().v4()}.jpg';
+                  await _supabase.storage.from('chat-images').upload(fileName, file);
+                  final url = _supabase.storage.from('chat-images').getPublicUrl(fileName);
+
+                  final msg = MessageModel(
+                    id: const Uuid().v4(),
+                    chatId: chatId,
+                    senderId: me.id,
+                    receiverId: widget.peerId,
+                    content: '',
+                    type: 'image',
+                    mediaUrl: url,
+                    createdAt: DateTime.now(),
+                    replyToId: replyId,
+                  );
+                  await _chatService.sendPrivateMessage(widget.peerId, msg);
+                },
+                onSendVoice: (file, duration, replyId) async {
+                  final chatId = _getChatId(me.id, widget.peerId);
+                  final fileName = '${const Uuid().v4()}.aac';
+                  await _supabase.storage.from('chat-audio').upload(fileName, file);
+                  final url = _supabase.storage.from('chat-audio').getPublicUrl(fileName);
+
+                  final msg = MessageModel(
+                    id: const Uuid().v4(),
+                    chatId: chatId,
+                    senderId: me.id,
+                    receiverId: widget.peerId,
+                    content: '',
+                    type: 'voice',
+                    audioUrl: url,
+                    duration: duration,
+                    createdAt: DateTime.now(),
+                    replyToId: replyId,
+                  );
+                  await _chatService.sendPrivateMessage(widget.peerId, msg);
+                },
+              ),
           ],
         ),
       ),
