@@ -2,19 +2,26 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:record/record.dart';
+import 'package:flutter_sound/flutter_sound.dart';
 import '../../core/constants/app_colors.dart';
+import '../../models/message_model.dart';
 
 class ChatInputBar extends StatefulWidget {
-  final Function(String text) onSendText;
-  final Function(String path, int duration)? onSendAudio;
-  final Function(String path)? onSendImage;
+  final Function(String text, String? replyToId) onSendText;
+  final Function(String path, int duration, String? replyToId)? onSendAudio;
+  final Function(String path, String? replyToId)? onSendImage;
+  final String? replyToId;
+  final MessageModel? replyToMessage;
+  final VoidCallback? onCancelReply;
 
   const ChatInputBar({
     super.key,
     required this.onSendText,
     this.onSendAudio,
     this.onSendImage,
+    this.replyToId,
+    this.replyToMessage,
+    this.onCancelReply,
   });
 
   @override
@@ -23,33 +30,45 @@ class ChatInputBar extends StatefulWidget {
 
 class _ChatInputBarState extends State<ChatInputBar> {
   final _textController = TextEditingController();
-  final _record = AudioRecorder();
+  final _recorder = FlutterSoundRecorder();
   bool _isRecording = false;
   Timer? _timer;
   int _recordDuration = 0;
+  String? _recordingPath;
+
+  @override
+  void initState() {
+    super.initState();
+    _initRecorder();
+  }
+
+  Future<void> _initRecorder() async {
+    await _recorder.openRecorder();
+  }
 
   @override
   void dispose() {
     _textController.dispose();
     _timer?.cancel();
-    _record.dispose();
+    _recorder.closeRecorder();
     super.dispose();
   }
 
   Future<void> _startRecording() async {
     try {
-      if (await _record.hasPermission()) {
-        final dir = await getTemporaryDirectory();
-        final path = '${dir.path}/audio_${DateTime.now().millisecondsSinceEpoch}.m4a';
-        await _record.start(const RecordConfig(), path: path);
-        setState(() {
-          _isRecording = true;
-          _recordDuration = 0;
-        });
-        _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-          setState(() => _recordDuration++);
-        });
-      }
+      final dir = await getTemporaryDirectory();
+      _recordingPath = '${dir.path}/audio_${DateTime.now().millisecondsSinceEpoch}.aac';
+      await _recorder.startRecorder(
+        toFile: _recordingPath,
+        codec: Codec.aacADTS,
+      );
+      setState(() {
+        _isRecording = true;
+        _recordDuration = 0;
+      });
+      _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+        setState(() => _recordDuration++);
+      });
     } catch (e) {
       debugPrint('Error recording: $e');
     }
@@ -57,13 +76,15 @@ class _ChatInputBarState extends State<ChatInputBar> {
 
   Future<void> _stopRecording() async {
     try {
-      final path = await _record.stop();
+      await _recorder.stopRecorder();
       _timer?.cancel();
       setState(() => _isRecording = false);
-      if (path != null && _recordDuration > 0) {
-        widget.onSendAudio?.call(path, _recordDuration);
+      if (_recordingPath!= null && _recordDuration > 0) {
+        widget.onSendAudio?.call(_recordingPath!, _recordDuration, widget.replyToId);
       }
       _recordDuration = 0;
+      _recordingPath = null;
+      widget.onCancelReply?.call();
     } catch (e) {
       debugPrint('Error stopping: $e');
     }
@@ -72,8 +93,9 @@ class _ChatInputBarState extends State<ChatInputBar> {
   void _sendText() {
     final text = _textController.text.trim();
     if (text.isNotEmpty) {
-      widget.onSendText(text);
+      widget.onSendText(text, widget.replyToId);
       _textController.clear();
+      widget.onCancelReply?.call();
     }
   }
 
@@ -86,82 +108,137 @@ class _ChatInputBarState extends State<ChatInputBar> {
         border: Border(top: BorderSide(color: AppColors.glassBorder)),
       ),
       child: SafeArea(
-        child: Row(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            if (widget.onSendImage != null)
-              IconButton(
-                icon: const Icon(Icons.image_rounded, color: AppColors.primary),
-                onPressed: () {},
-              ),
-            Expanded(
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                decoration: BoxDecoration(
-                  color: AppColors.bgCard.withOpacity(0.5),
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: AppColors.glassBorder),
-                ),
-                child: TextField(
-                  controller: _textController,
-                  style: const TextStyle(
-                    fontFamily: 'Tajawal',
-                    color: AppColors.white,
+            if (widget.replyToMessage!= null) _buildReplyPreview(),
+            Row(
+              children: [
+                if (widget.onSendImage!= null)
+                  IconButton(
+                    icon: const Icon(Icons.image_rounded, color: AppColors.primary),
+                    onPressed: () {},
                   ),
-                  decoration: const InputDecoration(
-                    hintText: 'اكتب رسالة...',
-                    hintStyle: TextStyle(
-                      fontFamily: 'Tajawal',
-                      color: AppColors.textSub,
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    decoration: BoxDecoration(
+                      color: AppColors.bgCard.withOpacity(0.5),
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(color: AppColors.glassBorder),
                     ),
-                    border: InputBorder.none,
-                  ),
-                  onSubmitted: (_) => _sendText(),
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            if (_isRecording)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(
-                  color: AppColors.danger.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.mic, color: AppColors.danger, size: 18),
-                    const SizedBox(width: 4),
-                    Text(
-                      '$_recordDuration',
+                    child: TextField(
+                      controller: _textController,
                       style: const TextStyle(
                         fontFamily: 'Tajawal',
-                        color: AppColors.danger,
-                        fontWeight: FontWeight.w600,
+                        color: AppColors.white,
                       ),
+                      decoration: const InputDecoration(
+                        hintText: 'اكتب رسالة...',
+                        hintStyle: TextStyle(
+                          fontFamily: 'Tajawal',
+                          color: AppColors.textSub,
+                        ),
+                        border: InputBorder.none,
+                      ),
+                      onSubmitted: (_) => _sendText(),
+                      onChanged: (_) => setState(() {}),
                     ),
-                  ],
-                ),
-              )
-            else if (_textController.text.trim().isNotEmpty)
-              IconButton(
-                icon: const Icon(Icons.send_rounded, color: AppColors.primary),
-                onPressed: _sendText,
-              )
-            else if (widget.onSendAudio != null)
-              GestureDetector(
-                onLongPress: _startRecording,
-                onLongPressUp: _stopRecording,
-                child: Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: const BoxDecoration(
-                    color: AppColors.primary,
-                    shape: BoxShape.circle,
                   ),
-                  child: const Icon(Icons.mic_rounded, color: Colors.white),
                 ),
-              ),
+                const SizedBox(width: 8),
+                if (_isRecording)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: AppColors.danger.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.mic, color: AppColors.danger, size: 18),
+                        const SizedBox(width: 4),
+                        Text(
+                          '$_recordDuration',
+                          style: const TextStyle(
+                            fontFamily: 'Tajawal',
+                            color: AppColors.danger,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                else if (_textController.text.trim().isNotEmpty)
+                  IconButton(
+                    icon: const Icon(Icons.send_rounded, color: AppColors.primary),
+                    onPressed: _sendText,
+                  )
+                else if (widget.onSendAudio!= null)
+                  GestureDetector(
+                    onLongPress: _startRecording,
+                    onLongPressUp: _stopRecording,
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: const BoxDecoration(
+                        color: AppColors.primary,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.mic_rounded, color: Colors.white),
+                    ),
+                  ),
+              ],
+            ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildReplyPreview() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border(
+          left: BorderSide(color: AppColors.primary, width: 3),
+        ),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  widget.replyToMessage!.senderName,
+                  style: const TextStyle(
+                    fontFamily: 'Tajawal',
+                    color: AppColors.primary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                Text(
+                  widget.replyToMessage!.content,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontFamily: 'Tajawal',
+                    color: AppColors.textSub,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.close, size: 18, color: AppColors.textSub),
+            onPressed: widget.onCancelReply,
+          ),
+        ],
       ),
     );
   }
