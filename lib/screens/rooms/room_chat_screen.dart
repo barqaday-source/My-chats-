@@ -60,7 +60,7 @@ class _RoomChatScreenState extends State<RoomChatScreen> with WidgetsBindingObse
   }
 
   Future<void> _joinRoom() async {
-    await _roomService.joinRoom(_userId, widget.room.id);
+    await _roomService.joinRoom(widget.room.id, _userId);
     await _chatService.setUserOnlineInRoom(_userId, widget.room.id);
   }
 
@@ -70,10 +70,10 @@ class _RoomChatScreenState extends State<RoomChatScreen> with WidgetsBindingObse
 
   void _subscribeToMembers() {
     _membersSub = _supabase
-        .from('room_members')
-        .stream(primaryKey: ['id'])
-        .eq('room_id', widget.room.id)
-        .listen((data) async {
+     .from('room_members')
+     .stream(primaryKey: ['id'])
+     .eq('room_id', widget.room.id)
+     .listen((data) async {
       final members = await _roomService.getRoomMembers(widget.room.id);
       if (!mounted) return;
       final onlineData = members.where((m) => m['is_online'] == true).toList();
@@ -83,8 +83,10 @@ class _RoomChatScreenState extends State<RoomChatScreen> with WidgetsBindingObse
     });
   }
 
-  Future<void> _sendMessage(String content, MessageType type, {String? audioPath, int? duration}) async {
+  Future<void> _sendMessage(String content, {String? audioPath, int? duration}) async {
     final me = context.read<AuthProvider>().user!;
+    final type = audioPath!= null? MessageType.audio : MessageType.text;
+
     final message = MessageModel(
       id: '',
       chatId: widget.room.id,
@@ -93,7 +95,7 @@ class _RoomChatScreenState extends State<RoomChatScreen> with WidgetsBindingObse
       senderAvatar: me.avatarUrl,
       content: content,
       type: type,
-      audioPath: audioPath,
+      audioUrl: audioPath,
       duration: duration,
       createdAt: DateTime.now(),
       isRoom: true,
@@ -166,7 +168,7 @@ class _RoomChatScreenState extends State<RoomChatScreen> with WidgetsBindingObse
                     );
                   }
 
-                  final messages = snapshot.data ?? [];
+                  final messages = snapshot.data?? [];
                   if (messages.isEmpty) {
                     return Center(
                       child: Text(
@@ -191,8 +193,8 @@ class _RoomChatScreenState extends State<RoomChatScreen> with WidgetsBindingObse
                       return MessageBubble(
                         message: msg,
                         isMe: isMe,
-                        onDelete: isMe
-                            ? () => _chatService.deleteMessage(msg.id, true)
+                        onLongPress: isMe
+                         ? () => _chatService.deleteMessage(msg.id, true)
                             : null,
                       );
                     },
@@ -201,8 +203,8 @@ class _RoomChatScreenState extends State<RoomChatScreen> with WidgetsBindingObse
               ),
             ),
             ChatInputBar(
-              onSendText: (text) => _sendMessage(text, MessageType.text),
-              onSendAudio: (path, dur) => _sendMessage('', MessageType.audio, audioPath: path, duration: dur),
+              onSendText: (text) => _sendMessage(text),
+              onSendAudio: (path, dur) => _sendMessage('', audioPath: path, duration: dur),
             ),
           ],
         ),
@@ -240,7 +242,7 @@ class _RoomChatScreenState extends State<RoomChatScreen> with WidgetsBindingObse
                 const SizedBox(height: 2),
                 Text(
                   member.username.length > 6
-                      ? '${member.username.substring(0, 6)}...'
+                   ? '${member.username.substring(0, 6)}...'
                       : member.username,
                   style: const TextStyle(
                     fontFamily: 'Tajawal',
