@@ -169,5 +169,20 @@ class RoomService {
     .eq('chat_id', roomId)
     .order('created_at', ascending: false)
     .map((maps) => maps.map((map) => MessageModel.fromJson(map)).toList());
+    // أضف هذه الدالة في نهاية الكلاس RoomService قبل آخر }
+  Stream<List<UserModel>> getRoomMembers(String roomId) {
+    return _sb
+        .from(SupabaseConfig.tRoomMembers)
+        .stream(primaryKey: ['id'])
+        .eq('room_id', roomId)
+        .asyncMap((members) async {
+          List<UserModel> users = [];
+          for (var member in members) {
+            final userData = await _sb.from(SupabaseConfig.tUsers).select().eq('id', member['user_id']).single();
+            users.add(UserModel.fromJson(userData));
+          }
+          return users;
+        });
+  }
   }
 }
