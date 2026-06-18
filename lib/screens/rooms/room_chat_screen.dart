@@ -72,10 +72,10 @@ class _RoomChatScreenState extends State<RoomChatScreen> with WidgetsBindingObse
 
   void _subscribeToMembers() {
     _membersSub = _supabase
- .from('room_members')
- .stream(primaryKey: ['id'])
- .eq('room_id', widget.room.id)
- .listen((data) async {
+       .from('room_members')
+       .stream(primaryKey: ['id'])
+       .eq('room_id', widget.room.id)
+       .listen((data) async {
       final members = await _roomService.getRoomMembers(widget.room.id);
       if (!mounted) return;
       final onlineData = members.where((m) => m['is_online'] == true).toList();
@@ -106,7 +106,7 @@ class _RoomChatScreenState extends State<RoomChatScreen> with WidgetsBindingObse
       isRead: false,
     );
 
-    await _chatService.sendMessage(message);
+    await _chatService.sendMessageToRoom(widget.room.id, message);
     setState(() => _replyToMessage = null);
 
     if (_scrollController.hasClients) {
@@ -174,7 +174,7 @@ class _RoomChatScreenState extends State<RoomChatScreen> with WidgetsBindingObse
             _buildOnlineBar(),
             Expanded(
               child: StreamBuilder<List<Map<String, dynamic>>>(
-                stream: _chatService.getMessages(widget.room.id),
+                stream: _chatService.getRoomMessagesStream(widget.room.id),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(
@@ -259,7 +259,7 @@ class _RoomChatScreenState extends State<RoomChatScreen> with WidgetsBindingObse
                 const SizedBox(height: 2),
                 Text(
                   member.username.length > 6
-           ? '${member.username.substring(0, 6)}...'
+                     ? '${member.username.substring(0, 6)}...'
                       : member.username,
                   style: const TextStyle(
                     fontFamily: 'Tajawal',
