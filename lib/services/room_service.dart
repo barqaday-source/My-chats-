@@ -3,7 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../core/constants/supabase_config.dart';
 import '../models/room_model.dart';
 import '../models/message_model.dart';
-import '../models/user_model.dart'; // ✅ أضف هذا
+import '../models/user_model.dart';
 
 class RoomService {
   final _sb = Supabase.instance.client;
@@ -11,6 +11,7 @@ class RoomService {
   Future<List<RoomModel>> getRooms() async {
     try {
       final data = await _sb.from(SupabaseConfig.tRooms).select()
+     .eq('is_approved', true) // ✅ تمت الإضافة - فلتر الغرف الموافق عليها فقط
      .order('is_official', ascending: false)
      .order('online_count', ascending: false)
      .order('member_count', ascending: false);
@@ -168,15 +169,14 @@ class RoomService {
    .eq('chat_id', roomId)
    .order('created_at', ascending: false)
    .map((maps) => maps.map((map) => MessageModel.fromJson(map)).toList());
-  } // ✅ هذا القوس يقفل getRoomMessages هنا
+  }
 
-  // ✅ الدالة بره - المكان الصحيح
   Stream<List<UserModel>> getRoomMembers(String roomId) {
     return _sb
-       .from(SupabaseConfig.tRoomMembers)
-       .stream(primaryKey: ['id'])
-       .eq('room_id', roomId)
-       .asyncMap((members) async {
+      .from(SupabaseConfig.tRoomMembers)
+      .stream(primaryKey: ['id'])
+      .eq('room_id', roomId)
+      .asyncMap((members) async {
           List<UserModel> users = [];
           for (var member in members) {
             final userData = await _sb.from(SupabaseConfig.tUsers).select().eq('id', member['user_id']).single();
@@ -185,4 +185,4 @@ class RoomService {
           return users;
         });
   }
-} // ✅ هذا قوس الكلاس
+}
