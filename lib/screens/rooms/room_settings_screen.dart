@@ -1,112 +1,176 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/constants/app_colors.dart';
 import '../../models/room_model.dart';
 import '../../models/user_model.dart';
-import '../../models/message_model.dart';
 import '../../providers/auth_provider.dart';
-import '../../services/chat_service.dart';
 import '../../services/room_service.dart';
-import '../../widgets/chat/chat_input_bar.dart';
-import '../../widgets/chat/message_bubble.dart';
-import '../../widgets/user_avatar.dart';
-import 'room_members_screen.dart';
 
-class RoomChatScreen extends StatefulWidget {
+class RoomSettingsScreen extends StatefulWidget {
   final RoomModel room;
-  const RoomChatScreen({super.key, required this.room});
+  const RoomSettingsScreen({super.key, required this.room});
 
   @override
-  State<RoomChatScreen> createState() => _RoomChatScreenState();
+  State<RoomSettingsScreen> createState() => _RoomSettingsScreenState();
 }
 
-class _RoomChatScreenState extends State<RoomChatScreen> with WidgetsBindingObserver {
-  final _chatService = ChatService();
+class _RoomSettingsScreenState extends State<RoomSettingsScreen> {
   final _roomService = RoomService();
-  final _supabase = Supabase.instance.client;
-  final _scrollController = ScrollController();
-
-  List<UserModel> _onlineMembers = [];
-  StreamSubscription? _membersSub;
-  late String _userId;
+  final _nameController = TextEditingController();
+  final _descController = TextEditingController();
+  bool _isPublic = true;
+  bool _loading = false;
+  late bool _isOwner;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    _userId = context.read<AuthProvider>().user!.id;
-    _joinRoom();
-    _subscribeToMembers();
+    final me = context.read<AuthProvider>().user!;
+    _isOwner = me.id == widget.room.ownerId;
+    _nameController.text = widget.room.name;
+    _descController.text = widget.room.description?? '';
+    _isPublic = widget.room.isPublic;
   }
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    _leaveRoom();
-    _membersSub?.cancel();
-    _scrollController.dispose();
+    _nameController.dispose();
+    _descController.dispose();
     super.dispose();
   }
 
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      _joinRoom();
-    } else if (state == AppLifecycleState.paused) {
-      _leaveRoom();
+  Future<void> _saveChanges() async {
+    if (!_isOwner) return;
+    if (_nameController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('اسم الغرفة مطلوب', style: TextStyle(fontFamily: 'Tajawal')),
+        ),
+      );
+      return;
+    }
+
+    setState(() => _loading = true);
+    try {
+      final updatedRoom = widget.room.copyWith(
+        name: _nameController.text.trim(),
+        description: _descController.text.trim(),
+        isPublic: _isPublic,
+      );
+      await _roomService.updateRoom(updatedRoom);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('تم حفظ التغييرات', style: TextStyle(fontFamily: 'Tajawal')),
+            backgroundColor: AppColors.success,
+          ),
+        );
+        Navigator.pop(context, true);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('فشل الحفظ: $e', style: const TextStyle(fontFamily: 'Tajawal')),
+            backgroundColor: AppColors.danger,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
     }
   }
 
-  Future<void> _joinRoom() async {
-    await _roomService.joinRoom(_userId, widget.room.id);
-    await _chatService.setUserOnlineInRoom(_userId, widget.room.id);
+  Future<void> _deleteRoom() async {
+    if (!_isOwner) return;
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.bgCard,
+        title: const Text(
+          'حذف الغرفة',
+          style: TextStyle(fontFamily: 'Tajawal', color: AppColors.white),
+        ),
+        content: const Text(
+          'هل أنت متأكد؟ سيتم حذف الغرفة نهائياً مع كل الرسائل.',
+          style: TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('إلغاء', style: TextStyle(fontFamily: 'Tajawal')),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text(
+              'حذف',
+              style: TextStyle(fontFamily: 'Tajawal', color: AppColors.danger),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      setState(() => _loading = true);
+      try {
+        await _roomService.deleteRoom(widget.room.id);
+        if (mounted) {
+          Navigator.pop(context);
+          Navigator.pop(context);
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('فشل الحذف: $e', style: const TextStyle(fontFamily: 'Tajawal')),
+              backgroundColor: AppColors.danger,
+            ),
+          );
+        }
+      } finally {
+        if (mounted) setState(() => _loading = false);
+      }
+    }
   }
 
   Future<void> _leaveRoom() async {
-    await _chatService.setUserOfflineInRoom(_userId, widget.room.id);
-  }
-
-  void _subscribeToMembers() {
-    _membersSub = _supabase
-       .from('room_members')
-       .stream(primaryKey: ['id'])
-       .eq('room_id', widget.room.id)
-       .listen((data) async {
-      final members = await _roomService.getRoomMembers(widget.room.id);
-      if (!mounted) return;
-      final onlineData = members.where((m) => m['is_online'] == true).toList();
-      setState(() {
-        _onlineMembers = onlineData.map((m) => UserModel.fromJson(m)).toList();
-      });
-    });
-  }
-
-  Future<void> _sendMessage(String content, MessageType type, {String? audioPath, int? duration}) async {
     final me = context.read<AuthProvider>().user!;
-    final message = MessageModel(
-      id: '',
-      chatId: widget.room.id,
-      senderId: me.id,
-      senderName: me.username,
-      senderAvatar: me.avatarUrl,
-      content: content,
-      type: type,
-      audioPath: audioPath,
-      duration: duration,
-      createdAt: DateTime.now(),
-      isRoom: true,
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.bgCard,
+        title: const Text(
+          'مغادرة الغرفة',
+          style: TextStyle(fontFamily: 'Tajawal', color: AppColors.white),
+        ),
+        content: const Text(
+          'هل تريد مغادرة الغرفة؟',
+          style: TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('إلغاء', style: TextStyle(fontFamily: 'Tajawal')),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text(
+              'مغادرة',
+              style: TextStyle(fontFamily: 'Tajawal', color: AppColors.danger),
+            ),
+          ),
+        ],
+      ),
     );
 
-    await _chatService.sendMessageToRoom(widget.room.id, message);
-
-    if (_scrollController.hasClients) {
-      _scrollController.animateTo(
-        0,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut,
-      );
+    if (confirm == true) {
+      await _roomService.leaveRoom(widget.room.id, me.id);
+      if (mounted) {
+        Navigator.pop(context);
+        Navigator.pop(context);
+      }
     }
   }
 
@@ -115,144 +179,285 @@ class _RoomChatScreenState extends State<RoomChatScreen> with WidgetsBindingObse
     return Scaffold(
       appBar: AppBar(
         backgroundColor: AppColors.bgCard,
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              widget.room.name,
-              style: const TextStyle(
-                fontFamily: 'Tajawal',
-                color: AppColors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            Text(
-              '${_onlineMembers.length} متصل',
-              style: const TextStyle(
-                fontFamily: 'Tajawal',
-                color: AppColors.online,
-                fontSize: 11,
-              ),
-            ),
-          ],
+        title: const Text(
+          'إعدادات الغرفة',
+          style: TextStyle(fontFamily: 'Tajawal', color: AppColors.white),
         ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.people_rounded),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => RoomMembersScreen(room: widget.room),
-                ),
-              );
-            },
-          ),
-        ],
       ),
       body: Container(
         decoration: BoxDecoration(gradient: AppColors.bgGrad),
-        child: Column(
-          children: [
-            _buildOnlineBar(),
-            Expanded(
-              child: StreamBuilder<List<Map<String, dynamic>>>(
-                stream: _chatService.getRoomMessagesStream(widget.room.id),
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(
-                      child: CircularProgressIndicator(color: AppColors.primary),
-                    );
-                  }
-
-                  final messages = snapshot.data?? [];
-                  if (messages.isEmpty) {
-                    return Center(
-                      child: Text(
-                        'ابدأ المحادثة الآن',
-                        style: TextStyle(
-                          fontFamily: 'Tajawal',
-                          color: AppColors.textSub,
-                          fontSize: 14,
-                        ),
-                      ),
-                    );
-                  }
-
-                  return ListView.builder(
-                    controller: _scrollController,
-                    reverse: true,
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    itemCount: messages.length,
-                    itemBuilder: (context, index) {
-                      final msg = MessageModel.fromJson(messages[index]);
-                      final isMe = msg.senderId == _userId;
-                      return MessageBubble(
-                        message: msg,
-                        isMe: isMe,
-                        onDelete: isMe
-                           ? () => _chatService.deleteMessage(msg.id, true)
-                            : null,
-                      );
-                    },
-                  );
-                },
+        child: _loading
+         ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+            : ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  if (_isOwner)...[
+                    _buildSectionTitle('معلومات الغرفة'),
+                    const SizedBox(height: 12),
+                    _buildTextField(
+                      controller: _nameController,
+                      label: 'اسم الغرفة',
+                      icon: Icons.badge_rounded,
+                    ),
+                    const SizedBox(height: 16),
+                    _buildTextField(
+                      controller: _descController,
+                      label: 'وصف الغرفة',
+                      icon: Icons.description_rounded,
+                      maxLines: 3,
+                    ),
+                    const SizedBox(height: 16),
+                    _buildSwitchTile(),
+                    const SizedBox(height: 24),
+                    _buildButton(
+                      label: 'حفظ التغييرات',
+                      icon: Icons.save_rounded,
+                      color: AppColors.primary,
+                      onTap: _saveChanges,
+                    ),
+                    const SizedBox(height: 32),
+                    _buildSectionTitle('الأعضاء'),
+                    const SizedBox(height: 12),
+                    _buildMembersList(),
+                    const SizedBox(height: 32),
+                    _buildButton(
+                      label: 'حذف الغرفة',
+                      icon: Icons.delete_forever_rounded,
+                      color: AppColors.danger,
+                      onTap: _deleteRoom,
+                    ),
+                  ] else...[
+                    _buildInfoTile('اسم الغرفة', widget.room.name),
+                    const SizedBox(height: 12),
+                    _buildInfoTile('الوصف', widget.room.description?? 'لا يوجد'),
+                    const SizedBox(height: 12),
+                    _buildInfoTile('النوع', widget.room.isPublic? 'عامة' : 'خاصة'),
+                    const SizedBox(height: 32),
+                    _buildButton(
+                      label: 'مغادرة الغرفة',
+                      icon: Icons.exit_to_app_rounded,
+                      color: AppColors.danger,
+                      onTap: _leaveRoom,
+                    ),
+                  ],
+                ],
               ),
+      ),
+    );
+  }
+
+  Widget _buildSectionTitle(String title) {
+    return Text(
+      title,
+      style: const TextStyle(
+        fontFamily: 'Tajawal',
+        color: AppColors.white,
+        fontSize: 16,
+        fontWeight: FontWeight.w700,
+      ),
+    );
+  }
+
+  Widget _buildTextField({
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+    int maxLines = 1,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.bgCard,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.glassBorder),
+      ),
+      child: TextField(
+        controller: controller,
+        maxLines: maxLines,
+        style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.white),
+        decoration: InputDecoration(
+          labelText: label,
+          labelStyle: const TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub),
+          prefixIcon: Icon(icon, color: AppColors.primary),
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSwitchTile() {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.bgCard,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.glassBorder),
+      ),
+      child: SwitchListTile(
+        title: const Text(
+          'غرفة عامة',
+          style: TextStyle(fontFamily: 'Tajawal', color: AppColors.white),
+        ),
+        subtitle: Text(
+          _isPublic? 'يمكن لأي شخص الانضمام' : 'بكلمة مرور فقط',
+          style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub, fontSize: 12),
+        ),
+        value: _isPublic,
+        onChanged: (val) => setState(() => _isPublic = val),
+        activeColor: AppColors.primary,
+      ),
+    );
+  }
+
+  Widget _buildInfoTile(String label, String value) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.bgCard,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.glassBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              fontFamily: 'Tajawal',
+              color: AppColors.textSub,
+              fontSize: 12,
             ),
-            ChatInputBar(
-              onSendText: (text) => _sendMessage(text, MessageType.text),
-              onSendAudio: (path, dur) => _sendMessage('', MessageType.audio, audioPath: path, duration: dur),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: const TextStyle(
+              fontFamily: 'Tajawal',
+              color: AppColors.white,
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMembersList() {
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: _roomService.getRoomMembers(widget.room.id),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const Center(
+            child: Padding(
+              padding: EdgeInsets.all(20),
+              child: CircularProgressIndicator(color: AppColors.primary),
+            ),
+          );
+        }
+
+        final members = snapshot.data!.map((m) => UserModel.fromJson(m)).toList();
+        return Container(
+          decoration: BoxDecoration(
+            color: AppColors.bgCard,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.glassBorder),
+          ),
+          child: ListView.separated(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: members.length,
+            separatorBuilder: (_, __) => Divider(color: AppColors.glassBorder, height: 1),
+            itemBuilder: (context, i) {
+              final member = members[i];
+              final isOwner = member.id == widget.room.ownerId;
+              return ListTile(
+                leading: CircleAvatar(
+                  backgroundImage: member.avatarUrl!= null
+                   ? NetworkImage(member.avatarUrl!)
+                      : null,
+                  child: member.avatarUrl == null
+                   ? Text(member.username[0].toUpperCase())
+                      : null,
+                ),
+                title: Text(
+                  member.username,
+                  style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.white),
+                ),
+                subtitle: isOwner
+                 ? const Text(
+                        'المالك',
+                        style: TextStyle(fontFamily: 'Tajawal', color: AppColors.primary, fontSize: 11),
+                      )
+                    : null,
+                trailing: _isOwner &&!isOwner
+                 ? IconButton(
+                        icon: const Icon(Icons.person_remove_rounded, color: AppColors.danger),
+                        onPressed: () async {
+                          await _roomService.removeRoomMember(widget.room.id, member.id);
+                          setState(() {});
+                        },
+                      )
+                    : null,
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildButton({
+    required String label,
+    required IconData icon,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.15),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: color),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: color, size: 20),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: TextStyle(
+                fontFamily: 'Tajawal',
+                color: color,
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ],
         ),
       ),
     );
   }
+}
 
-  Widget _buildOnlineBar() {
-    if (_onlineMembers.isEmpty) return const SizedBox.shrink();
-
-    return Container(
-      height: 60,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: AppColors.bgCard.withOpacity(0.5),
-        border: Border(
-          bottom: BorderSide(color: AppColors.glassBorder, width: 1),
-        ),
-      ),
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        itemCount: _onlineMembers.length,
-        itemBuilder: (context, index) {
-          final member = _onlineMembers[index];
-          return Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: Column(
-              children: [
-                UserAvatar(
-                  url: member.avatarUrl,
-                  name: member.username,
-                  isOnline: true,
-                  size: 32,
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  member.username.length > 6
-                     ? '${member.username.substring(0, 6)}...'
-                      : member.username,
-                  style: const TextStyle(
-                    fontFamily: 'Tajawal',
-                    color: AppColors.white,
-                    fontSize: 9,
-                  ),
-                ),
-              ],
-            ),
-          );
-        },
-      ),
+extension RoomModelCopy on RoomModel {
+  RoomModel copyWith({
+    String? name,
+    String? description,
+    bool? isPublic,
+  }) {
+    return RoomModel(
+      id: id,
+      name: name?? this.name,
+      description: description?? this.description,
+      ownerId: ownerId,
+      ownerName: ownerName,
+      ownerAvatar: ownerAvatar,
+      isPublic: isPublic?? this.isPublic,
+      createdAt: createdAt,
+      membersCount: membersCount,
     );
   }
 }
