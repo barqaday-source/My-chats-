@@ -1,14 +1,20 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:uuid/uuid.dart';
 import '../../core/constants/app_colors.dart';
-import '../../providers/auth_provider.dart';
-import '../../services/room_service.dart';
-import '../../models/room_model.dart';
 import '../../models/message_model.dart';
+import '../../models/room_model.dart';
+import '../../providers/auth_provider.dart';
+import '../../services/chat_service.dart';
+import '../../services/room_service.dart';
+import '../../widgets/chat/chat_input_bar.dart';
+import '../../widgets/chat/message_bubble.dart';
+import 'room_members_screen.dart';
 
 class RoomChatScreen extends StatefulWidget {
   final RoomModel room;
-
   const RoomChatScreen({super.key, required this.room});
 
   @override
@@ -16,57 +22,47 @@ class RoomChatScreen extends StatefulWidget {
 }
 
 class _RoomChatScreenState extends State<RoomChatScreen> {
-  final _roomSvc = RoomService();
-  final _msgCtrl = TextEditingController();
-  final _scrollCtrl = ScrollController();
-  String? _replyToId; // ✅ إضافة
+  final _chatService = ChatService();
+  final _roomService = RoomService();
+  final _supabase = Supabase.instance.client;
+  final _textFocusNode = FocusNode();
+  final _scrollController = ScrollController();
+
+  Stream<List<Map<String, dynamic>>>? _messagesStream;
+  String? _replyToId;
+  String? _replyToContent;
+  List<Map<String, dynamic>> _onlineMembers = [];
 
   @override
   void initState() {
     super.initState();
-    final userId = context.read<AuthProvider>().user!.id;
-    _roomSvc.setOnline(widget.room.id, userId); // ✅ إضافة
+    final me = context.read<AuthProvider>().user!;
+    _messagesStream = _chatService.getRoomMessagesStream(widget.room.id);
+    _chatService.setUserOnlineInRoom(me.id, widget.room.id);
+    _loadOnlineMembers();
   }
 
   @override
   void dispose() {
-    final userId = context.read<AuthProvider>().user!.id;
-    _roomSvc.setOffline(widget.room.id, userId); // ✅ إضافة
-    _msgCtrl.dispose();
-    _scrollCtrl.dispose();
+    final me = context.read<AuthProvider>().user!;
+    _chatService.setUserOfflineInRoom(me.id, widget.room.id);
+    _textFocusNode.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
-  Future<void> _sendMessage() async {
-    final text = _msgCtrl.text.trim();
-    if (text.isEmpty) return;
-
-    final auth = context.read<AuthProvider>();
-    final user = auth.user;
-    if (user == null) return;
-
-    _msgCtrl.clear();
-
-    final message = MessageModel(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
-      chatId: widget.room.id,
-      senderId: user.id,
-      receiverId: '', // فاضي للغرف
-      senderName: auth.userProfile?['username']?? user.email?.split('@')[0]?? 'مجهول',
-      senderAvatar: auth.userProfile?['avatar_url'],
-      content: text,
-      createdAt: DateTime.now(),
-      replyToId: _replyToId, // ✅ إضافة
-    );
-
-    setState(() => _replyToId = null); // ✅ إضافة
-    await _roomSvc.sendRoomMessage(widget.room.id, message);
-    _scrollToBottom();
+  Future<void> _loadOnlineMembers() async {
+    final members = await _roomService.getRoomMembers(widget.room.id);
+    if (mounted) {
+      setState(() {
+        _onlineMembers = members.where((m) => m['is_online'] == true).toList();
+      });
+    }
   }
 
   void _scrollToBottom() {
-    if (_scrollCtrl.hasClients) {
-      _scrollCtrl.animateTo(
+    if (_scrollController.hasClients) {
+      _scrollController.animateTo(
         0,
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeOut,
@@ -76,117 +72,169 @@ class _RoomChatScreenState extends State<RoomChatScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final auth = context.watch<AuthProvider>();
-    final currentUserId = auth.user!.id;
+    final me = context.watch<AuthProvider>().user!;
 
     return Scaffold(
       appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(widget.room.name, style: const TextStyle(fontFamily: 'Tajawal', fontSize: 16)),
-            Text(
-              '${widget.room.memberCount} عضو',
-              style: const TextStyle(fontFamily: 'Tajawal', fontSize: 12, color: AppColors.textSub),
-            ),
-          ],
+        backgroundColor: AppColors.bgCard,
+        title: InkWell(
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => RoomMembersScreen(room: widget.room),
+              ),
+            );
+          },
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                widget.room.name,
+                style: const TextStyle(
+                  fontFamily: 'Tajawal',
+                  color: AppColors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              Text(
+                '${_onlineMembers.length} متصل من ${widget.room.memberCount}',
+                style: const TextStyle(
+                  fontFamily: 'Tajawal',
+                  color: AppColors.textSub,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.people_rounded),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => RoomMembersScreen(room: widget.room),
+                ),
+              );
+            },
+          ),
+        ],
       ),
       body: Container(
-        decoration: const BoxDecoration(gradient: AppColors.bgGrad),
+        decoration: BoxDecoration(gradient: AppColors.bgGrad),
         child: Column(
           children: [
             Expanded(
-              child: StreamBuilder<List<MessageModel>>(
-                stream: _roomSvc.getRoomMessages(widget.room.id),
+              child: StreamBuilder<List<Map<String, dynamic>>>(
+                stream: _messagesStream,
                 builder: (context, snapshot) {
-                  if (!snapshot.hasData) {
-                    return const Center(child: CircularProgressIndicator());
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(
+                      child: CircularProgressIndicator(color: AppColors.primary),
+                    );
                   }
+                  if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                    return const Center(
+                      child: Text(
+                        'لا توجد رسائل',
+                        style: TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub),
+                      ),
+                    );
+                  }
+
                   final messages = snapshot.data!;
+                  WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
+
                   return ListView.builder(
-                    controller: _scrollCtrl,
+                    controller: _scrollController,
                     reverse: true,
-                    padding: const EdgeInsets.all(16),
+                    padding: const EdgeInsets.only(top: 8, bottom: 8),
                     itemCount: messages.length,
-                    itemBuilder: (_, i) {
-                      final msg = messages[i];
-                      final isMe = msg.senderId == currentUserId;
-                      return Align(
-                        alignment: isMe? Alignment.centerRight : Alignment.centerLeft,
-                        child: Container(
-                          margin: const EdgeInsets.only(bottom: 8),
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                          decoration: BoxDecoration(
-                            color: isMe? AppColors.primary : AppColors.bgCard,
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              if (!isMe)
-                                Text(
-                                  msg.senderName?? 'مجهول',
-                                  style: const TextStyle(
-                                    fontFamily: 'Tajawal',
-                                    color: AppColors.primary,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              Text(
-                                msg.content,
-                                style: TextStyle(
-                                  fontFamily: 'Tajawal',
-                                  color: isMe? AppColors.white : AppColors.text,
-                                  fontSize: 14,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
+                    itemBuilder: (context, index) {
+                      final msg = messages[index];
+                      final replyMsg = messages.firstWhere(
+                        (m) => m['id'] == msg['reply_to_id'],
+                        orElse: () => {},
+                      );
+
+                      return MessageBubble(
+                        message: msg,
+                        isMe: msg['sender_id'] == me.id,
+                        isRoom: true,
+                        replyToContent: replyMsg['content'],
+                        onReply: () {
+                          setState(() {
+                            _replyToId = msg['id'];
+                            _replyToContent = msg['content'];
+                          });
+                          _textFocusNode.requestFocus();
+                        },
                       );
                     },
                   );
                 },
               ),
             ),
-            Container(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-              decoration: BoxDecoration(
-                color: AppColors.bgCard,
-                border: Border(top: BorderSide(color: AppColors.divider)),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _msgCtrl,
-                      style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.text),
-                      decoration: InputDecoration(
-                        hintText: 'اكتب رسالة...',
-                        hintStyle: const TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub),
-                        filled: true,
-                        fillColor: AppColors.bgCard2,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(24),
-                          borderSide: BorderSide.none,
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                      ),
-                      onSubmitted: (_) => _sendMessage(),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  IconButton(
-                    onPressed: _sendMessage,
-                    icon: const Icon(Icons.send_rounded, color: AppColors.primary),
-                    style: IconButton.styleFrom(
-                      backgroundColor: AppColors.primary.withOpacity(0.1),
-                    ),
-                  ),
-                ],
-              ),
+            ChatInputBar(
+              replyToId: _replyToId,
+              replyToContent: _replyToContent,
+              onCancelReply: () => setState(() {
+                _replyToId = null;
+                _replyToContent = null;
+              }),
+              onSendText: (text, replyId) async {
+                final msg = MessageModel(
+                  id: const Uuid().v4(),
+                  chatId: widget.room.id,
+                  senderId: me.id,
+                  receiverId: '',
+                  content: text,
+                  type: 'text',
+                  createdAt: DateTime.now(),
+                  replyToId: replyId,
+                );
+                await _chatService.sendMessageToRoom(widget.room.id, msg);
+              },
+              onSendImage: (file, replyId) async {
+                final fileName = '${const Uuid().v4()}.jpg';
+                await _supabase.storage.from('chat-images').upload(fileName, file);
+                final url = _supabase.storage.from('chat-images').getPublicUrl(fileName);
+
+                final msg = MessageModel(
+                  id: const Uuid().v4(),
+                  chatId: widget.room.id,
+                  senderId: me.id,
+                  receiverId: '',
+                  content: '',
+                  type: 'image',
+                  mediaUrl: url,
+                  createdAt: DateTime.now(),
+                  replyToId: replyId,
+                );
+                await _chatService.sendMessageToRoom(widget.room.id, msg);
+              },
+              onSendVoice: (file, duration, replyId) async {
+                final fileName = '${const Uuid().v4()}.aac';
+                await _supabase.storage.from('chat-audio').upload(fileName, file);
+                final url = _supabase.storage.from('chat-audio').getPublicUrl(fileName);
+
+                final msg = MessageModel(
+                  id: const Uuid().v4(),
+                  chatId: widget.room.id,
+                  senderId: me.id,
+                  receiverId: '',
+                  content: '',
+                  type: 'voice',
+                  audioUrl: url,
+                  duration: duration,
+                  createdAt: DateTime.now(),
+                  replyToId: replyId,
+                );
+                await _chatService.sendMessageToRoom(widget.room.id, msg);
+              },
             ),
           ],
         ),
