@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter_sound/flutter_sound.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../core/constants/app_colors.dart';
 import '../../models/message_model.dart';
 
@@ -31,6 +32,7 @@ class ChatInputBar extends StatefulWidget {
 class _ChatInputBarState extends State<ChatInputBar> {
   final _textController = TextEditingController();
   final _recorder = FlutterSoundRecorder();
+  final _imagePicker = ImagePicker();
   bool _isRecording = false;
   Timer? _timer;
   int _recordDuration = 0;
@@ -90,6 +92,21 @@ class _ChatInputBarState extends State<ChatInputBar> {
     }
   }
 
+  Future<void> _pickImage() async {
+    try {
+      final image = await _imagePicker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 70,
+      );
+      if (image != null) {
+        widget.onSendImage?.call(image.path, widget.replyToId);
+        widget.onCancelReply?.call();
+      }
+    } catch (e) {
+      debugPrint('Error picking image: $e');
+    }
+  }
+
   void _sendText() {
     final text = _textController.text.trim();
     if (text.isNotEmpty) {
@@ -117,7 +134,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
                 if (widget.onSendImage!= null)
                   IconButton(
                     icon: const Icon(Icons.image_rounded, color: AppColors.primary),
-                    onPressed: () {},
+                    onPressed: _pickImage,
                   ),
                 Expanded(
                   child: Container(
@@ -222,7 +239,11 @@ class _ChatInputBarState extends State<ChatInputBar> {
                   ),
                 ),
                 Text(
-                  widget.replyToMessage!.content,
+                  widget.replyToMessage!.type == 'voice'
+                ? 'رسالة صوتية'
+                      : widget.replyToMessage!.type == 'image'
+                    ? 'صورة'
+                        : widget.replyToMessage!.content,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
