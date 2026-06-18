@@ -36,7 +36,8 @@ class _RoomChatScreenState extends State<RoomChatScreen> with WidgetsBindingObse
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _userId = context.read<AuthProvider>().user!.id;
+    final user = context.read<AuthProvider>().user!;
+    _userId = user.id;
     _joinRoom();
     _subscribeToMembers();
   }
@@ -70,10 +71,10 @@ class _RoomChatScreenState extends State<RoomChatScreen> with WidgetsBindingObse
 
   void _subscribeToMembers() {
     _membersSub = _supabase
- .from('room_members')
- .stream(primaryKey: ['id'])
- .eq('room_id', widget.room.id)
- .listen((data) async {
+  .from('room_members')
+  .stream(primaryKey: ['id'])
+  .eq('room_id', widget.room.id)
+  .listen((data) async {
       final members = await _roomService.getRoomMembers(widget.room.id);
       if (!mounted) return;
       final onlineData = members.where((m) => m['is_online'] == true).toList();
@@ -84,15 +85,15 @@ class _RoomChatScreenState extends State<RoomChatScreen> with WidgetsBindingObse
   }
 
   Future<void> _sendMessage(String content, {String? audioPath, int? duration}) async {
-    final me = context.read<AuthProvider>().user!;
+    final user = context.read<AuthProvider>().user!;
 
     final message = MessageModel(
       id: '',
       chatId: widget.room.id,
-      senderId: me.id,
+      senderId: user.id,
       receiverId: widget.room.id,
-      senderName: me.username,
-      senderAvatar: me.avatarUrl,
+      senderName: user.username,
+      senderAvatar: user.avatarUrl,
       content: content,
       type: audioPath!= null? MessageType.audio : MessageType.text,
       audioUrl: audioPath,
@@ -239,7 +240,7 @@ class _RoomChatScreenState extends State<RoomChatScreen> with WidgetsBindingObse
                 const SizedBox(height: 2),
                 Text(
                   member.username.length > 6
-               ? '${member.username.substring(0, 6)}...'
+              ? '${member.username.substring(0, 6)}...'
                       : member.username,
                   style: const TextStyle(
                     fontFamily: 'Tajawal',
