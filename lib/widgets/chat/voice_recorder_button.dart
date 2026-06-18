@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_sound/flutter_sound.dart';
 import 'package:path_provider/path_provider.dart';
@@ -26,7 +25,6 @@ class _VoiceRecorderButtonState extends State<VoiceRecorderButton>
   bool _recorderReady = false;
   int _recordDuration = 0;
   Timer? _timer;
-  Timer? _amplitudeTimer;
   late AnimationController _pulseController;
   List<double> _waveform = [];
   String? _currentPath;
@@ -45,7 +43,6 @@ class _VoiceRecorderButtonState extends State<VoiceRecorderButton>
   @override
   void dispose() {
     _timer?.cancel();
-    _amplitudeTimer?.cancel();
     _recorderSub?.cancel();
     _pulseController.dispose();
     _recorder.closeRecorder();
@@ -53,12 +50,19 @@ class _VoiceRecorderButtonState extends State<VoiceRecorderButton>
   }
 
   Future<void> _openRecorder() async {
-    final status = await Permission.microphone.request();
+    var status = await Permission.microphone.status;
+    if (!status.isGranted) {
+      status = await Permission.microphone.request();
+    }
     if (status != PermissionStatus.granted) return;
-    
-    await _recorder.openRecorder();
-    _recorder.setSubscriptionDuration(const Duration(milliseconds: 100));
-    setState(() => _recorderReady = true);
+
+    try {
+      await _recorder.openRecorder();
+      _recorder.setSubscriptionDuration(const Duration(milliseconds: 100));
+      if (mounted) setState(() => _recorderReady = true);
+    } catch (e) {
+      debugPrint('Recorder init error: $e');
+    }
   }
 
   Future<void> _startRecording() async {
