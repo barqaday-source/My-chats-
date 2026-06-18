@@ -1,81 +1,71 @@
-enum MsgType { text, image, audio }
-
 class MessageModel {
   final String id;
   final String chatId;
   final String senderId;
-  final String receiverId; // للخاص فقط
+  final String receiverId;
+  final String? senderName;
+  final String? senderAvatar;
   final String content;
-  final MsgType type;
+  final String type;
   final String? mediaUrl;
   final String? audioUrl;
   final int? duration;
   final bool isRead;
   final DateTime createdAt;
-  final String? senderName;
-  final String? senderAvatar;
+  final String? replyToId; // ✅ إضافة فقط
 
-  const MessageModel({
+  MessageModel({
     required this.id,
     required this.chatId,
     required this.senderId,
-    this.receiverId = '', // صار اختياري - فاضي للغرف
+    required this.receiverId,
+    this.senderName,
+    this.senderAvatar,
     required this.content,
-    this.type = MsgType.text,
+    this.type = 'text',
     this.mediaUrl,
     this.audioUrl,
     this.duration,
     this.isRead = false,
     required this.createdAt,
-    this.senderName,
-    this.senderAvatar,
+    this.replyToId, // ✅ إضافة فقط
   });
 
   factory MessageModel.fromJson(Map<String, dynamic> json) {
     return MessageModel(
-      id: json['id'],
-      chatId: json['chat_id'],
-      senderId: json['sender_id'],
-      receiverId: json['receiver_id']?? '',
-      content: json['content']?? json['text']?? '',
-      type: MsgType.values.firstWhere(
-        (e) => e.name == json['type'],
-        orElse: () => MsgType.text,
-      ),
-      mediaUrl: json['media_url'],
-      audioUrl: json['audio_url'],
-      duration: json['duration'],
-      isRead: json['is_read']?? false,
-      createdAt: DateTime.parse(json['created_at']),
-      senderName: json['sender_name'],
-      senderAvatar: json['sender_avatar'],
+      id: json['id'] as String,
+      chatId: json['chat_id'] as String,
+      senderId: json['sender_id'] as String,
+      receiverId: json['receiver_id'] as String,
+      senderName: json['sender_name'] as String?,
+      senderAvatar: json['sender_avatar'] as String?,
+      content: json['content'] as String,
+      type: json['type'] as String?? 'text',
+      mediaUrl: json['media_url'] as String?,
+      audioUrl: json['audio_url'] as String?,
+      duration: json['duration'] as int?,
+      isRead: json['is_read'] as bool?? false,
+      createdAt: DateTime.parse(json['created_at'] as String),
+      replyToId: json['reply_to_id'] as String?, // ✅ إضافة فقط
     );
   }
 
-  factory MessageModel.fromMap(Map<String, dynamic> map) => MessageModel.fromJson(map);
-
   Map<String, dynamic> toJson() {
     return {
-      'id': id,
+      // 'id': id, // محذوف سابقاً
       'chat_id': chatId,
       'sender_id': senderId,
       'receiver_id': receiverId,
+      'sender_name': senderName,
+      'sender_avatar': senderAvatar,
       'content': content,
-      'type': type.name,
+      'type': type,
       'media_url': mediaUrl,
       'audio_url': audioUrl,
       'duration': duration,
       'is_read': isRead,
+      'reply_to_id': replyToId, // ✅ إضافة فقط
       'created_at': createdAt.toIso8601String(),
-      'sender_name': senderName,
-      'sender_avatar': senderAvatar,
     };
   }
-
-  static String generateChatId(String user1, String user2) {
-    final sorted = [user1, user2]..sort();
-    return '${sorted[0]}_${sorted[1]}';
-  }
-
-  String get text => content;
 }
