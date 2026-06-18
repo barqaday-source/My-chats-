@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../core/constants/supabase_config.dart';
 import '../models/room_model.dart';
 import '../models/message_model.dart';
+import '../models/user_model.dart'; // ✅ أضف هذا
 
 class RoomService {
   final _sb = Supabase.instance.client;
@@ -10,9 +11,9 @@ class RoomService {
   Future<List<RoomModel>> getRooms() async {
     try {
       final data = await _sb.from(SupabaseConfig.tRooms).select()
-      .order('is_official', ascending: false)
-      .order('online_count', ascending: false)
-      .order('member_count', ascending: false);
+     .order('is_official', ascending: false)
+     .order('online_count', ascending: false)
+     .order('member_count', ascending: false);
       return (data as List).map((e) => RoomModel.fromJson(e as Map<String, dynamic>)).toList();
     } on PostgrestException catch (e, s) {
       debugPrint('''
@@ -47,7 +48,6 @@ class RoomService {
     }
   }
 
-  // التعديل الرئيسي: إنشاء الغرفة + Logging كامل
   Future<RoomModel> createRoom(RoomModel room, String userId) async {
     final user = _sb.auth.currentUser;
     if (user == null) throw Exception('User not authenticated');
@@ -55,7 +55,6 @@ class RoomService {
 
     try {
       final data = room.toJson();
-      // التعديل: نوحد owner_id و created_by
       data['owner_id'] = userId;
       data['created_by'] = userId;
       data['members'] = [userId];
@@ -104,7 +103,7 @@ class RoomService {
   Future<bool> isMember(String roomId, String userId) async {
     try {
       final data = await _sb.from(SupabaseConfig.tRoomMembers)
-      .select().eq('room_id', roomId).eq('user_id', userId).maybeSingle();
+     .select().eq('room_id', roomId).eq('user_id', userId).maybeSingle();
       return data!= null;
     } catch (e) {
       debugPrint('isMember error: $e');
@@ -131,8 +130,8 @@ class RoomService {
   Future<void> approveRoom(String roomId) async {
     try {
       await _sb.from(SupabaseConfig.tRooms)
-      .update({'is_approved': true})
-      .eq('id', roomId);
+     .update({'is_approved': true})
+     .eq('id', roomId);
     } on PostgrestException catch (e, s) {
       debugPrint('''
       ❌ Supabase Error - approveRoom
@@ -164,18 +163,20 @@ class RoomService {
 
   Stream<List<MessageModel>> getRoomMessages(String roomId) {
     return _sb
-    .from(SupabaseConfig.tRoomMessages)
-    .stream(primaryKey: ['id'])
-    .eq('chat_id', roomId)
-    .order('created_at', ascending: false)
-    .map((maps) => maps.map((map) => MessageModel.fromJson(map)).toList());
-    // أضف هذه الدالة في نهاية الكلاس RoomService قبل آخر }
+   .from(SupabaseConfig.tRoomMessages)
+   .stream(primaryKey: ['id'])
+   .eq('chat_id', roomId)
+   .order('created_at', ascending: false)
+   .map((maps) => maps.map((map) => MessageModel.fromJson(map)).toList());
+  } // ✅ هذا القوس يقفل getRoomMessages هنا
+
+  // ✅ الدالة بره - المكان الصحيح
   Stream<List<UserModel>> getRoomMembers(String roomId) {
     return _sb
-        .from(SupabaseConfig.tRoomMembers)
-        .stream(primaryKey: ['id'])
-        .eq('room_id', roomId)
-        .asyncMap((members) async {
+       .from(SupabaseConfig.tRoomMembers)
+       .stream(primaryKey: ['id'])
+       .eq('room_id', roomId)
+       .asyncMap((members) async {
           List<UserModel> users = [];
           for (var member in members) {
             final userData = await _sb.from(SupabaseConfig.tUsers).select().eq('id', member['user_id']).single();
@@ -184,5 +185,4 @@ class RoomService {
           return users;
         });
   }
-  }
-}
+} // ✅ هذا قوس الكلاس
