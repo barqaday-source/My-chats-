@@ -30,14 +30,15 @@ class _BlockedUsersScreenState extends State<BlockedUsersScreen> {
     try {
       final me = context.read<AuthProvider>().user!;
 
+      // ✅ عدلنا الجدول + الأسماء
       final blockRes = await _supabase
-         .from('blocks')
-         .select('blocked_id')
-         .eq('blocker_id', me.id);
+        .from('blocked_users')
+        .select('blocked_id')
+        .eq('blocker_id', me.id);
 
       final blockedIds = (blockRes as List)
-         .map((e) => e['blocked_id'] as String)
-         .toList();
+        .map((e) => e['blocked_id'] as String)
+        .toList();
 
       if (blockedIds.isEmpty) {
         setState(() {
@@ -48,9 +49,9 @@ class _BlockedUsersScreenState extends State<BlockedUsersScreen> {
       }
 
       final usersRes = await _supabase
-         .from('users')
-         .select()
-         .inFilter('id', blockedIds);
+        .from('users')
+        .select()
+        .inFilter('id', blockedIds);
 
       _blockedUsers =
           (usersRes as List).map((e) => UserModel.fromJson(e)).toList();
@@ -71,11 +72,12 @@ class _BlockedUsersScreenState extends State<BlockedUsersScreen> {
   Future<void> _unblockUser(String userId) async {
     final me = context.read<AuthProvider>().user!;
     try {
+      // ✅ عدلنا الأسماء
       await _supabase
-         .from('blocks')
-         .delete()
-         .eq('blocker_id', me.id)
-         .eq('blocked_id', userId);
+        .from('blocked_users')
+        .delete()
+        .eq('blocker_id', me.id)
+        .eq('blocked_id', userId);
 
       setState(() {
         _blockedUsers.removeWhere((u) => u.id == userId);
@@ -119,9 +121,9 @@ class _BlockedUsersScreenState extends State<BlockedUsersScreen> {
         decoration: BoxDecoration(gradient: AppColors.bgGrad),
         child: SafeArea(
           child: _loading
-             ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+            ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
               : _blockedUsers.isEmpty
-                 ? const Center(
+                ? const Center(
                       child: Text('لا يوجد مستخدمين محظورين',
                           style: TextStyle(
                               fontFamily: 'Tajawal', color: AppColors.textSub)))
