@@ -32,7 +32,7 @@ class RoomModel {
     this.members = const [],
     this.isOfficial = false,
     this.isLocked = false,
-    this.isApproved = true,
+    this.isApproved = false, // ✅ تم التعديل
     this.isFollowEnabled = true,
     this.onlineCount = 0,
     this.memberCount = 0,
@@ -57,7 +57,7 @@ class RoomModel {
           : [],
       isOfficial: json['is_official'] as bool?? false,
       isLocked: json['is_locked'] as bool?? false,
-      isApproved: json['is_approved'] as bool?? true,
+      isApproved: json['is_approved'] as bool?? false, // ✅ تم التعديل
       isFollowEnabled: json['is_follow_enabled'] as bool?? true,
       onlineCount: json['online_count'] as int?? 0,
       memberCount: json['member_count'] as int?? 0,
@@ -67,10 +67,8 @@ class RoomModel {
     );
   }
 
-  // التعديل: لا نرسل الحقول اللي Supabase يولدها
   Map<String, dynamic> toJson() {
     return {
-      // 'id': id, // محذوف
       'name': name,
       'description': description,
       'bio': bio,
@@ -82,13 +80,8 @@ class RoomModel {
       'members': members,
       'is_official': isOfficial,
       'is_locked': isLocked,
-      // 'is_approved': isApproved, // محذوف - default false
       'is_follow_enabled': isFollowEnabled,
-      // 'online_count': onlineCount, // محذوف - default 0
-      // 'member_count': memberCount, // محذوف - default 1
       'followers_count': followersCount,
-      // 'created_at': createdAt.toIso8601String(), // محذوف
-      // 'updated_at': updatedAt.toIso8601String(), // محذوف
     };
   }
 
