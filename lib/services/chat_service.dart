@@ -1,6 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/message_model.dart';
-import '../core/constants/supabase_config.dart';
+import '../models/room_model.dart';
 
 class ChatService {
   final _supabase = Supabase.instance.client;
@@ -78,7 +78,7 @@ class ChatService {
     await _supabase.from(table).delete().eq('id', messageId);
   }
 
-  // ====== جلب آخر رسالة للدردشات ======
+  // ====== جلب آخر رسالة ======
 
   Future<Map<String, dynamic>?> getLastPrivateMessage(String userId, String peerId) async {
     final chatId = _getChatId(userId, peerId);
@@ -103,7 +103,7 @@ class ChatService {
     return res;
   }
 
-  // ====== عدد الرسائل غير المقروءة ======
+  // ====== عدد غير المقروءة ======
 
   Future<int> getUnreadCount(String userId, String peerId) async {
     final chatId = _getChatId(userId, peerId);
@@ -114,16 +114,5 @@ class ChatService {
         .eq('receiver_id', userId)
         .eq('is_read', false);
     return res.length;
-  }
-
-  Stream<int> getUnreadCountStream(String userId, String peerId) {
-    final chatId = _getChatId(userId, peerId);
-    return _supabase
-        .from('private_messages')
-        .stream(primaryKey: ['id'])
-        .eq('chat_id', chatId)
-        .eq('receiver_id', userId)
-        .eq('is_read', false)
-        .map((data) => data.length);
   }
 }
