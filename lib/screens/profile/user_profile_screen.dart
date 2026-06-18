@@ -37,25 +37,26 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       final me = context.read<AuthProvider>().user!;
 
       final res = await _supabase
-     .from('users')
-     .select()
-     .eq('id', widget.userId)
-     .single();
+    .from('users')
+    .select()
+    .eq('id', widget.userId)
+    .single();
       _user = UserModel.fromJson(res);
 
+      // ✅ عدلنا من blocks إلى blocked_users + الأسماء الصحيحة
       final blockRes = await _supabase
-     .from('blocks')
-     .select()
-     .eq('blocker_id', me.id)
-     .eq('blocked_id', widget.userId)
-     .maybeSingle();
+    .from('blocked_users')
+    .select()
+    .eq('blocker_id', me.id)
+    .eq('blocked_id', widget.userId)
+    .maybeSingle();
       _isBlockedByMe = blockRes!= null;
 
       final adminRes = await _supabase
-     .from('admins')
-     .select()
-     .eq('user_id', widget.userId)
-     .maybeSingle();
+    .from('admins')
+    .select()
+    .eq('user_id', widget.userId)
+    .maybeSingle();
       _isAdmin = adminRes!= null;
 
       _isMod = _user?.role == 'moderator' || (_user?.isMod?? false);
@@ -72,13 +73,15 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
 
     try {
       if (_isBlockedByMe) {
+        // ✅ عدلنا الأسماء
         await _supabase
-     .from('blocks')
-     .delete()
-     .eq('blocker_id', me.id)
-     .eq('blocked_id', widget.userId);
+    .from('blocked_users')
+    .delete()
+    .eq('blocker_id', me.id)
+    .eq('blocked_id', widget.userId);
       } else {
-        await _supabase.from('blocks').insert({
+        // ✅ عدلنا الأسماء
+        await _supabase.from('blocked_users').insert({
           'blocker_id': me.id,
           'blocked_id': widget.userId,
         });
@@ -301,9 +304,9 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         child: SafeArea(
           bottom: false,
           child: _loading
-       ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+      ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
               : _user == null
-         ? const Center(
+        ? const Center(
                     child: Text('تعذر تحميل البيانات',
                         style: TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub)))
                   : SingleChildScrollView(
