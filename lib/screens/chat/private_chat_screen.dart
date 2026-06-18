@@ -10,7 +10,7 @@ import '../../providers/auth_provider.dart';
 import '../../services/chat_service.dart';
 import '../../widgets/chat/chat_input_bar.dart';
 import '../../widgets/chat/message_bubble.dart';
-import '../../widgets/chat/user_avatar.dart';
+import '../../widgets/user_avatar.dart';
 import '../profile/user_profile_screen.dart';
 
 class PrivateChatScreen extends StatefulWidget {
