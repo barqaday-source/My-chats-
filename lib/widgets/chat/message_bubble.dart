@@ -1,180 +1,212 @@
 import 'package:flutter/material.dart';
-import 'package:cached_network_image/cached_network_image.dart';
-import 'package:provider/provider.dart';
+import 'package:audioplayers/audioplayers.dart';
 import '../../core/constants/app_colors.dart';
-import '../../providers/auth_provider.dart';
-import '../../services/chat_service.dart';
-import 'audio_message_widget.dart';
+import '../../models/message_model.dart';
 
-class MessageBubble extends StatelessWidget {
+class MessageBubble extends StatefulWidget {
   final Map<String, dynamic> message;
   final bool isMe;
-  final bool isRoom;
-  final VoidCallback? onReply;
-  final String? replyToContent;
 
   const MessageBubble({
     super.key,
     required this.message,
     required this.isMe,
-    this.isRoom = false,
-    this.onReply,
-    this.replyToContent,
   });
 
-  void _showOptions(BuildContext context) {
-    final me = context.read<AuthProvider>().user!;
-    final chatService = ChatService();
-    final messageId = message['id'] as String;
-    final senderId = message['sender_id'] as String;
+  @override
+  State<MessageBubble> createState() => _MessageBubbleState();
+}
 
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: AppColors.bgCard,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => SafeArea(
-        child: Wrap(
-          children: [
-            ListTile(
-              leading: const Icon(Icons.reply_rounded, color: AppColors.white),
-              title: const Text('رد', style: TextStyle(fontFamily: 'Tajawal', color: AppColors.white)),
-              onTap: () {
-                Navigator.pop(context);
-                onReply?.call();
-              },
-            ),
-            if (senderId == me.id)
-              ListTile(
-                leading: const Icon(Icons.delete_rounded, color: AppColors.danger),
-                title: const Text('حذف', style: TextStyle(fontFamily: 'Tajawal', color: AppColors.danger)),
-                onTap: () async {
-                  Navigator.pop(context);
-                  await chatService.deleteMessage(messageId, isRoom);
-                },
-              ),
-          ],
-        ),
-      ),
-    );
+class _MessageBubbleState extends State<MessageBubble> {
+  final _audioPlayer = AudioPlayer();
+  bool _isPlaying = false;
+  Duration _duration = Duration.zero;
+  Duration _position = Duration.zero;
+
+  @override
+  void dispose() {
+    _audioPlayer.dispose();
+    super.dispose();
+  }
+
+  Future<void> _playPauseAudio(String url) async {
+    if (_isPlaying) {
+      await _audioPlayer.pause();
+      setState(() => _isPlaying = false);
+    } else {
+      await _audioPlayer.play(UrlSource(url));
+      setState(() => _isPlaying = true);
+      
+      _audioPlayer.onDurationChanged.listen((d) {
+        setState(() => _duration = d);
+      });
+      
+      _audioPlayer.onPositionChanged.listen((p) {
+        setState(() => _position = p);
+      });
+      
+      _audioPlayer.onPlayerComplete.listen((_) {
+        setState(() {
+          _isPlaying = false;
+          _position = Duration.zero;
+        });
+      });
+    }
+  }
+
+  String _formatDuration(int seconds) {
+    final mins = (seconds / 60).floor();
+    final secs = seconds % 60;
+    return '${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
   }
 
   @override
   Widget build(BuildContext context) {
-    final type = message['type'] ?? 'text';
-    final replyToId = message['reply_to_id'];
-
-    return GestureDetector(
-      onLongPress: () => _showOptions(context),
+    final msg = MessageModel.fromJson(widget.message);
+    
+    return Align(
+      alignment: widget.isMe? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.all(12),
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.of(context).size.width * 0.75,
+        ),
+        decoration: BoxDecoration(
+          color: widget.isMe? AppColors.primary : AppColors.bgCard,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.glassBorder),
+        ),
         child: Column(
-          crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ✅ بوكس الرد
-            if (replyToId != null)
-              Container(
-                margin: const EdgeInsets.only(bottom: 4),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                constraints: const BoxConstraints(maxWidth: 280),
-                decoration: BoxDecoration(
-                  color: AppColors.bgCard2.withOpacity(0.7),
-                  borderRadius: BorderRadius.circular(12),
-                  border: const Border(left: BorderSide(color: AppColors.primary, width: 3)),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.reply_rounded, color: AppColors.textSub, size: 16),
-                    const SizedBox(width: 6),
-                    Flexible(
-                      child: Text(
-                        replyToContent ?? 'رد على رسالة',
-                        style: const TextStyle(
-                          fontFamily: 'Tajawal',
-                          color: AppColors.textSub,
-                          fontSize: 12,
-                          fontStyle: FontStyle.italic,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
+            if (!widget.isMe)
+              Text(
+                msg.senderName,
+                style: const TextStyle(
+                  fontFamily: 'Tajawal',
+                  color: AppColors.primary,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
-
-            // ✅ المحتوى
-            _buildContent(type),
+            if (msg.replyToId!= null) _buildReplyContent(msg),
+            const SizedBox(height: 4),
+            if (msg.type == 'text') _buildTextContent(msg),
+            if (msg.type == 'voice') _buildAudioContent(msg),
+            if (msg.type == 'image') _buildImageContent(msg),
+            const SizedBox(height: 4),
+            _buildTime(msg),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildContent(String type) {
-    // صوت
-    if (type == 'voice' && message['audio_url'] != null) {
-      return AudioMessageWidget(
-        audioUrl: message['audio_url'],
-        duration: message['duration'] ?? 0,
-        isMe: isMe,
-      );
-    }
-
-    // صورة
-    if (type == 'image' && message['media_url'] != null) {
-      return Container(
-        constraints: const BoxConstraints(maxWidth: 250, maxHeight: 300),
-        decoration: BoxDecoration(
-          color: isMe ? AppColors.primary : AppColors.bgCard,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(16),
-          child: CachedNetworkImage(
-            imageUrl: message['media_url'],
-            placeholder: (context, url) => Container(
-              height: 200,
-              color: AppColors.bgCard2,
-              child: const Center(child: CircularProgressIndicator()),
-            ),
-            errorWidget: (context, url, error) => Container(
-              height: 200,
-              color: AppColors.bgCard2,
-              child: const Icon(Icons.error, color: AppColors.white),
-            ),
-            fit: BoxFit.cover,
-          ),
-        ),
-      );
-    }
-
-    // نص
+  Widget _buildReplyContent(MessageModel msg) {
     return Container(
-      constraints: const BoxConstraints(maxWidth: 280),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        gradient: isMe
-            ? const LinearGradient(colors: [AppColors.primary, AppColors.primaryDark])
-            : null,
-        color: isMe ? null : AppColors.bgCard,
-        borderRadius: BorderRadius.only(
-          topLeft: const Radius.circular(16),
-          topRight: const Radius.circular(16),
-          bottomLeft: Radius.circular(isMe ? 16 : 4),
-          bottomRight: Radius.circular(isMe ? 4 : 16),
+        color: Colors.black.withOpacity(0.2),
+        borderRadius: BorderRadius.circular(8),
+        border: Border(
+          left: BorderSide(color: AppColors.primary, width: 3),
         ),
       ),
       child: Text(
-        message['content'] ?? '',
-        style: const TextStyle(
+        'رد على رسالة',
+        style: TextStyle(
           fontFamily: 'Tajawal',
-          color: AppColors.white,
-          fontSize: 15,
-          height: 1.4,
+          color: AppColors.textSub,
+          fontSize: 11,
+          fontStyle: FontStyle.italic,
         ),
+      ),
+    );
+  }
+
+  Widget _buildTextContent(MessageModel msg) {
+    return Text(
+      msg.content,
+      style: TextStyle(
+        fontFamily: 'Tajawal',
+        color: widget.isMe? Colors.white : AppColors.white,
+        fontSize: 15,
+      ),
+    );
+  }
+
+  Widget _buildAudioContent(MessageModel msg) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconButton(
+          onPressed: () => _playPauseAudio(msg.audioUrl!),
+          icon: Icon(
+            _isPlaying? Icons.pause_rounded : Icons.play_arrow_rounded,
+            color: widget.isMe? Colors.white : AppColors.primary,
+          ),
+        ),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Slider(
+                value: _position.inSeconds.toDouble(),
+                max: _duration.inSeconds.toDouble() > 0? _duration.inSeconds.toDouble() : 1,
+                onChanged: (value) async {
+                  await _audioPlayer.seek(Duration(seconds: value.toInt()));
+                },
+                activeColor: widget.isMe? Colors.white : AppColors.primary,
+                inactiveColor: AppColors.glassBorder,
+              ),
+              Text(
+                '${_formatDuration(_position.inSeconds)} / ${_formatDuration(msg.duration?? 0)}',
+                style: TextStyle(
+                  fontFamily: 'Tajawal',
+                  color: widget.isMe? Colors.white70 : AppColors.textSub,
+                  fontSize: 10,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildImageContent(MessageModel msg) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: Image.network(
+        msg.fileUrl!,
+        fit: BoxFit.cover,
+        loadingBuilder: (context, child, loadingProgress) {
+          if (loadingProgress == null) return child;
+          return Container(
+            height: 200,
+            child: Center(
+              child: CircularProgressIndicator(
+                color: AppColors.primary,
+                value: loadingProgress.expectedTotalBytes!= null
+                 ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes!
+                    : null,
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildTime(MessageModel msg) {
+    return Text(
+      '${msg.createdAt.hour.toString().padLeft(2, '0')}:${msg.createdAt.minute.toString().padLeft(2, '0')}',
+      style: TextStyle(
+        fontFamily: 'Tajawal',
+        color: widget.isMe? Colors.white70 : AppColors.textSub,
+        fontSize: 10,
       ),
     );
   }
