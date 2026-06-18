@@ -1,16 +1,17 @@
-import 'dart:io';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:uuid/uuid.dart';
 import '../../core/constants/app_colors.dart';
-import '../../models/message_model.dart';
 import '../../models/room_model.dart';
+import '../../models/user_model.dart';
+import '../../models/message_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/chat_service.dart';
 import '../../services/room_service.dart';
 import '../../widgets/chat/chat_input_bar.dart';
 import '../../widgets/chat/message_bubble.dart';
+import '../../widgets/user_avatar.dart';
 import 'room_members_screen.dart';
 
 class RoomChatScreen extends StatefulWidget {
@@ -21,46 +22,85 @@ class RoomChatScreen extends StatefulWidget {
   State<RoomChatScreen> createState() => _RoomChatScreenState();
 }
 
-class _RoomChatScreenState extends State<RoomChatScreen> {
+class _RoomChatScreenState extends State<RoomChatScreen> with WidgetsBindingObserver {
   final _chatService = ChatService();
   final _roomService = RoomService();
   final _supabase = Supabase.instance.client;
-  final _textFocusNode = FocusNode();
   final _scrollController = ScrollController();
 
-  Stream<List<Map<String, dynamic>>>? _messagesStream;
-  String? _replyToId;
-  String? _replyToContent;
-  List<Map<String, dynamic>> _onlineMembers = [];
+  List<UserModel> _onlineMembers = [];
+  StreamSubscription? _membersSub;
+  late String _userId;
 
   @override
   void initState() {
     super.initState();
-    final me = context.read<AuthProvider>().user!;
-    _messagesStream = _chatService.getRoomMessagesStream(widget.room.id);
-    _chatService.setUserOnlineInRoom(me.id, widget.room.id);
-    _loadOnlineMembers();
+    WidgetsBinding.instance.addObserver(this);
+    _userId = context.read<AuthProvider>().user!.id;
+    _joinRoom();
+    _subscribeToMembers();
   }
 
   @override
   void dispose() {
-    final me = context.read<AuthProvider>().user!;
-    _chatService.setUserOfflineInRoom(me.id, widget.room.id);
-    _textFocusNode.dispose();
+    WidgetsBinding.instance.removeObserver(this);
+    _leaveRoom();
+    _membersSub?.cancel();
     _scrollController.dispose();
     super.dispose();
   }
 
-  Future<void> _loadOnlineMembers() async {
-    final members = await _roomService.getRoomMembers(widget.room.id);
-    if (mounted) {
-      setState(() {
-        _onlineMembers = members.where((m) => m['is_online'] == true).toList();
-      });
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _joinRoom();
+    } else if (state == AppLifecycleState.paused) {
+      _leaveRoom();
     }
   }
 
-  void _scrollToBottom() {
+  Future<void> _joinRoom() async {
+    await _roomService.joinRoom(_userId, widget.room.id);
+    await _chatService.setUserOnlineInRoom(_userId, widget.room.id);
+  }
+
+  Future<void> _leaveRoom() async {
+    await _chatService.setUserOfflineInRoom(_userId, widget.room.id);
+  }
+
+  void _subscribeToMembers() {
+    _membersSub = _supabase
+        .from('room_members')
+        .stream(primaryKey: ['id'])
+        .eq('room_id', widget.room.id)
+        .listen((data) async {
+      final members = await _roomService.getRoomMembers(widget.room.id);
+      if (!mounted) return;
+      final onlineData = members.where((m) => m['is_online'] == true).toList();
+      setState(() {
+        _onlineMembers = onlineData.map((m) => UserModel.fromJson(m)).toList();
+      });
+    });
+  }
+
+  Future<void> _sendMessage(String content, MessageType type, {String? audioPath, int? duration}) async {
+    final me = context.read<AuthProvider>().user!;
+    final message = MessageModel(
+      id: '',
+      chatId: widget.room.id,
+      senderId: me.id,
+      senderName: me.username,
+      senderAvatar: me.avatarUrl,
+      content: content,
+      type: type,
+      audioPath: audioPath,
+      duration: duration,
+      createdAt: DateTime.now(),
+      isRoom: true,
+    );
+
+    await _chatService.sendMessageToRoom(widget.room.id, message);
+
     if (_scrollController.hasClients) {
       _scrollController.animateTo(
         0,
@@ -72,42 +112,30 @@ class _RoomChatScreenState extends State<RoomChatScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final me = context.watch<AuthProvider>().user!;
-
     return Scaffold(
       appBar: AppBar(
         backgroundColor: AppColors.bgCard,
-        title: InkWell(
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => RoomMembersScreen(room: widget.room),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              widget.room.name,
+              style: const TextStyle(
+                fontFamily: 'Tajawal',
+                color: AppColors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
               ),
-            );
-          },
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                widget.room.name,
-                style: const TextStyle(
-                  fontFamily: 'Tajawal',
-                  color: AppColors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                ),
+            ),
+            Text(
+              '${_onlineMembers.length} متصل',
+              style: const TextStyle(
+                fontFamily: 'Tajawal',
+                color: AppColors.online,
+                fontSize: 11,
               ),
-              Text(
-                '${_onlineMembers.length} متصل من ${widget.room.memberCount}',
-                style: const TextStyle(
-                  fontFamily: 'Tajawal',
-                  color: AppColors.textSub,
-                  fontSize: 12,
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
         actions: [
           IconButton(
@@ -127,51 +155,45 @@ class _RoomChatScreenState extends State<RoomChatScreen> {
         decoration: BoxDecoration(gradient: AppColors.bgGrad),
         child: Column(
           children: [
+            _buildOnlineBar(),
             Expanded(
               child: StreamBuilder<List<Map<String, dynamic>>>(
-                stream: _messagesStream,
+                stream: _chatService.getRoomMessagesStream(widget.room.id),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(
                       child: CircularProgressIndicator(color: AppColors.primary),
                     );
                   }
-                  if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                    return const Center(
+
+                  final messages = snapshot.data ?? [];
+                  if (messages.isEmpty) {
+                    return Center(
                       child: Text(
-                        'لا توجد رسائل',
-                        style: TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub),
+                        'ابدأ المحادثة الآن',
+                        style: TextStyle(
+                          fontFamily: 'Tajawal',
+                          color: AppColors.textSub,
+                          fontSize: 14,
+                        ),
                       ),
                     );
                   }
 
-                  final messages = snapshot.data!;
-                  WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
-
                   return ListView.builder(
                     controller: _scrollController,
                     reverse: true,
-                    padding: const EdgeInsets.only(top: 8, bottom: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     itemCount: messages.length,
                     itemBuilder: (context, index) {
-                      final msg = messages[index];
-                      final replyMsg = messages.firstWhere(
-                        (m) => m['id'] == msg['reply_to_id'],
-                        orElse: () => {},
-                      );
-
+                      final msg = MessageModel.fromJson(messages[index]);
+                      final isMe = msg.senderId == _userId;
                       return MessageBubble(
                         message: msg,
-                        isMe: msg['sender_id'] == me.id,
-                        isRoom: true,
-                        replyToContent: replyMsg['content'],
-                        onReply: () {
-                          setState(() {
-                            _replyToId = msg['id'];
-                            _replyToContent = msg['content'];
-                          });
-                          _textFocusNode.requestFocus();
-                        },
+                        isMe: isMe,
+                        onDelete: isMe
+                            ? () => _chatService.deleteMessage(msg.id, true)
+                            : null,
                       );
                     },
                   );
@@ -179,65 +201,57 @@ class _RoomChatScreenState extends State<RoomChatScreen> {
               ),
             ),
             ChatInputBar(
-              replyToId: _replyToId,
-              replyToContent: _replyToContent,
-              onCancelReply: () => setState(() {
-                _replyToId = null;
-                _replyToContent = null;
-              }),
-              onSendText: (text, replyId) async {
-                final msg = MessageModel(
-                  id: const Uuid().v4(),
-                  chatId: widget.room.id,
-                  senderId: me.id,
-                  receiverId: '',
-                  content: text,
-                  type: 'text',
-                  createdAt: DateTime.now(),
-                  replyToId: replyId,
-                );
-                await _chatService.sendMessageToRoom(widget.room.id, msg);
-              },
-              onSendImage: (file, replyId) async {
-                final fileName = '${const Uuid().v4()}.jpg';
-                await _supabase.storage.from('chat-images').upload(fileName, file);
-                final url = _supabase.storage.from('chat-images').getPublicUrl(fileName);
-
-                final msg = MessageModel(
-                  id: const Uuid().v4(),
-                  chatId: widget.room.id,
-                  senderId: me.id,
-                  receiverId: '',
-                  content: '',
-                  type: 'image',
-                  mediaUrl: url,
-                  createdAt: DateTime.now(),
-                  replyToId: replyId,
-                );
-                await _chatService.sendMessageToRoom(widget.room.id, msg);
-              },
-              onSendVoice: (file, duration, replyId) async {
-                final fileName = '${const Uuid().v4()}.aac';
-                await _supabase.storage.from('chat-audio').upload(fileName, file);
-                final url = _supabase.storage.from('chat-audio').getPublicUrl(fileName);
-
-                final msg = MessageModel(
-                  id: const Uuid().v4(),
-                  chatId: widget.room.id,
-                  senderId: me.id,
-                  receiverId: '',
-                  content: '',
-                  type: 'voice',
-                  audioUrl: url,
-                  duration: duration,
-                  createdAt: DateTime.now(),
-                  replyToId: replyId,
-                );
-                await _chatService.sendMessageToRoom(widget.room.id, msg);
-              },
+              onSendText: (text) => _sendMessage(text, MessageType.text),
+              onSendAudio: (path, dur) => _sendMessage('', MessageType.audio, audioPath: path, duration: dur),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildOnlineBar() {
+    if (_onlineMembers.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      height: 60,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppColors.bgCard.withOpacity(0.5),
+        border: Border(
+          bottom: BorderSide(color: AppColors.glassBorder, width: 1),
+        ),
+      ),
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        itemCount: _onlineMembers.length,
+        itemBuilder: (context, index) {
+          final member = _onlineMembers[index];
+          return Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: Column(
+              children: [
+                UserAvatar(
+                  url: member.avatarUrl,
+                  name: member.username,
+                  isOnline: true,
+                  size: 32,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  member.username.length > 6
+                      ? '${member.username.substring(0, 6)}...'
+                      : member.username,
+                  style: const TextStyle(
+                    fontFamily: 'Tajawal',
+                    color: AppColors.white,
+                    fontSize: 9,
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
