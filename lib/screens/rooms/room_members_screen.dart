@@ -35,10 +35,10 @@ class _RoomMembersScreenState extends State<RoomMembersScreen> {
   Future<void> _loadMembers() async {
     setState(() => _loading = true);
     try {
-      final members = await _roomService.getRoomMembers(widget.room.id);
+      final membersData = await _roomService.getRoomMembers(widget.room.id);
       if (mounted) {
         setState(() {
-          _members = members.map((m) => UserModel.fromJson(m)).toList();
+          _members = membersData.map((m) => UserModel.fromJson(m)).toList();
           _loading = false;
         });
       }
