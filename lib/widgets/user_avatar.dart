@@ -7,6 +7,9 @@ class UserAvatar extends StatelessWidget {
   final String name;
   final double size;
   final bool isOnline;
+  final VoidCallback? onTap;
+  final bool showBorder;
+  final String? heroTag;
 
   const UserAvatar({
     super.key,
@@ -14,35 +17,49 @@ class UserAvatar extends StatelessWidget {
     required this.name,
     this.size = 40,
     this.isOnline = false,
+    this.onTap,
+    this.showBorder = false,
+    this.heroTag,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
+    Widget avatar = Stack(
+      clipBehavior: Clip.none,
       children: [
-        CircleAvatar(
-          radius: size / 2,
-          backgroundColor: AppColors.primary.withOpacity(0.2),
-          child: url!= null && url!.isNotEmpty
-             ? ClipOval(
-                  child: CachedNetworkImage(
-                    imageUrl: url!,
-                    width: size,
-                    height: size,
-                    fit: BoxFit.cover,
-                    placeholder: (context, url) => _buildInitial(),
-                    errorWidget: (context, url, error) => _buildInitial(),
-                  ),
-                )
-              : _buildInitial(),
+        Container(
+          width: size,
+          height: size,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: showBorder
+               ? Border.all(color: AppColors.primary, width: 2)
+                : null,
+          ),
+          child: CircleAvatar(
+            radius: size / 2,
+            backgroundColor: AppColors.primary.withOpacity(0.2),
+            child: url!= null && url!.isNotEmpty
+               ? ClipOval(
+                    child: CachedNetworkImage(
+                      imageUrl: url!,
+                      width: size,
+                      height: size,
+                      fit: BoxFit.cover,
+                      placeholder: (context, url) => _buildInitial(),
+                      errorWidget: (context, url, error) => _buildInitial(),
+                    ),
+                  )
+                : _buildInitial(),
+          ),
         ),
         if (isOnline)
           Positioned(
             bottom: 0,
             right: 0,
             child: Container(
-              width: size * 0.25,
-              height: size * 0.25,
+              width: size * 0.3,
+              height: size * 0.3,
               decoration: BoxDecoration(
                 color: AppColors.online,
                 shape: BoxShape.circle,
@@ -52,6 +69,16 @@ class UserAvatar extends StatelessWidget {
           ),
       ],
     );
+
+    if (heroTag!= null) {
+      avatar = Hero(tag: heroTag!, child: avatar);
+    }
+
+    if (onTap!= null) {
+      avatar = GestureDetector(onTap: onTap, child: avatar);
+    }
+
+    return avatar;
   }
 
   Widget _buildInitial() {
