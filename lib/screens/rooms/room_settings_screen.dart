@@ -18,7 +18,6 @@ class _RoomSettingsScreenState extends State<RoomSettingsScreen> {
   final _roomService = RoomService();
   final _nameController = TextEditingController();
   final _descController = TextEditingController();
-  bool _isPublic = true;
   bool _loading = false;
   late bool _isOwner;
 
@@ -29,7 +28,6 @@ class _RoomSettingsScreenState extends State<RoomSettingsScreen> {
     _isOwner = me.id == widget.room.ownerId;
     _nameController.text = widget.room.name;
     _descController.text = widget.room.description?? '';
-    _isPublic = widget.room.isPublic;
   }
 
   @override
@@ -55,7 +53,6 @@ class _RoomSettingsScreenState extends State<RoomSettingsScreen> {
       final updatedRoom = widget.room.copyWith(
         name: _nameController.text.trim(),
         description: _descController.text.trim(),
-        isPublic: _isPublic,
       );
       await _roomService.updateRoom(updatedRoom);
       if (mounted) {
@@ -187,7 +184,7 @@ class _RoomSettingsScreenState extends State<RoomSettingsScreen> {
       body: Container(
         decoration: BoxDecoration(gradient: AppColors.bgGrad),
         child: _loading
-         ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+      ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
             : ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
@@ -206,8 +203,6 @@ class _RoomSettingsScreenState extends State<RoomSettingsScreen> {
                       icon: Icons.description_rounded,
                       maxLines: 3,
                     ),
-                    const SizedBox(height: 16),
-                    _buildSwitchTile(),
                     const SizedBox(height: 24),
                     _buildButton(
                       label: 'حفظ التغييرات',
@@ -230,8 +225,6 @@ class _RoomSettingsScreenState extends State<RoomSettingsScreen> {
                     _buildInfoTile('اسم الغرفة', widget.room.name),
                     const SizedBox(height: 12),
                     _buildInfoTile('الوصف', widget.room.description?? 'لا يوجد'),
-                    const SizedBox(height: 12),
-                    _buildInfoTile('النوع', widget.room.isPublic? 'عامة' : 'خاصة'),
                     const SizedBox(height: 32),
                     _buildButton(
                       label: 'مغادرة الغرفة',
@@ -281,29 +274,6 @@ class _RoomSettingsScreenState extends State<RoomSettingsScreen> {
           border: InputBorder.none,
           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         ),
-      ),
-    );
-  }
-
-  Widget _buildSwitchTile() {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.bgCard,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.glassBorder),
-      ),
-      child: SwitchListTile(
-        title: const Text(
-          'غرفة عامة',
-          style: TextStyle(fontFamily: 'Tajawal', color: AppColors.white),
-        ),
-        subtitle: Text(
-          _isPublic? 'يمكن لأي شخص الانضمام' : 'بكلمة مرور فقط',
-          style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub, fontSize: 12),
-        ),
-        value: _isPublic,
-        onChanged: (val) => setState(() => _isPublic = val),
-        activeColor: AppColors.primary,
       ),
     );
   }
@@ -373,10 +343,10 @@ class _RoomSettingsScreenState extends State<RoomSettingsScreen> {
               return ListTile(
                 leading: CircleAvatar(
                   backgroundImage: member.avatarUrl!= null
-                   ? NetworkImage(member.avatarUrl!)
+                ? NetworkImage(member.avatarUrl!)
                       : null,
                   child: member.avatarUrl == null
-                   ? Text(member.username[0].toUpperCase())
+                ? Text(member.username[0].toUpperCase())
                       : null,
                 ),
                 title: Text(
@@ -384,13 +354,13 @@ class _RoomSettingsScreenState extends State<RoomSettingsScreen> {
                   style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.white),
                 ),
                 subtitle: isOwner
-                 ? const Text(
+              ? const Text(
                         'المالك',
                         style: TextStyle(fontFamily: 'Tajawal', color: AppColors.primary, fontSize: 11),
                       )
                     : null,
                 trailing: _isOwner &&!isOwner
-                 ? IconButton(
+              ? IconButton(
                         icon: const Icon(Icons.person_remove_rounded, color: AppColors.danger),
                         onPressed: () async {
                           await _roomService.removeRoomMember(widget.room.id, member.id);
@@ -438,26 +408,6 @@ class _RoomSettingsScreenState extends State<RoomSettingsScreen> {
           ],
         ),
       ),
-    );
-  }
-}
-
-extension RoomModelCopy on RoomModel {
-  RoomModel copyWith({
-    String? name,
-    String? description,
-    bool? isPublic,
-  }) {
-    return RoomModel(
-      id: id,
-      name: name?? this.name,
-      description: description?? this.description,
-      ownerId: ownerId,
-      ownerName: ownerName,
-      ownerAvatar: ownerAvatar,
-      isPublic: isPublic?? this.isPublic,
-      createdAt: createdAt,
-      membersCount: membersCount,
     );
   }
 }
