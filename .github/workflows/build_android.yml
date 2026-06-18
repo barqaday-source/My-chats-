@@ -33,24 +33,25 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.29.0'
-          channel: 'stable'     
+          channel: 'stable'
+          cache: true
 
       - name: Prepare Workspace
         run: |
           flutter pub cache clean --force
           flutter clean
-          # ننشئ منصة الأندرويد أو نحدث النواقص بشكل آمن دون كسر الـ Plugins
-          flutter create --platforms=android .
+          flutter create --platforms=android . --overwrite
 
       - name: Install dependencies
         run: flutter pub get
 
       - name: Configure Android Files
         run: |
-          # 1. إزالة ملف الـ kts القديم من جذور الأندرويد لمنع تعارض الـ Plugins
+          # 1. إزالة ملفات قديمة تسبب تعارض
           rm -f android/settings.gradle.kts
+          rm -f android/gradle.properties
 
-          # 2. حقن ملف settings.gradle المتوافق تماماً مع Kotlin 2.2.0 وحزم مشروعك
+          # 2. settings.gradle متوافق مع Kotlin 2.2.0
           cat > android/settings.gradle << 'EOF'
           pluginManagement {
               def flutterSdkPath = {
@@ -80,58 +81,105 @@ jobs:
           include ":app"
           EOF
 
-          # 3. حقن ملف build.gradle.kts الخاص بالتطبيق
+          # 3. gradle.properties - مهم لـ desugaring + build
+          cat > android/gradle.properties << 'EOF'
+          org.gradle.jvmargs=-Xmx4096m -Dfile.encoding=UTF-8
+          android.useAndroidX=true
+          android.enableJetifier=true
+          android.nonTransitiveRClass=false
+          android.nonFinalResIds=false
+          EOF
+
+          # 4. build.gradle.kts للتطبيق
           cat > android/app/build.gradle.kts << 'EOF'
           plugins {
               id("com.android.application")
               id("kotlin-android")
               id("dev.flutter.flutter-gradle-plugin")
           }
+          
           android {
               namespace = "com.seachat.app"
               compileSdk = 35
               ndkVersion = "27.0.12077973"
+              
               compileOptions {
                   isCoreLibraryDesugaringEnabled = true
                   sourceCompatibility = JavaVersion.VERSION_17
                   targetCompatibility = JavaVersion.VERSION_17
               }
+              
               kotlinOptions {
                   jvmTarget = "17"
               }
+              
               defaultConfig {
                   applicationId = "com.seachat.app"
                   minSdk = 24
                   targetSdk = 35
                   versionCode = 1
                   versionName = "1.0"
+                  multiDexEnabled = true
               }
+              
               buildTypes {
                   release {
                       isMinifyEnabled = false
                       isShrinkResources = false
                       signingConfig = signingConfigs.getByName("debug")
                   }
+                  debug {
+                      isMinifyEnabled = false
+                      isShrinkResources = false
+                  }
               }
           }
+          
           dependencies {
               coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
+              implementation("androidx.multidex:multidex:2.0.1")
+          }
+          
+          flutter {
+              source = "../.."
           }
           EOF
 
-          # 4. حقن الـ Manifest مع فحص الصلاحيات الناقصة وإضافتها تلقائياً
+          # 5. AndroidManifest.xml + حقن كل الصلاحيات
           MANIFEST_PATH="android/app/src/main/AndroidManifest.xml"
+          mkdir -p android/app/src/main/
           
-          # أنشئ Manifest أساسي لو مو موجود
-          if [ ! -f "$MANIFEST_PATH" ]; then
-            mkdir -p android/app/src/main/
-            cat > "$MANIFEST_PATH" << 'EOF'
+          cat > "$MANIFEST_PATH" << 'EOF'
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <!-- الإنترنت والشبكة -->
+              <uses-permission android:name="android.permission.INTERNET" />
+              <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+              <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+              
+              <!-- الصوت - flutter_sound -->
+              <uses-permission android:name="android.permission.RECORD_AUDIO" />
+              <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+              <uses-permission android:name="android.permission.WAKE_LOCK" />
+              <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+              <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+              
+              <!-- الكاميرا والصور - image_picker -->
+              <uses-permission android:name="android.permission.CAMERA" />
+              <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+              <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />
+              <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+              <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+              <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+              
+              <!-- الإشعارات -->
+              <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+              
               <application
                   android:label="SeaChat"
                   android:name="${applicationName}"
                   android:icon="@mipmap/ic_launcher"
-                  android:usesCleartextTraffic="true">
+                  android:usesCleartextTraffic="true"
+                  android:requestLegacyExternalStorage="true">
                   <activity
                       android:name=".MainActivity"
                       android:exported="true"
@@ -149,40 +197,8 @@ jobs:
               </application>
           </manifest>
           EOF
-          fi
 
-          # دالة تضيف الصلاحية لو مو موجودة
-          add_permission() {
-            local permission="$1"
-            if ! grep -q "$permission" "$MANIFEST_PATH"; then
-              sed -i "/<manifest/a \    $permission" "$MANIFEST_PATH"
-              echo "Added: $permission"
-            fi
-          }
-
-          # كل الصلاحيات المطلوبة للتطبيق + flutter_sound + image_picker + url_launcher
-          add_permission '<uses-permission android:name="android.permission.INTERNET" />'
-          add_permission '<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />'
-          add_permission '<uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />'
-          add_permission '<uses-permission android:name="android.permission.RECORD_AUDIO" />'
-          add_permission '<uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />'
-          add_permission '<uses-permission android:name="android.permission.CAMERA" />'
-          add_permission '<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />'
-          add_permission '<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />'
-          add_permission '<uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />'
-          add_permission '<uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />'
-          add_permission '<uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />'
-          add_permission '<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />'
-          add_permission '<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />'
-          add_permission '<uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />'
-          add_permission '<uses-permission android:name="android.permission.WAKE_LOCK" />'
-
-          # تأكد usesCleartextTraffic موجود لـ Supabase
-          if ! grep -q 'android:usesCleartextTraffic="true"' "$MANIFEST_PATH"; then
-            sed -i 's/<application/<application android:usesCleartextTraffic="true"/' "$MANIFEST_PATH"
-          fi
-
-          # 5. إنشاء وحقن الـ MainActivity.kt لتجنب أي نقص في الكود المصدري للأندرويد
+          # 6. MainActivity.kt
           mkdir -p android/app/src/main/kotlin/com/seachat/app/
           cat > android/app/src/main/kotlin/com/seachat/app/MainActivity.kt << 'EOF'
           package com.seachat.app
@@ -201,6 +217,6 @@ jobs:
       - name: Upload Build Artifact APK
         uses: actions/upload-artifact@v4
         with:
-          name: SeaChat-APK-${{ github.run_number }}
+          name: SeaChat-APK-${{ github.event.inputs.build_type || 'release' }}-${{ github.run_number }}
           path: build/app/outputs/flutter-apk/app-*.apk
           retention-days: 14
