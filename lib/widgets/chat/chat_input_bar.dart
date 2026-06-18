@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter_sound/flutter_sound.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../../core/constants/app_colors.dart';
 import '../../models/message_model.dart';
 
@@ -33,6 +34,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
   final _textController = TextEditingController();
   final _recorder = FlutterSoundRecorder();
   final _imagePicker = ImagePicker();
+  bool _isRecorderInited = false;
   bool _isRecording = false;
   Timer? _timer;
   int _recordDuration = 0;
@@ -45,18 +47,32 @@ class _ChatInputBarState extends State<ChatInputBar> {
   }
 
   Future<void> _initRecorder() async {
+    final status = await Permission.microphone.request();
+    if (status != PermissionStatus.granted) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('لازم توافق على صلاحية المايك')),
+        );
+      }
+      return;
+    }
     await _recorder.openRecorder();
+    setState(() => _isRecorderInited = true);
   }
 
   @override
   void dispose() {
     _textController.dispose();
     _timer?.cancel();
-    _recorder.closeRecorder();
+    if (_isRecorderInited) _recorder.closeRecorder();
     super.dispose();
   }
 
   Future<void> _startRecording() async {
+    if (!_isRecorderInited) {
+      await _initRecorder();
+      if (!_isRecorderInited) return;
+    }
     try {
       final dir = await getTemporaryDirectory();
       _recordingPath = '${dir.path}/audio_${DateTime.now().millisecondsSinceEpoch}.aac';
@@ -73,6 +89,11 @@ class _ChatInputBarState extends State<ChatInputBar> {
       });
     } catch (e) {
       debugPrint('Error recording: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('فشل بدء التسجيل: $e')),
+        );
+      }
     }
   }
 
@@ -81,7 +102,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
       await _recorder.stopRecorder();
       _timer?.cancel();
       setState(() => _isRecording = false);
-      if (_recordingPath!= null && _recordDuration > 0) {
+      if (_recordingPath != null && _recordDuration > 0) {
         widget.onSendAudio?.call(_recordingPath!, _recordDuration, widget.replyToId);
       }
       _recordDuration = 0;
@@ -104,6 +125,11 @@ class _ChatInputBarState extends State<ChatInputBar> {
       }
     } catch (e) {
       debugPrint('Error picking image: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('فشل اختيار الصورة: $e')),
+        );
+      }
     }
   }
 
@@ -128,10 +154,10 @@ class _ChatInputBarState extends State<ChatInputBar> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (widget.replyToMessage!= null) _buildReplyPreview(),
+            if (widget.replyToMessage != null) _buildReplyPreview(),
             Row(
               children: [
-                if (widget.onSendImage!= null)
+                if (widget.onSendImage != null)
                   IconButton(
                     icon: const Icon(Icons.image_rounded, color: AppColors.primary),
                     onPressed: _pickImage,
@@ -165,25 +191,28 @@ class _ChatInputBarState extends State<ChatInputBar> {
                 ),
                 const SizedBox(width: 8),
                 if (_isRecording)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: AppColors.danger.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.mic, color: AppColors.danger, size: 18),
-                        const SizedBox(width: 4),
-                        Text(
-                          '$_recordDuration',
-                          style: const TextStyle(
-                            fontFamily: 'Tajawal',
-                            color: AppColors.danger,
-                            fontWeight: FontWeight.w600,
+                  GestureDetector(
+                    onTap: _stopRecording,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: AppColors.danger.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.stop, color: AppColors.danger, size: 18),
+                          const SizedBox(width: 4),
+                          Text(
+                            '$_recordDuration',
+                            style: const TextStyle(
+                              fontFamily: 'Tajawal',
+                              color: AppColors.danger,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   )
                 else if (_textController.text.trim().isNotEmpty)
@@ -191,7 +220,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
                     icon: const Icon(Icons.send_rounded, color: AppColors.primary),
                     onPressed: _sendText,
                   )
-                else if (widget.onSendAudio!= null)
+                else if (widget.onSendAudio != null)
                   GestureDetector(
                     onLongPress: _startRecording,
                     onLongPressUp: _stopRecording,
@@ -219,7 +248,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
       decoration: BoxDecoration(
         color: AppColors.primary.withOpacity(0.1),
         borderRadius: BorderRadius.circular(12),
-        border: Border(
+        border: const Border(
           left: BorderSide(color: AppColors.primary, width: 3),
         ),
       ),
@@ -240,10 +269,10 @@ class _ChatInputBarState extends State<ChatInputBar> {
                 ),
                 Text(
                   widget.replyToMessage!.type == 'voice'
-                ? 'رسالة صوتية'
+                      ? 'رسالة صوتية'
                       : widget.replyToMessage!.type == 'image'
-                    ? 'صورة'
-                        : widget.replyToMessage!.content,
+                          ? 'صورة'
+                          : widget.replyToMessage!.content,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
