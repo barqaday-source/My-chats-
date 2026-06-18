@@ -11,10 +11,10 @@ class RoomService {
   Future<List<RoomModel>> getRooms() async {
     try {
       final data = await _sb.from(SupabaseConfig.tRooms).select()
-     .eq('is_approved', true) // ✅ تمت الإضافة - فلتر الغرف الموافق عليها فقط
-     .order('is_official', ascending: false)
-     .order('online_count', ascending: false)
-     .order('member_count', ascending: false);
+    .eq('is_approved', true) // ✅ إضافة الفلتر فقط
+    .order('is_official', ascending: false)
+    .order('online_count', ascending: false)
+    .order('member_count', ascending: false);
       return (data as List).map((e) => RoomModel.fromJson(e as Map<String, dynamic>)).toList();
     } on PostgrestException catch (e, s) {
       debugPrint('''
@@ -104,7 +104,7 @@ class RoomService {
   Future<bool> isMember(String roomId, String userId) async {
     try {
       final data = await _sb.from(SupabaseConfig.tRoomMembers)
-     .select().eq('room_id', roomId).eq('user_id', userId).maybeSingle();
+    .select().eq('room_id', roomId).eq('user_id', userId).maybeSingle();
       return data!= null;
     } catch (e) {
       debugPrint('isMember error: $e');
@@ -131,8 +131,8 @@ class RoomService {
   Future<void> approveRoom(String roomId) async {
     try {
       await _sb.from(SupabaseConfig.tRooms)
-     .update({'is_approved': true})
-     .eq('id', roomId);
+    .update({'is_approved': true})
+    .eq('id', roomId);
     } on PostgrestException catch (e, s) {
       debugPrint('''
       ❌ Supabase Error - approveRoom
@@ -164,19 +164,19 @@ class RoomService {
 
   Stream<List<MessageModel>> getRoomMessages(String roomId) {
     return _sb
-   .from(SupabaseConfig.tRoomMessages)
-   .stream(primaryKey: ['id'])
-   .eq('chat_id', roomId)
-   .order('created_at', ascending: false)
-   .map((maps) => maps.map((map) => MessageModel.fromJson(map)).toList());
+  .from(SupabaseConfig.tRoomMessages)
+  .stream(primaryKey: ['id'])
+  .eq('chat_id', roomId)
+  .order('created_at', ascending: false)
+  .map((maps) => maps.map((map) => MessageModel.fromJson(map)).toList());
   }
 
   Stream<List<UserModel>> getRoomMembers(String roomId) {
     return _sb
-      .from(SupabaseConfig.tRoomMembers)
-      .stream(primaryKey: ['id'])
-      .eq('room_id', roomId)
-      .asyncMap((members) async {
+     .from(SupabaseConfig.tRoomMembers)
+     .stream(primaryKey: ['id'])
+     .eq('room_id', roomId)
+     .asyncMap((members) async {
           List<UserModel> users = [];
           for (var member in members) {
             final userData = await _sb.from(SupabaseConfig.tUsers).select().eq('id', member['user_id']).single();
@@ -184,5 +184,20 @@ class RoomService {
           }
           return users;
         });
+  }
+
+  // ✅ دوال جديدة فقط
+  Future<void> setOnline(String roomId, String userId) async {
+    await _sb.rpc('set_user_online_room', params: {
+      'room_id_input': roomId,
+      'user_id_input': userId,
+    });
+  }
+
+  Future<void> setOffline(String roomId, String userId) async {
+    await _sb.rpc('set_user_offline_room', params: {
+      'room_id_input': roomId,
+      'user_id_input': userId,
+    });
   }
 }
