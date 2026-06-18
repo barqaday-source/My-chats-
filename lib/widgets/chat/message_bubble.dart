@@ -9,9 +9,9 @@ import 'audio_message_widget.dart';
 class MessageBubble extends StatelessWidget {
   final Map<String, dynamic> message;
   final bool isMe;
-  final bool isRoom; // عشان الحذف من جدول الغرف أو الخاص
+  final bool isRoom;
   final VoidCallback? onReply;
-  final String? replyToContent; // محتوى الرسالة المردود عليها
+  final String? replyToContent;
 
   const MessageBubble({
     super.key,
@@ -45,7 +45,6 @@ class MessageBubble extends StatelessWidget {
                 onReply?.call();
               },
             ),
-            // ✅ الحذف بس لرسائلك
             if (senderId == me.id)
               ListTile(
                 leading: const Icon(Icons.delete_rounded, color: AppColors.danger),
@@ -63,7 +62,7 @@ class MessageBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final type = message['type']?? 'text';
+    final type = message['type'] ?? 'text';
     final replyToId = message['reply_to_id'];
 
     return GestureDetector(
@@ -71,10 +70,10 @@ class MessageBubble extends StatelessWidget {
       child: Container(
         margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
         child: Column(
-          crossAxisAlignment: isMe? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           children: [
-            // ✅ عرض الرد إذا موجود
-            if (replyToId!= null)
+            // ✅ بوكس الرد
+            if (replyToId != null)
               Container(
                 margin: const EdgeInsets.only(bottom: 4),
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -82,9 +81,7 @@ class MessageBubble extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: AppColors.bgCard2.withOpacity(0.7),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border(
-                    left: BorderSide(color: AppColors.primary, width: 3),
-                  ),
+                  border: const Border(left: BorderSide(color: AppColors.primary, width: 3)),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -93,8 +90,8 @@ class MessageBubble extends StatelessWidget {
                     const SizedBox(width: 6),
                     Flexible(
                       child: Text(
-                        replyToContent?? 'رد على رسالة',
-                        style: TextStyle(
+                        replyToContent ?? 'رد على رسالة',
+                        style: const TextStyle(
                           fontFamily: 'Tajawal',
                           color: AppColors.textSub,
                           fontSize: 12,
@@ -108,7 +105,7 @@ class MessageBubble extends StatelessWidget {
                 ),
               ),
 
-            // ✅ محتوى الرسالة
+            // ✅ المحتوى
             _buildContent(type),
           ],
         ),
@@ -118,20 +115,20 @@ class MessageBubble extends StatelessWidget {
 
   Widget _buildContent(String type) {
     // صوت
-    if (type == 'voice' && message['audio_url']!= null) {
+    if (type == 'voice' && message['audio_url'] != null) {
       return AudioMessageWidget(
         audioUrl: message['audio_url'],
-        duration: message['duration']?? 0,
+        duration: message['duration'] ?? 0,
         isMe: isMe,
       );
     }
 
     // صورة
-    if (type == 'image' && message['media_url']!= null) {
+    if (type == 'image' && message['media_url'] != null) {
       return Container(
         constraints: const BoxConstraints(maxWidth: 250, maxHeight: 300),
         decoration: BoxDecoration(
-          color: isMe? AppColors.primary : AppColors.bgCard,
+          color: isMe ? AppColors.primary : AppColors.bgCard,
           borderRadius: BorderRadius.circular(16),
         ),
         child: ClipRRect(
@@ -160,18 +157,18 @@ class MessageBubble extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
         gradient: isMe
-           ? const LinearGradient(colors: [AppColors.primary, AppColors.primaryDark])
+            ? const LinearGradient(colors: [AppColors.primary, AppColors.primaryDark])
             : null,
-        color: isMe? null : AppColors.bgCard,
+        color: isMe ? null : AppColors.bgCard,
         borderRadius: BorderRadius.only(
           topLeft: const Radius.circular(16),
           topRight: const Radius.circular(16),
-          bottomLeft: Radius.circular(isMe? 16 : 4),
-          bottomRight: Radius.circular(isMe? 4 : 16),
+          bottomLeft: Radius.circular(isMe ? 16 : 4),
+          bottomRight: Radius.circular(isMe ? 4 : 16),
         ),
       ),
       child: Text(
-        message['content']?? '',
+        message['content'] ?? '',
         style: const TextStyle(
           fontFamily: 'Tajawal',
           color: AppColors.white,
