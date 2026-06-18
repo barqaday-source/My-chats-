@@ -19,9 +19,19 @@ class _RoomChatScreenState extends State<RoomChatScreen> {
   final _roomSvc = RoomService();
   final _msgCtrl = TextEditingController();
   final _scrollCtrl = ScrollController();
+  String? _replyToId; // ✅ إضافة
+
+  @override
+  void initState() {
+    super.initState();
+    final userId = context.read<AuthProvider>().user!.id;
+    _roomSvc.setOnline(widget.room.id, userId); // ✅ إضافة
+  }
 
   @override
   void dispose() {
+    final userId = context.read<AuthProvider>().user!.id;
+    _roomSvc.setOffline(widget.room.id, userId); // ✅ إضافة
     _msgCtrl.dispose();
     _scrollCtrl.dispose();
     super.dispose();
@@ -46,8 +56,10 @@ class _RoomChatScreenState extends State<RoomChatScreen> {
       senderAvatar: auth.userProfile?['avatar_url'],
       content: text,
       createdAt: DateTime.now(),
+      replyToId: _replyToId, // ✅ إضافة
     );
 
+    setState(() => _replyToId = null); // ✅ إضافة
     await _roomSvc.sendRoomMessage(widget.room.id, message);
     _scrollToBottom();
   }
@@ -114,7 +126,7 @@ class _RoomChatScreenState extends State<RoomChatScreen> {
                             children: [
                               if (!isMe)
                                 Text(
-                                  msg.senderName?? 'مجهول', // ضفنا??
+                                  msg.senderName?? 'مجهول',
                                   style: const TextStyle(
                                     fontFamily: 'Tajawal',
                                     color: AppColors.primary,
