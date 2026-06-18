@@ -126,7 +126,7 @@ class _RoomsScreenState extends State<RoomsScreen> {
   Widget build(BuildContext context) => Container(
     decoration: const BoxDecoration(gradient: AppColors.bgGrad),
     child: SafeArea(
-      bottom: true,
+      bottom: true, // ✅ التعديل الوحيد هنا
       child: Column(children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
@@ -170,7 +170,7 @@ class _RoomsScreenState extends State<RoomsScreen> {
         const SizedBox(height: 12),
         Expanded(
           child: _loading
-           ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+         ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
               : RefreshIndicator(
                   onRefresh: _load, color: AppColors.primary,
                   child: Builder(builder: (_) {
