@@ -1,159 +1,176 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:audioplayers/audioplayers.dart';
-import '../../core/constants/app_colors.dart';
+import 'package:timeago/timeago.dart' as timeago;
 
 class MessageBubble extends StatefulWidget {
   final Map<String, dynamic> message;
   final bool isMe;
-
-  const MessageBubble({
-    super.key,
-    required this.message,
-    required this.isMe,
-  });
+  
+  const MessageBubble({super.key, required this.message, required this.isMe});
 
   @override
   State<MessageBubble> createState() => _MessageBubbleState();
 }
 
 class _MessageBubbleState extends State<MessageBubble> {
-  final _audioPlayer = AudioPlayer();
+  final _player = AudioPlayer();
   bool _isPlaying = false;
 
-  @override
-  void dispose() {
-    _audioPlayer.dispose();
-    super.dispose();
-  }
-
-  Future<void> _playAudio() async {
+  Future<void> _deleteMessage() async {
     try {
-      if (_isPlaying) {
-        await _audioPlayer.stop();
-        setState(() => _isPlaying = false);
-      } else {
-        await _audioPlayer.play(UrlSource(widget.message['audio_url']));
-        setState(() => _isPlaying = true);
-
-        _audioPlayer.onPlayerComplete.listen((_) {
-          if (mounted) setState(() => _isPlaying = false);
-        });
+      final supabase = Supabase.instance.client;
+      final msgId = widget.message['id'];
+      
+      // 1. احذف الصورة من Storage لو موجودة
+      if (widget.message['image_url']!= null) {
+        final imagePath = widget.message['image_url'].split('/').last;
+        await supabase.storage.from('chat_images').remove([imagePath]);
       }
+      
+      // 2. احذف الصوت من Storage لو موجود
+      if (widget.message['voice_url']!= null) {
+        final voicePath = widget.message['voice_url'].split('/').last;
+        await supabase.storage.from('chat_images').remove([voicePath]);
+      }
+      
+      // 3. احذف الرسالة من الجدول
+      await supabase.from('messages').delete().eq('id', msgId);
+      
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('خطأ في التشغيل: $e')),
+          SnackBar(content: Text('فشل الحذف: $e', style: TextStyle(fontFamily: 'Tajawal'))),
         );
       }
     }
   }
 
+  void _showDeleteDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF2A2A2A),
+        title: const Text('حذف الرسالة', style: TextStyle(color: Colors.white, fontFamily: 'Tajawal')),
+        content: const Text('متأكد تريد تحذف هذه الرسالة؟', style: TextStyle(color: Colors.white70, fontFamily: 'Tajawal')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('إلغاء', style: TextStyle(fontFamily: 'Tajawal')),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _deleteMessage();
+            },
+            child: const Text('حذف', style: TextStyle(color: Colors.red, fontFamily: 'Tajawal')),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final type = widget.message['type'] ?? 'text';
-
-    // رسالة صوتية
-    if (type == 'voice' && widget.message['audio_url'] != null) {
-      return Container(
-        constraints: const BoxConstraints(maxWidth: 250),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          gradient: widget.isMe
-              ? const LinearGradient(colors: [AppColors.primary, AppColors.primaryDark])
-              : null,
-          color: widget.isMe ? null : AppColors.bgCard,
-          borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(16),
-            topRight: const Radius.circular(16),
-            bottomLeft: Radius.circular(widget.isMe ? 16 : 4),
-            bottomRight: Radius.circular(widget.isMe ? 4 : 16),
+    return GestureDetector(
+      onLongPress: widget.isMe? _showDeleteDialog : null,
+      child: Align(
+        alignment: widget.isMe? Alignment.centerRight : Alignment.centerLeft,
+        child: Container(
+          margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+          padding: const EdgeInsets.all(12),
+          constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
+          decoration: BoxDecoration(
+            color: widget.isMe? const Color(0xFF6C63FF) : const Color(0xFF2A2A2A),
+            borderRadius: BorderRadius.only(
+              topLeft: const Radius.circular(16),
+              topRight: const Radius.circular(16),
+              bottomLeft: Radius.circular(widget.isMe? 16 : 4),
+              bottomRight: Radius.circular(widget.isMe? 4 : 16),
+            ),
           ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            IconButton(
-              onPressed: _playAudio,
-              icon: Icon(
-                _isPlaying ? Icons.stop_rounded : Icons.play_arrow_rounded,
-                color: AppColors.white,
-              ),
-            ),
-            Text(
-              '${widget.message['duration'] ?? 0}s',
-              style: const TextStyle(
-                fontFamily: 'Tajawal',
-                color: AppColors.white,
-                fontSize: 14,
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Container(
-                height: 3,
-                decoration: BoxDecoration(
-                  color: AppColors.white.withOpacity(0.3),
-                  borderRadius: BorderRadius.circular(2),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (!widget.isMe)
+                Text(
+                  widget.message['username']?? 'مجهول',
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    fontFamily: 'Tajawal',
+                  ),
                 ),
+              if (!widget.isMe) const SizedBox(height: 4),
+              
+              // صورة
+              if (widget.message['image_url']!= null)
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: CachedNetworkImage(
+                    imageUrl: widget.message['image_url'],
+                    width: 200,
+                    fit: BoxFit.cover,
+                    placeholder: (c, u) => Container(
+                      width: 200,
+                      height: 150,
+                      color: Colors.white10,
+                      child: const Center(child: CircularProgressIndicator()),
+                    ),
+                  ),
+                ),
+                
+              // صوت
+              if (widget.message['voice_url']!= null)
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      onPressed: () async {
+                        if (_isPlaying) {
+                          await _player.pause();
+                        } else {
+                          await _player.play(UrlSource(widget.message['voice_url']));
+                        }
+                        setState(() => _isPlaying =!_isPlaying);
+                      },
+                      icon: Icon(
+                        _isPlaying? Icons.pause_circle : Icons.play_circle,
+                        color: Colors.white,
+                        size: 32,
+                      ),
+                    ),
+                    const Text('رسالة صوتية', style: TextStyle(color: Colors.white, fontFamily: 'Tajawal')),
+                  ],
+                ),
+                
+              // نص
+              if (widget.message['content']!= null && widget.message['content'].toString().isNotEmpty)
+                Padding(
+                  padding: EdgeInsets.only(top: widget.message['image_url']!= null? 8 : 0),
+                  child: Text(
+                    widget.message['content'],
+                    style: const TextStyle(color: Colors.white, fontSize: 15, fontFamily: 'Tajawal'),
+                  ),
+                ),
+                
+              const SizedBox(height: 4),
+              Text(
+                timeago.format(DateTime.parse(widget.message['created_at']), locale: 'ar'),
+                style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 11, fontFamily: 'Tajawal'),
               ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    // رسالة صورة
-    if (type == 'image' && widget.message['media_url'] != null) {
-      return Container(
-        constraints: const BoxConstraints(maxWidth: 250),
-        decoration: BoxDecoration(
-          color: widget.isMe ? AppColors.primary : AppColors.bgCard,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(16),
-          child: CachedNetworkImage(
-            imageUrl: widget.message['media_url'],
-            placeholder: (context, url) => Container(
-              height: 200,
-              color: AppColors.bgCard2,
-              child: const Center(child: CircularProgressIndicator()),
-            ),
-            errorWidget: (context, url, error) => Container(
-              height: 200,
-              color: AppColors.bgCard2,
-              child: const Icon(Icons.error, color: AppColors.white),
-            ),
-            fit: BoxFit.cover,
+            ],
           ),
-        ),
-      );
-    }
-
-    // رسالة نصية
-    return Container(
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
-      decoration: BoxDecoration(
-        gradient: widget.isMe
-            ? const LinearGradient(colors: [AppColors.primary, AppColors.primaryDark])
-            : null,
-        color: widget.isMe ? null : AppColors.bgCard,
-        borderRadius: BorderRadius.only(
-          topLeft: const Radius.circular(16),
-          topRight: const Radius.circular(16),
-          bottomLeft: Radius.circular(widget.isMe ? 16 : 4),
-          bottomRight: Radius.circular(widget.isMe ? 4 : 16),
-        ),
-      ),
-      child: Text(
-        widget.message['content'] ?? '',
-        style: const TextStyle(
-          fontFamily: 'Tajawal',
-          color: AppColors.white,
-          fontSize: 15,
         ),
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _player.dispose();
+    super.dispose();
   }
 }
