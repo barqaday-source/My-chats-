@@ -11,7 +11,7 @@ class ChatService {
   // ======= Private Chats =======
   Stream<List<MessageModel>> getPrivateMessages(String chatId) {
     return _supabase
-   .from(SupabaseConfig.tMessages)
+   .from(SupabaseConfig.tPrivateMessages) // ✅ تم التعديل
    .stream(primaryKey: ['id'])
    .eq('chat_id', chatId)
    .order('created_at', ascending: true)
@@ -20,7 +20,7 @@ class ChatService {
 
   Future<void> sendPrivateMessage(String peerId, MessageModel msg) async {
     try {
-      await _supabase.from(SupabaseConfig.tMessages).insert(msg.toJson());
+      await _supabase.from(SupabaseConfig.tPrivateMessages).insert(msg.toJson()); // ✅
       await _supabase.from(SupabaseConfig.tPrivateChats).upsert({
         'id': msg.chatId,
         'last_message': msg.content,
@@ -41,7 +41,7 @@ class ChatService {
   }
 
   Future<void> deleteMessage(String chatId, String messageId) async {
-    await _supabase.from(SupabaseConfig.tMessages).delete().eq('id', messageId).eq('chat_id', chatId);
+    await _supabase.from(SupabaseConfig.tPrivateMessages).delete().eq('id', messageId).eq('chat_id', chatId); // ✅
   }
 
   String getChatId(String userId1, String userId2) {
@@ -69,7 +69,7 @@ class ChatService {
 
   Stream<List<MessageModel>> roomMessages(String roomId) {
     return _supabase
-   .from(SupabaseConfig.tRoomMessages) // مو messages
+   .from(SupabaseConfig.tRoomMessages) // ✅ صح
    .stream(primaryKey: ['id'])
    .eq('chat_id', roomId)
    .order('created_at', ascending: true)
@@ -78,7 +78,7 @@ class ChatService {
 
   Future<void> sendRoomMessage(MessageModel msg) async {
     try {
-      await _supabase.from(SupabaseConfig.tRoomMessages).insert(msg.toJson());
+      await _supabase.from(SupabaseConfig.tRoomMessages).insert(msg.toJson()); // ✅
       await _supabase.from(SupabaseConfig.tRooms).update({
         'last_message': msg.content,
         'last_message_time': msg.createdAt.toIso8601String(),
