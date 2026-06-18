@@ -1,239 +1,141 @@
-import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:flutter_sound/flutter_sound.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:permission_handler/permission_handler.dart';
-import '../../core/constants/app_colors.dart';
-import '../../models/message_model.dart';
+import 'package:record/record.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:audioplayers/audioplayers.dart';
 
-class ChatInputBar extends StatefulWidget {
-  final Function(String text, String? replyToId) onSendText;
-  final Function(String path, int duration, String? replyToId)? onSendAudio;
-  final Function(String path, String? replyToId)? onSendImage;
-  final String? replyToId;
-  final MessageModel? replyToMessage;
-  final VoidCallback? onCancelReply;
-
-  const ChatInputBar({
-    super.key,
-    required this.onSendText,
-    this.onSendAudio,
-    this.onSendImage,
-    this.replyToId,
-    this.replyToMessage,
-    this.onCancelReply,
-  });
+class ChatInput extends StatefulWidget {
+  final Function(String text, String? imageUrl, String? voiceUrl) onSend;
+  const ChatInput({super.key, required this.onSend});
 
   @override
-  State<ChatInputBar> createState() => _ChatInputBarState();
+  State<ChatInput> createState() => _ChatInputState();
 }
 
-class _ChatInputBarState extends State<ChatInputBar> {
-  final _textController = TextEditingController();
-  final _recorder = FlutterSoundRecorder();
-  final _imagePicker = ImagePicker();
-  bool _isRecorderInited = false;
+class _ChatInputState extends State<ChatInput> {
+  final _textCtrl = TextEditingController();
+  final _record = AudioRecorder();
+  final _player = AudioPlayer();
   bool _isRecording = false;
-  Timer? _timer;
-  int _recordDuration = 0;
-  String? _recordingPath;
-
-  @override
-  void initState() {
-    super.initState();
-    _initRecorder();
-  }
-
-  Future<void> _initRecorder() async {
-    final status = await Permission.microphone.request();
-    if (status != PermissionStatus.granted) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('لازم توافق على صلاحية المايك')),
-        );
-      }
-      return;
-    }
-    await _recorder.openRecorder();
-    setState(() => _isRecorderInited = true);
-  }
-
-  @override
-  void dispose() {
-    _textController.dispose();
-    _timer?.cancel();
-    if (_isRecorderInited) _recorder.closeRecorder();
-    super.dispose();
-  }
-
-  Future<void> _startRecording() async {
-    if (!_isRecorderInited) {
-      await _initRecorder();
-      if (!_isRecorderInited) return;
-    }
-    try {
-      final dir = await getTemporaryDirectory();
-      _recordingPath = '${dir.path}/audio_${DateTime.now().millisecondsSinceEpoch}.aac';
-      await _recorder.startRecorder(
-        toFile: _recordingPath,
-        codec: Codec.aacADTS,
-      );
-      setState(() {
-        _isRecording = true;
-        _recordDuration = 0;
-      });
-      _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-        setState(() => _recordDuration++);
-      });
-    } catch (e) {
-      debugPrint('Error recording: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('فشل بدء التسجيل: $e')),
-        );
-      }
-    }
-  }
-
-  Future<void> _stopRecording() async {
-    try {
-      await _recorder.stopRecorder();
-      _timer?.cancel();
-      setState(() => _isRecording = false);
-      if (_recordingPath != null && _recordDuration > 0) {
-        widget.onSendAudio?.call(_recordingPath!, _recordDuration, widget.replyToId);
-      }
-      _recordDuration = 0;
-      _recordingPath = null;
-      widget.onCancelReply?.call();
-    } catch (e) {
-      debugPrint('Error stopping: $e');
-    }
-  }
+  bool _isUploading = false;
+  String? _voicePath;
 
   Future<void> _pickImage() async {
     try {
-      final image = await _imagePicker.pickImage(
-        source: ImageSource.gallery,
-        imageQuality: 70,
+      final picker = ImagePicker();
+      final image = await picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
+      if (image == null) return;
+
+      setState(() => _isUploading = true);
+      final bytes = await image.readAsBytes();
+      final fileName = '${DateTime.now().millisecondsSinceEpoch}.jpg';
+      
+      await Supabase.instance.client.storage
+          .from('chat_images')
+          .uploadBinary(fileName, bytes);
+          
+      final url = Supabase.instance.client.storage
+          .from('chat_images')
+          .getPublicUrl(fileName);
+          
+      widget.onSend('', url, null);
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('فشل رفع الصورة: $e')),
       );
-      if (image != null) {
-        widget.onSendImage?.call(image.path, widget.replyToId);
-        widget.onCancelReply?.call();
+    } finally {
+      setState(() => _isUploading = false);
+    }
+  }
+
+  Future<void> _toggleRecord() async {
+    try {
+      if (_isRecording) {
+        final path = await _record.stop();
+        setState(() => _isRecording = false);
+        if (path != null) {
+          setState(() => _isUploading = true);
+          final bytes = await File(path).readAsBytes();
+          final fileName = '${DateTime.now().millisecondsSinceEpoch}.m4a';
+          
+          await Supabase.instance.client.storage
+              .from('chat_images')
+              .uploadBinary(fileName, bytes);
+              
+          final url = Supabase.instance.client.storage
+              .from('chat_images')
+              .getPublicUrl(fileName);
+              
+          widget.onSend('', null, url);
+        }
+      } else {
+        if (await _record.hasPermission()) {
+          await _record.start(const RecordConfig(), path: '${DateTime.now().millisecondsSinceEpoch}.m4a');
+          setState(() => _isRecording = true);
+        }
       }
     } catch (e) {
-      debugPrint('Error picking image: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('فشل اختيار الصورة: $e')),
-        );
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('فشل التسجيل: $e')),
+      );
+    } finally {
+      setState(() => _isUploading = false);
     }
   }
 
   void _sendText() {
-    final text = _textController.text.trim();
-    if (text.isNotEmpty) {
-      widget.onSendText(text, widget.replyToId);
-      _textController.clear();
-      widget.onCancelReply?.call();
-    }
+    if (_textCtrl.text.trim().isEmpty) return;
+    widget.onSend(_textCtrl.text.trim(), null, null);
+    _textCtrl.clear();
   }
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: AppColors.bgCard,
-        border: Border(top: BorderSide(color: AppColors.glassBorder)),
+        color: const Color(0xFF1E1E1E),
+        border: Border(top: BorderSide(color: Colors.white.withOpacity(0.1))),
       ),
       child: SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+        child: Row(
           children: [
-            if (widget.replyToMessage != null) _buildReplyPreview(),
-            Row(
-              children: [
-                if (widget.onSendImage != null)
-                  IconButton(
-                    icon: const Icon(Icons.image_rounded, color: AppColors.primary),
-                    onPressed: _pickImage,
+            IconButton(
+              onPressed: _isUploading ? null : _pickImage,
+              icon: _isUploading 
+                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.image, color: Colors.white70),
+            ),
+            IconButton(
+              onPressed: _isUploading ? null : _toggleRecord,
+              icon: Icon(
+                _isRecording ? Icons.stop_circle : Icons.mic,
+                color: _isRecording ? Colors.red : Colors.white70,
+              ),
+            ),
+            Expanded(
+              child: TextField(
+                controller: _textCtrl,
+                style: const TextStyle(color: Colors.white, fontFamily: 'Tajawal'),
+                decoration: InputDecoration(
+                  hintText: 'اكتب رسالة...',
+                  hintStyle: TextStyle(color: Colors.white.withOpacity(0.5), fontFamily: 'Tajawal'),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(25),
+                    borderSide: BorderSide.none,
                   ),
-                Expanded(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    decoration: BoxDecoration(
-                      color: AppColors.bgCard.withOpacity(0.5),
-                      borderRadius: BorderRadius.circular(24),
-                      border: Border.all(color: AppColors.glassBorder),
-                    ),
-                    child: TextField(
-                      controller: _textController,
-                      style: const TextStyle(
-                        fontFamily: 'Tajawal',
-                        color: AppColors.white,
-                      ),
-                      decoration: const InputDecoration(
-                        hintText: 'اكتب رسالة...',
-                        hintStyle: TextStyle(
-                          fontFamily: 'Tajawal',
-                          color: AppColors.textSub,
-                        ),
-                        border: InputBorder.none,
-                      ),
-                      onSubmitted: (_) => _sendText(),
-                      onChanged: (_) => setState(() {}),
-                    ),
-                  ),
+                  filled: true,
+                  fillColor: Colors.white.withOpacity(0.1),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 ),
-                const SizedBox(width: 8),
-                if (_isRecording)
-                  GestureDetector(
-                    onTap: _stopRecording,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: AppColors.danger.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.stop, color: AppColors.danger, size: 18),
-                          const SizedBox(width: 4),
-                          Text(
-                            '$_recordDuration',
-                            style: const TextStyle(
-                              fontFamily: 'Tajawal',
-                              color: AppColors.danger,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  )
-                else if (_textController.text.trim().isNotEmpty)
-                  IconButton(
-                    icon: const Icon(Icons.send_rounded, color: AppColors.primary),
-                    onPressed: _sendText,
-                  )
-                else if (widget.onSendAudio != null)
-                  GestureDetector(
-                    onLongPress: _startRecording,
-                    onLongPressUp: _stopRecording,
-                    child: Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: const BoxDecoration(
-                        color: AppColors.primary,
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(Icons.mic_rounded, color: Colors.white),
-                    ),
-                  ),
-              ],
+                onSubmitted: (_) => _sendText(),
+              ),
+            ),
+            const SizedBox(width: 8),
+            IconButton(
+              onPressed: _sendText,
+              icon: const Icon(Icons.send, color: Color(0xFF6C63FF)),
             ),
           ],
         ),
@@ -241,55 +143,11 @@ class _ChatInputBarState extends State<ChatInputBar> {
     );
   }
 
-  Widget _buildReplyPreview() {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        color: AppColors.primary.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: const Border(
-          left: BorderSide(color: AppColors.primary, width: 3),
-        ),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  widget.replyToMessage!.senderName,
-                  style: const TextStyle(
-                    fontFamily: 'Tajawal',
-                    color: AppColors.primary,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                Text(
-                  widget.replyToMessage!.type == 'voice'
-                      ? 'رسالة صوتية'
-                      : widget.replyToMessage!.type == 'image'
-                          ? 'صورة'
-                          : widget.replyToMessage!.content,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontFamily: 'Tajawal',
-                    color: AppColors.textSub,
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.close, size: 18, color: AppColors.textSub),
-            onPressed: widget.onCancelReply,
-          ),
-        ],
-      ),
-    );
+  @override
+  void dispose() {
+    _textCtrl.dispose();
+    _record.dispose();
+    _player.dispose();
+    super.dispose();
   }
 }
