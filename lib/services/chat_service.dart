@@ -11,7 +11,7 @@ class ChatService {
   // ======= Private Chats =======
   Stream<List<MessageModel>> getPrivateMessages(String chatId) {
     return _supabase
-  .from(SupabaseConfig.tPrivateMessages) // ✅ مصحح سابقاً
+  .from(SupabaseConfig.tPrivateMessages)
   .stream(primaryKey: ['id'])
   .eq('chat_id', chatId)
   .order('created_at', ascending: true)
@@ -201,22 +201,22 @@ class ChatService {
     }
   }
 
-  // ✅ دوال جديدة مضافة فقط - لا تعديل على القديم
+  // ✅ دوال الحظر - مصححة بالأسماء الموجودة في قاعدتك
   Future<void> blockUser(String userId, String blockedUserId) async {
     await _supabase.from('blocked_users').insert({
-      'user_id': userId,
-      'blocked_user_id': blockedUserId,
+      'blocker_id': userId,
+      'blocked_id': blockedUserId,
     });
   }
 
   Future<void> unblockUser(String userId, String blockedUserId) async {
     await _supabase.from('blocked_users').delete()
-  .eq('user_id', userId).eq('blocked_user_id', blockedUserId);
+  .eq('blocker_id', userId).eq('blocked_id', blockedUserId);
   }
 
   Stream<List<Map<String, dynamic>>> getBlockedUsers(String userId) {
     return _supabase.from('blocked_users')
-  .stream(primaryKey: ['id']).eq('user_id', userId);
+  .stream(primaryKey: ['id']).eq('blocker_id', userId);
   }
 
   Future<int> getUnreadCount(String chatId, String userId) async {
