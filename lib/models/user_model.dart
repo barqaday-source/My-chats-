@@ -35,8 +35,8 @@ class UserModel extends Equatable {
 
   factory UserModel.fromJson(Map<String, dynamic> json) {
     return UserModel(
-      id: json['id'],
-      username: json['username'],
+      id: json['id']?? '',
+      username: json['username']?? 'مستخدم',
       email: json['email'],
       avatarUrl: json['avatar_url'],
       bio: json['bio'],
@@ -71,6 +71,40 @@ class UserModel extends Equatable {
       'last_seen': lastSeen?.toIso8601String(),
       'created_at': createdAt.toIso8601String(),
     };
+  }
+
+  UserModel copyWith({
+    String? id,
+    String? username,
+    String? email,
+    String? avatarUrl,
+    String? bio,
+    String? whatsapp,
+    DateTime? birthDate,
+    String? zodiac,
+    String? role,
+    bool? isOnline,
+    bool? isBlocked,
+    bool? isMod,
+    DateTime? lastSeen,
+    DateTime? createdAt,
+  }) {
+    return UserModel(
+      id: id?? this.id,
+      username: username?? this.username,
+      email: email?? this.email,
+      avatarUrl: avatarUrl?? this.avatarUrl,
+      bio: bio?? this.bio,
+      whatsapp: whatsapp?? this.whatsapp,
+      birthDate: birthDate?? this.birthDate,
+      zodiac: zodiac?? this.zodiac,
+      role: role?? this.role,
+      isOnline: isOnline?? this.isOnline,
+      isBlocked: isBlocked?? this.isBlocked,
+      isMod: isMod?? this.isMod,
+      lastSeen: lastSeen?? this.lastSeen,
+      createdAt: createdAt?? this.createdAt,
+    );
   }
 
   @override
