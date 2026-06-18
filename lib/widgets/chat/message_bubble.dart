@@ -1,16 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:audioplayers/audioplayers.dart';
-import '../../core/constants/app_colors.dart';
-import '../../models/message_model.dart';
+import 'package:timeago/timeago.dart' as timeago;
 
 class MessageBubble extends StatefulWidget {
   final Map<String, dynamic> message;
   final bool isMe;
+  final bool showAvatar;
 
   const MessageBubble({
     super.key,
     required this.message,
     required this.isMe,
+    this.showAvatar = true,
   });
 
   @override
@@ -18,196 +21,293 @@ class MessageBubble extends StatefulWidget {
 }
 
 class _MessageBubbleState extends State<MessageBubble> {
-  final _audioPlayer = AudioPlayer();
+  final _player = AudioPlayer();
   bool _isPlaying = false;
   Duration _duration = Duration.zero;
   Duration _position = Duration.zero;
 
   @override
-  void dispose() {
-    _audioPlayer.dispose();
-    super.dispose();
+  void initState() {
+    super.initState();
+    _player.onPlayerStateChanged.listen((state) {
+      if (mounted) setState(() => _isPlaying = state == PlayerState.playing);
+    });
+    _player.onDurationChanged.listen((newDuration) {
+      if (mounted) setState(() => _duration = newDuration);
+    });
+    _player.onPositionChanged.listen((newPosition) {
+      if (mounted) setState(() => _position = newPosition);
+    });
   }
 
-  Future<void> _playPauseAudio(String url) async {
-    if (_isPlaying) {
-      await _audioPlayer.pause();
-      setState(() => _isPlaying = false);
-    } else {
-      await _audioPlayer.play(UrlSource(url));
-      setState(() => _isPlaying = true);
-      
-      _audioPlayer.onDurationChanged.listen((d) {
-        setState(() => _duration = d);
-      });
-      
-      _audioPlayer.onPositionChanged.listen((p) {
-        setState(() => _position = p);
-      });
-      
-      _audioPlayer.onPlayerComplete.listen((_) {
-        setState(() {
-          _isPlaying = false;
-          _position = Duration.zero;
-        });
-      });
+  Future<void> _deleteMessage() async {
+    try {
+      final supabase = Supabase.instance.client;
+      final msgId = widget.message['id'];
+
+      // 1. احذف الصورة من Storage لو موجودة
+      if (widget.message['image_url']!= null && widget.message['image_url'].toString().isNotEmpty) {
+        try {
+          final imagePath = Uri.parse(widget.message['image_url']).pathSegments.last;
+          await supabase.storage.from('chat_images').remove([imagePath]);
+        } catch (_) {}
+      }
+
+      // 2. احذف الصوت من Storage لو موجود
+      if (widget.message['voice_url']!= null && widget.message['voice_url'].toString().isNotEmpty) {
+        try {
+          final voicePath = Uri.parse(widget.message['voice_url']).pathSegments.last;
+          await supabase.storage.from('chat_images').remove([voicePath]);
+        } catch (_) {}
+      }
+
+      // 3. احذف الرسالة من الجدول
+      await supabase.from('messages').delete().eq('id', msgId);
+
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('فشل الحذف: $e', style: const TextStyle(fontFamily: 'Tajawal')),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
-  String _formatDuration(int seconds) {
-    final mins = (seconds / 60).floor();
-    final secs = seconds % 60;
-    return '${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
+  void _showDeleteDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF2A2A2A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('حذف الرسالة', style: TextStyle(color: Colors.white, fontFamily: 'Tajawal')),
+        content: const Text('متأكد تريد تحذف هذه الرسالة؟ لا يمكن التراجع',
+          style: TextStyle(color: Colors.white70, fontFamily: 'Tajawal')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('إلغاء', style: TextStyle(fontFamily: 'Tajawal', color: Colors.white70)),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _deleteMessage();
+            },
+            child: const Text('حذف', style: TextStyle(color: Colors.red, fontFamily: 'Tajawal')),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatDuration(Duration duration) {
+    String twoDigits(int n) => n.toString().padLeft(2, '0');
+    final minutes = twoDigits(duration.inMinutes.remainder(60));
+    final seconds = twoDigits(duration.inSeconds.remainder(60));
+    return '$minutes:$seconds';
   }
 
   @override
   Widget build(BuildContext context) {
-    final msg = MessageModel.fromJson(widget.message);
-    
-    return Align(
-      alignment: widget.isMe? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.all(12),
-        constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.75,
-        ),
-        decoration: BoxDecoration(
-          color: widget.isMe? AppColors.primary : AppColors.bgCard,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.glassBorder),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    final hasText = widget.message['content']!= null && widget.message['content'].toString().trim().isNotEmpty;
+    final hasImage = widget.message['image_url']!= null && widget.message['image_url'].toString().isNotEmpty;
+    final hasVoice = widget.message['voice_url']!= null && widget.message['voice_url'].toString().isNotEmpty;
+
+    return GestureDetector(
+      onLongPress: widget.isMe? _showDeleteDialog : null,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 8),
+        child: Row(
+          mainAxisAlignment: widget.isMe? MainAxisAlignment.end : MainAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.end,
           children: [
+            // أفتار للطرف الثاني
             if (!widget.isMe)
-              Text(
-                msg.senderName,
-                style: const TextStyle(
-                  fontFamily: 'Tajawal',
-                  color: AppColors.primary,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
+              widget.showAvatar
+               ? CircleAvatar(
+                    radius: 16,
+                    backgroundColor: const Color(0xFF6C63FF),
+                    backgroundImage: widget.message['avatar_url']!= null
+                     ? NetworkImage(widget.message['avatar_url'])
+                       : null,
+                    child: widget.message['avatar_url'] == null
+                     ? Text(
+                          widget.message['username']?[0].toUpperCase()?? '?',
+                          style: const TextStyle(color: Colors.white, fontSize: 14),
+                        )
+                       : null,
+                  )
+                 : const SizedBox(width: 32),
+
+            const SizedBox(width: 8),
+
+            // الفقاعة
+            Flexible(
+              child: Container(
+                constraints: BoxConstraints(
+                  maxWidth: MediaQuery.of(context).size.width * 0.7,
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: widget.isMe? const Color(0xFF6C63FF) : const Color(0xFF2A2A2A),
+                  borderRadius: BorderRadius.only(
+                    topLeft: const Radius.circular(18),
+                    topRight: const Radius.circular(18),
+                    bottomLeft: Radius.circular(widget.isMe? 18 : 4),
+                    bottomRight: Radius.circular(widget.isMe? 4 : 18),
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // اسم المرسل للطرف الثاني
+                    if (!widget.isMe && widget.showAvatar)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: Text(
+                          widget.message['username']?? 'مجهول',
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.9),
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            fontFamily: 'Tajawal',
+                          ),
+                        ),
+                      ),
+
+                    // صورة
+                    if (hasImage)
+                      Padding(
+                        padding: EdgeInsets.only(bottom: hasText || hasVoice? 8 : 0),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: CachedNetworkImage(
+                            imageUrl: widget.message['image_url'],
+                            width: 220,
+                            fit: BoxFit.cover,
+                            placeholder: (c, u) => Container(
+                              width: 220,
+                              height: 150,
+                              color: Colors.white10,
+                              child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                            ),
+                            errorWidget: (c, u, e) => Container(
+                              width: 220,
+                              height: 150,
+                              color: Colors.white10,
+                              child: const Icon(Icons.error, color: Colors.red),
+                            ),
+                          ),
+                        ),
+                      ),
+
+                    // صوت
+                    if (hasVoice)
+                      Container(
+                        width: 220,
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                        margin: EdgeInsets.only(bottom: hasText? 8 : 0),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Row(
+                          children: [
+                            IconButton(
+                              onPressed: () async {
+                                if (_isPlaying) {
+                                  await _player.pause();
+                                } else {
+                                  await _player.play(UrlSource(widget.message['voice_url']));
+                                }
+                              },
+                              icon: Icon(
+                                _isPlaying? Icons.pause_circle_filled : Icons.play_circle_filled,
+                                color: Colors.white,
+                                size: 32,
+                              ),
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  LinearProgressIndicator(
+                                    value: _duration.inSeconds > 0
+                                     ? _position.inSeconds / _duration.inSeconds
+                                       : 0,
+                                    backgroundColor: Colors.white24,
+                                    valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    '${_formatDuration(_position)} / ${_formatDuration(_duration)}',
+                                    style: TextStyle(
+                                      color: Colors.white.withOpacity(0.7),
+                                      fontSize: 10,
+                                      fontFamily: 'Tajawal',
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                    // نص
+                    if (hasText)
+                      Text(
+                        widget.message['content'],
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 15,
+                          fontFamily: 'Tajawal',
+                          height: 1.3,
+                        ),
+                      ),
+
+                    // الوقت
+                    const SizedBox(height: 4),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          timeago.format(DateTime.parse(widget.message['created_at']), locale: 'ar'),
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.5),
+                            fontSize: 11,
+                            fontFamily: 'Tajawal',
+                          ),
+                        ),
+                        if (widget.isMe)...[
+                          const SizedBox(width: 4),
+                          Icon(Icons.done_all, size: 14, color: Colors.white.withOpacity(0.5)),
+                        ],
+                      ],
+                    ),
+                  ],
                 ),
               ),
-            if (msg.replyToId!= null) _buildReplyContent(msg),
-            const SizedBox(height: 4),
-            if (msg.type == 'text') _buildTextContent(msg),
-            if (msg.type == 'voice') _buildAudioContent(msg),
-            if (msg.type == 'image') _buildImageContent(msg),
-            const SizedBox(height: 4),
-            _buildTime(msg),
+            ),
+
+            const SizedBox(width: 8),
+
+            // مساحة للأفتار مالتي
+            if (widget.isMe) const SizedBox(width: 32),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildReplyContent(MessageModel msg) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.2),
-        borderRadius: BorderRadius.circular(8),
-        border: Border(
-          left: BorderSide(color: AppColors.primary, width: 3),
-        ),
-      ),
-      child: Text(
-        'رد على رسالة',
-        style: TextStyle(
-          fontFamily: 'Tajawal',
-          color: AppColors.textSub,
-          fontSize: 11,
-          fontStyle: FontStyle.italic,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTextContent(MessageModel msg) {
-    return Text(
-      msg.content,
-      style: TextStyle(
-        fontFamily: 'Tajawal',
-        color: widget.isMe? Colors.white : AppColors.white,
-        fontSize: 15,
-      ),
-    );
-  }
-
-  Widget _buildAudioContent(MessageModel msg) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        IconButton(
-          onPressed: () => _playPauseAudio(msg.audioUrl!),
-          icon: Icon(
-            _isPlaying? Icons.pause_rounded : Icons.play_arrow_rounded,
-            color: widget.isMe? Colors.white : AppColors.primary,
-          ),
-        ),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Slider(
-                value: _position.inSeconds.toDouble(),
-                max: _duration.inSeconds.toDouble() > 0? _duration.inSeconds.toDouble() : 1,
-                onChanged: (value) async {
-                  await _audioPlayer.seek(Duration(seconds: value.toInt()));
-                },
-                activeColor: widget.isMe? Colors.white : AppColors.primary,
-                inactiveColor: AppColors.glassBorder,
-              ),
-              Text(
-                '${_formatDuration(_position.inSeconds)} / ${_formatDuration(msg.duration?? 0)}',
-                style: TextStyle(
-                  fontFamily: 'Tajawal',
-                  color: widget.isMe? Colors.white70 : AppColors.textSub,
-                  fontSize: 10,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildImageContent(MessageModel msg) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(12),
-      child: Image.network(
-        msg.fileUrl!,
-        fit: BoxFit.cover,
-        loadingBuilder: (context, child, loadingProgress) {
-          if (loadingProgress == null) return child;
-          return Container(
-            height: 200,
-            child: Center(
-              child: CircularProgressIndicator(
-                color: AppColors.primary,
-                value: loadingProgress.expectedTotalBytes!= null
-                 ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes!
-                    : null,
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildTime(MessageModel msg) {
-    return Text(
-      '${msg.createdAt.hour.toString().padLeft(2, '0')}:${msg.createdAt.minute.toString().padLeft(2, '0')}',
-      style: TextStyle(
-        fontFamily: 'Tajawal',
-        color: widget.isMe? Colors.white70 : AppColors.textSub,
-        fontSize: 10,
-      ),
-    );
+  @override
+  void dispose() {
+    _player.dispose();
+    super.dispose();
   }
 }
