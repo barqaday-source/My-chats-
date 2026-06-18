@@ -70,10 +70,10 @@ class _RoomChatScreenState extends State<RoomChatScreen> with WidgetsBindingObse
 
   void _subscribeToMembers() {
     _membersSub = _supabase
-     .from('room_members')
-     .stream(primaryKey: ['id'])
-     .eq('room_id', widget.room.id)
-     .listen((data) async {
+   .from('room_members')
+   .stream(primaryKey: ['id'])
+   .eq('room_id', widget.room.id)
+   .listen((data) async {
       final members = await _roomService.getRoomMembers(widget.room.id);
       if (!mounted) return;
       final onlineData = members.where((m) => m['is_online'] == true).toList();
@@ -85,7 +85,6 @@ class _RoomChatScreenState extends State<RoomChatScreen> with WidgetsBindingObse
 
   Future<void> _sendMessage(String content, {String? audioPath, int? duration}) async {
     final me = context.read<AuthProvider>().user!;
-    final type = audioPath!= null? MessageType.audio : MessageType.text;
 
     final message = MessageModel(
       id: '',
@@ -94,8 +93,8 @@ class _RoomChatScreenState extends State<RoomChatScreen> with WidgetsBindingObse
       senderName: me.username,
       senderAvatar: me.avatarUrl,
       content: content,
-      type: type,
-      audioUrl: audioPath,
+      type: audioPath!= null? MessageType.audio : MessageType.text,
+      audioPath: audioPath,
       duration: duration,
       createdAt: DateTime.now(),
       isRoom: true,
@@ -193,7 +192,7 @@ class _RoomChatScreenState extends State<RoomChatScreen> with WidgetsBindingObse
                       return MessageBubble(
                         message: msg,
                         isMe: isMe,
-                        onLongPress: isMe
+                        onDelete: isMe
                          ? () => _chatService.deleteMessage(msg.id, true)
                             : null,
                       );
@@ -242,7 +241,7 @@ class _RoomChatScreenState extends State<RoomChatScreen> with WidgetsBindingObse
                 const SizedBox(height: 2),
                 Text(
                   member.username.length > 6
-                   ? '${member.username.substring(0, 6)}...'
+                 ? '${member.username.substring(0, 6)}...'
                       : member.username,
                   style: const TextStyle(
                     fontFamily: 'Tajawal',
