@@ -11,16 +11,16 @@ class ChatService {
   // ======= Private Chats =======
   Stream<List<MessageModel>> getPrivateMessages(String chatId) {
     return _supabase
-   .from(SupabaseConfig.tPrivateMessages) // ✅ تم التعديل
-   .stream(primaryKey: ['id'])
-   .eq('chat_id', chatId)
-   .order('created_at', ascending: true)
-   .map((data) => data.map((json) => MessageModel.fromJson(json)).toList());
+  .from(SupabaseConfig.tPrivateMessages) // ✅ مصحح سابقاً
+  .stream(primaryKey: ['id'])
+  .eq('chat_id', chatId)
+  .order('created_at', ascending: true)
+  .map((data) => data.map((json) => MessageModel.fromJson(json)).toList());
   }
 
   Future<void> sendPrivateMessage(String peerId, MessageModel msg) async {
     try {
-      await _supabase.from(SupabaseConfig.tPrivateMessages).insert(msg.toJson()); // ✅
+      await _supabase.from(SupabaseConfig.tPrivateMessages).insert(msg.toJson());
       await _supabase.from(SupabaseConfig.tPrivateChats).upsert({
         'id': msg.chatId,
         'last_message': msg.content,
@@ -40,8 +40,9 @@ class ChatService {
     }
   }
 
-  Future<void> deleteMessage(String chatId, String messageId) async {
-    await _supabase.from(SupabaseConfig.tPrivateMessages).delete().eq('id', messageId).eq('chat_id', chatId); // ✅
+  Future<void> deleteMessage(String messageId, bool isRoom) async {
+    final table = isRoom? SupabaseConfig.tRoomMessages : SupabaseConfig.tPrivateMessages;
+    await _supabase.from(table).delete().eq('id', messageId);
   }
 
   String getChatId(String userId1, String userId2) {
@@ -58,27 +59,27 @@ class ChatService {
     return getPrivateMessages(chatId);
   }
 
-  // ======= Rooms - التعديل: توحيد على room_messages =======
+  // ======= Rooms =======
   Stream<List<RoomModel>> getRooms() {
     return _supabase
-   .from(SupabaseConfig.tRooms)
-   .stream(primaryKey: ['id'])
-   .order('updated_at', ascending: false)
-   .map((data) => data.map((json) => RoomModel.fromJson(json)).toList());
+  .from(SupabaseConfig.tRooms)
+  .stream(primaryKey: ['id'])
+  .order('updated_at', ascending: false)
+  .map((data) => data.map((json) => RoomModel.fromJson(json)).toList());
   }
 
   Stream<List<MessageModel>> roomMessages(String roomId) {
     return _supabase
-   .from(SupabaseConfig.tRoomMessages) // ✅ صح
-   .stream(primaryKey: ['id'])
-   .eq('chat_id', roomId)
-   .order('created_at', ascending: true)
-   .map((data) => data.map((json) => MessageModel.fromJson(json)).toList());
+  .from(SupabaseConfig.tRoomMessages)
+  .stream(primaryKey: ['id'])
+  .eq('chat_id', roomId)
+  .order('created_at', ascending: true)
+  .map((data) => data.map((json) => MessageModel.fromJson(json)).toList());
   }
 
   Future<void> sendRoomMessage(MessageModel msg) async {
     try {
-      await _supabase.from(SupabaseConfig.tRoomMessages).insert(msg.toJson()); // ✅
+      await _supabase.from(SupabaseConfig.tRoomMessages).insert(msg.toJson());
       await _supabase.from(SupabaseConfig.tRooms).update({
         'last_message': msg.content,
         'last_message_time': msg.createdAt.toIso8601String(),
@@ -127,10 +128,10 @@ class ChatService {
 
   Stream<List<UserModel>> getRoomMembers(String roomId) {
     return _supabase
-   .from(SupabaseConfig.tRoomMembers)
-   .stream(primaryKey: ['id'])
-   .eq('room_id', roomId)
-   .asyncMap((members) async {
+  .from(SupabaseConfig.tRoomMembers)
+  .stream(primaryKey: ['id'])
+  .eq('room_id', roomId)
+  .asyncMap((members) async {
         List<UserModel> users = [];
         for (var member in members) {
           final userData = await _supabase.from(SupabaseConfig.tUsers).select().eq('id', member['user_id']).single();
@@ -143,10 +144,10 @@ class ChatService {
 
   Stream<int> roomOnlineCount(String roomId) {
     return _supabase
-    .from(SupabaseConfig.tRoomMembers)
-    .stream(primaryKey: ['id'])
-    .eq('room_id', roomId)
-    .map((data) => data.where((m) => m['is_online'] == true).length);
+   .from(SupabaseConfig.tRoomMembers)
+   .stream(primaryKey: ['id'])
+   .eq('room_id', roomId)
+   .map((data) => data.where((m) => m['is_online'] == true).length);
   }
 
   Future<void> updateRoom(RoomModel room) async {
@@ -198,5 +199,36 @@ class ChatService {
       ''');
       rethrow;
     }
+  }
+
+  // ✅ دوال جديدة مضافة فقط - لا تعديل على القديم
+  Future<void> blockUser(String userId, String blockedUserId) async {
+    await _supabase.from('blocked_users').insert({
+      'user_id': userId,
+      'blocked_user_id': blockedUserId,
+    });
+  }
+
+  Future<void> unblockUser(String userId, String blockedUserId) async {
+    await _supabase.from('blocked_users').delete()
+  .eq('user_id', userId).eq('blocked_user_id', blockedUserId);
+  }
+
+  Stream<List<Map<String, dynamic>>> getBlockedUsers(String userId) {
+    return _supabase.from('blocked_users')
+  .stream(primaryKey: ['id']).eq('user_id', userId);
+  }
+
+  Future<int> getUnreadCount(String chatId, String userId) async {
+    return await _supabase.rpc('get_unread_count', params: {
+      'chat_id_input': chatId,
+      'user_id_input': userId,
+    });
+  }
+
+  Future<void> markAsRead(String chatId, String userId) async {
+    await _supabase.from(SupabaseConfig.tPrivateMessages)
+  .update({'is_read': true})
+  .eq('chat_id', chatId).eq('receiver_id', userId).eq('is_read', false);
   }
 }
