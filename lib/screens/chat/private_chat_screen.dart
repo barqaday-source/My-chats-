@@ -57,19 +57,19 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
       senderAvatar: avatarUrl,
       content: content,
       type: audioPath!= null
-      ? 'voice'
+    ? 'voice'
           : imagePath!= null
-        ? 'image'
+      ? 'image'
             : 'text',
       audioUrl: audioPath,
-      imageUrl: imagePath,
+      fileUrl: imagePath,
       duration: duration,
       replyToId: _replyToMessage?.id,
       createdAt: DateTime.now(),
       isRead: false,
     );
 
-    await _chatService.sendMessage(message);
+    await _chatService.sendMessageToUser(message);
     setState(() => _replyToMessage = null);
 
     if (_scrollController.hasClients) {
@@ -134,7 +134,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
           children: [
             Expanded(
               child: StreamBuilder<List<Map<String, dynamic>>>(
-                stream: _chatService.getMessagesStream(_chatId),
+                stream: _chatService.getPrivateMessagesStream(_chatId),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(
