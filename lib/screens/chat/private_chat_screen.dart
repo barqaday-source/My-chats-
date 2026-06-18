@@ -20,7 +20,6 @@ class PrivateChatScreen extends StatefulWidget {
 class _PrivateChatScreenState extends State<PrivateChatScreen> {
   final _chatService = ChatService();
   final _scrollController = ScrollController();
-  late String _chatId;
   late String _userId;
   MessageModel? _replyToMessage;
 
@@ -29,7 +28,6 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
     super.initState();
     final user = context.read<AuthProvider>().user!;
     _userId = user.id;
-    _chatId = _generateChatId(_userId, widget.otherUser.id);
   }
 
   @override
@@ -38,28 +36,24 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
     super.dispose();
   }
 
-  String _generateChatId(String id1, String id2) {
-    final ids = [id1, id2]..sort();
-    return ids.join('_');
-  }
-
   Future<void> _sendMessage(String content, {String? audioPath, int? duration, String? imagePath}) async {
     final user = context.read<AuthProvider>().user!;
-    final username = user.userMetadata?['username'] as String??? 'مستخدم';
+    final username = user.userMetadata?['username'] as String?? 'مستخدم';
     final avatarUrl = user.userMetadata?['avatar_url'] as String?;
+    final chatId = '${[_userId, widget.otherUser.id]..sort()}'.replaceAll(RegExp(r'[\[\], ]'), '');
 
     final message = MessageModel(
       id: '',
-      chatId: _chatId,
+      chatId: chatId,
       senderId: user.id,
       receiverId: widget.otherUser.id,
       senderName: username,
       senderAvatar: avatarUrl,
       content: content,
       type: audioPath!= null
-    ? 'voice'
+  ? 'voice'
           : imagePath!= null
-      ? 'image'
+   ? 'image'
             : 'text',
       audioUrl: audioPath,
       fileUrl: imagePath,
@@ -69,7 +63,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
       isRead: false,
     );
 
-    await _chatService.sendMessageToUser(message);
+    await _chatService.sendPrivateMessage(widget.otherUser.id, message);
     setState(() => _replyToMessage = null);
 
     if (_scrollController.hasClients) {
@@ -134,7 +128,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
           children: [
             Expanded(
               child: StreamBuilder<List<Map<String, dynamic>>>(
-                stream: _chatService.getPrivateMessagesStream(_chatId),
+                stream: _chatService.getPrivateMessagesStream(_userId, widget.otherUser.id),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(
