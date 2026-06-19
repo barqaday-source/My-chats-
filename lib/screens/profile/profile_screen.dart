@@ -1,11 +1,9 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../core/constants/app_colors.dart';
-import '../../providers/auth_provider.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -48,13 +46,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     setState(() => _isLoading = true);
     try {
       final userId = supabase.auth.currentUser!.id;
-      // نقرأ مباشرة من profiles، هذا المصدر الصحيح
-      final profile = await supabase
-         .from('profiles')
-         .select()
-         .eq('id', userId)
-         .maybeSingle();
-
+      final profile = await supabase.from('profiles').select().eq('id', userId).maybeSingle();
       if (profile!= null && mounted) {
         _usernameCtrl.text = profile['username']?? '';
         _bioCtrl.text = profile['bio']?? '';
@@ -73,7 +65,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _updateProfile() async {
     if (!_formKey.currentState!.validate()) return;
-
     setState(() => _isSaving = true);
     try {
       final userId = supabase.auth.currentUser!.id;
@@ -86,25 +77,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
         'avatar_url': _avatarUrl,
         'updated_at': DateTime.now().toIso8601String(),
       };
-
-      // 1. نحدث profiles - هذا الأساسي
       await supabase.from('profiles').update(data).eq('id', userId);
-
-      // 2. نحدث users أيضا إذا موجود، حتى ما يصير تضارب - نتجاهل الخطأ إذا الجدول ما بيه هاي الأعمدة
       try {
         await supabase.from('users').update({
           'username': data['username'],
           'avatar_url': data['avatar_url'],
         }).eq('id', userId);
       } catch (_) {}
-
-      // 3. نعمل refresh للـ AuthProvider حتى باقي التطبيق يشوف التغيير
-      if (mounted) {
-        try {
-          await context.read<AuthProvider>().refreshProfile();
-        } catch (_) {}
-      }
-
       if (mounted) {
         _showSnack('تم تحديث البروفايل بنجاح', true);
         Navigator.pop(context, true);
@@ -121,13 +100,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final picker = ImagePicker();
       final image = await picker.pickImage(source: ImageSource.gallery, maxWidth: 512, maxHeight: 512, imageQuality: 80);
       if (image == null) return;
-
       setState(() => _isUploading = true);
       final userId = supabase.auth.currentUser!.id;
       final bytes = await image.readAsBytes();
       final ext = image.path.split('.').last;
       final fileName = '$userId-${DateTime.now().millisecondsSinceEpoch}.$ext';
-
       await supabase.storage.from('avatars').uploadBinary(fileName, bytes, fileOptions: const FileOptions(upsert: true));
       final url = supabase.storage.from('avatars').getPublicUrl(fileName);
       setState(() => _avatarUrl = url);
@@ -152,12 +129,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
         title: const Text('تعديل البروفايل', style: TextStyle(fontFamily: 'Tajawal', fontWeight: FontWeight.w700)),
         backgroundColor: Colors.transparent,
         elevation: 0,
-        actions: [if (!_isSaving) TextButton(onPressed: _updateProfile, child: const Text('حفظ', style: TextStyle(fontFamily: 'Tajawal', color: Colors.white, fontWeight: FontWeight.w700)))],
+        actions: [
+          if (!_isSaving)
+            TextButton(onPressed: _updateProfile, child: const Text('حفظ', style: TextStyle(fontFamily: 'Tajawal', color: Colors.white, fontWeight: FontWeight.w700)))
+        ],
       ),
       body: Container(
         decoration: const BoxDecoration(gradient: AppColors.bgGrad),
         child: _isLoading
-      ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+           ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
             : SafeArea(
                 child: SingleChildScrollView(
                   padding: EdgeInsets.fromLTRB(16, 24, 16, MediaQuery.of(context).padding.bottom + 20),
@@ -169,16 +149,34 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         onTap: _isUploading? null : _uploadAvatar,
                         child: Stack(alignment: Alignment.center, children: [
                           Container(
-                            width: 120, height: 120,
+                            width: 120,
+                            height: 120,
                             decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: AppColors.primary, width: 3)),
                             child: ClipOval(
                               child: _avatarUrl!= null
-                            ? CachedNetworkImage(imageUrl: _avatarUrl!, fit: BoxFit.cover, placeholder: (c, u) => Container(color: AppColors.bgCard2), errorWidget: (c, u, e) => Container(color: AppColors.bgCard2, child: const Icon(Icons.person, size: 60, color: AppColors.white)))
+                                 ? CachedNetworkImage(
+                                      imageUrl: _avatarUrl!,
+                                      fit: BoxFit.cover,
+                                      placeholder: (c, u) => Container(color: AppColors.bgCard2),
+                                      errorWidget: (c, u, e) => Container(
+                                          color: AppColors.bgCard2, child: const Icon(Icons.person, size: 60, color: AppColors.white)))
                                   : Container(color: AppColors.bgCard2, child: const Icon(Icons.person, size: 60, color: AppColors.white)),
                             ),
                           ),
-                          if (_isUploading) Container(width: 120, height: 120, decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.black54), child: const Center(child: CircularProgressIndicator(color: AppColors.primary, strokeWidth: 2))),
-                          Positioned(bottom: 0, right: 0, child: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: AppColors.primary, shape: BoxShape.circle, border: Border.all(color: AppColors.bg, width: 2)), child: const Icon(Icons.camera_alt, color: AppColors.white, size: 20))),
+                          if (_isUploading)
+                            Container(
+                                width: 120,
+                                height: 120,
+                                decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.black54),
+                                child: const Center(child: CircularProgressIndicator(color: AppColors.primary, strokeWidth: 2))),
+                          Positioned(
+                              bottom: 0,
+                              right: 0,
+                              child: Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                      color: AppColors.primary, shape: BoxShape.circle, border: Border.all(color: AppColors.bg, width: 2)),
+                                  child: const Icon(Icons.camera_alt, color: AppColors.white, size: 20))),
                         ]),
                       ),
                       const SizedBox(height: 32),
@@ -187,10 +185,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         child: BackdropFilter(
                           filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
                           child: Container(
-                            width: double.infinity, padding: const EdgeInsets.all(20),
-                            decoration: BoxDecoration(color: AppColors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(20), border: Border.all(color: AppColors.white.withOpacity(0.2), width: 1)),
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(20),
+                            decoration: BoxDecoration(
+                                color: AppColors.white.withOpacity(0.05),
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(color: AppColors.white.withOpacity(0.2), width: 1)),
                             child: Column(children: [
-                              _field(_usernameCtrl, 'اسم المستخدم', Icons.person_outline_rounded, validator: (v) => v == null || v.trim().isEmpty? 'ادخل اسم المستخدم' : v.length < 3? 'الاسم قصير جداً' : null),
+                              _field(_usernameCtrl, 'اسم المستخدم', Icons.person_outline_rounded,
+                                  validator: (v) => v == null || v.trim().isEmpty
+                                     ? 'ادخل اسم المستخدم'
+                                      : v.length < 3
+                                         ? 'الاسم قصير جداً'
+                                          : null),
                               const SizedBox(height: 16),
                               _field(_bioCtrl, 'النبذة التعريفية', Icons.info_outline_rounded, maxLines: 3, maxLength: 150),
                               const SizedBox(height: 16),
@@ -205,11 +212,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                       const SizedBox(height: 32),
                       SizedBox(
-                        width: double.infinity, height: 50,
+                        width: double.infinity,
+                        height: 50,
                         child: ElevatedButton(
                           onPressed: _isSaving? null : _updateProfile,
-                          style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)), elevation: 0),
-                          child: _isSaving? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: AppColors.white, strokeWidth: 2)) : const Text('حفظ التغييرات', style: TextStyle(fontFamily: 'Tajawal', fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.white)),
+                          style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.primary,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                              elevation: 0),
+                          child: _isSaving
+                             ? const SizedBox(
+                                  width: 20, height: 20, child: CircularProgressIndicator(color: AppColors.white, strokeWidth: 2))
+                              : const Text('حفظ التغييرات',
+                                  style: TextStyle(
+                                      fontFamily: 'Tajawal', fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.white)),
                         ),
                       ),
                     ]),
@@ -220,16 +236,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Widget _field(TextEditingController ctrl, String label, IconData icon, {int maxLines = 1, int? maxLength, TextInputType? keyboardType, String? Function(String?)? validator}) {
+  Widget _field(TextEditingController ctrl, String label, IconData icon,
+      {int maxLines = 1, int? maxLength, TextInputType? keyboardType, String? Function(String?)? validator}) {
     return TextFormField(
-      controller: ctrl, maxLines: maxLines, maxLength: maxLength, keyboardType: keyboardType, validator: validator,
+      controller: ctrl,
+      maxLines: maxLines,
+      maxLength: maxLength,
+      keyboardType: keyboardType,
+      validator: validator,
       style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.text, fontSize: 14),
       decoration: InputDecoration(
-        labelText: label, labelStyle: const TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub),
+        labelText: label,
+        labelStyle: const TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub),
         prefixIcon: Icon(icon, color: AppColors.textSub, size: 20),
-        filled: true, fillColor: AppColors.bgCard2.withOpacity(0.5),
+        filled: true,
+        fillColor: AppColors.bgCard2.withOpacity(0.5),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AppColors.glassBorder)),
-        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AppColors.glassBorder.withOpacity(0.5))),
+        enabledBorder:
+            OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AppColors.glassBorder.withOpacity(0.5))),
         focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.primary, width: 1.5)),
         counterStyle: const TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub, fontSize: 11),
       ),
