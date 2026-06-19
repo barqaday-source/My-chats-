@@ -1,15 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:timeago/timeago.dart' as timeago;
-import '../../widgets/chat_input.dart';
-import '../../widgets/message_bubble.dart';
+import '../../widgets/chat/chat_input_bar.dart';
+import '../../widgets/chat/message_bubble.dart';
 
-class ChatScreen extends StatefulWidget {
+class PrivateChatScreen extends StatefulWidget {
   final String roomId;
   final String roomName;
   final bool isOfficial;
 
-  const ChatScreen({
+  const PrivateChatScreen({
     super.key,
     required this.roomId,
     required this.roomName,
@@ -17,10 +17,10 @@ class ChatScreen extends StatefulWidget {
   });
 
   @override
-  State<ChatScreen> createState() => _ChatScreenState();
+  State<PrivateChatScreen> createState() => _PrivateChatScreenState();
 }
 
-class _ChatScreenState extends State<ChatScreen> {
+class _PrivateChatScreenState extends State<PrivateChatScreen> {
   final supabase = Supabase.instance.client;
   final ScrollController _scrollController = ScrollController();
   late final Stream<List<Map<String, dynamic>>> _messagesStream;
@@ -33,11 +33,11 @@ class _ChatScreenState extends State<ChatScreen> {
     timeago.setLocaleMessages('ar', timeago.ArMessages());
 
     _messagesStream = supabase
-     .from('messages')
-     .stream(primaryKey: ['id'])
-     .eq('room_id', widget.roomId)
-     .order('created_at', ascending: true)
-     .map((maps) => maps.toList());
+    .from('messages')
+    .stream(primaryKey: ['id'])
+    .eq('room_id', widget.roomId)
+    .order('created_at', ascending: true)
+    .map((maps) => maps.toList());
 
     _setupPresence();
   }
@@ -46,18 +46,18 @@ class _ChatScreenState extends State<ChatScreen> {
     _roomChannel = supabase.channel('room_${widget.roomId}');
 
     _roomChannel
-     .onPresenceSync((payload) {
+    .onPresenceSync((payload) {
           final presenceState = _roomChannel.presenceState();
           if (mounted) setState(() => _onlineCount = presenceState.length);
         })
-     .subscribe((status, _) async {
+    .subscribe((status, _) async {
           if (status == RealtimeSubscribeStatus.subscribed) {
             final userId = supabase.auth.currentUser!.id;
             final profile = await supabase
-             .from('profiles')
-             .select('username, avatar_url')
-             .eq('id', userId)
-             .single();
+            .from('profiles')
+            .select('username, avatar_url')
+            .eq('id', userId)
+            .single();
 
             await _roomChannel.track({
               'user_id': userId,
@@ -86,10 +86,10 @@ class _ChatScreenState extends State<ChatScreen> {
     try {
       final user = supabase.auth.currentUser!;
       final profile = await supabase
-       .from('profiles')
-       .select('username, avatar_url')
-       .eq('id', user.id)
-       .single();
+      .from('profiles')
+      .select('username, avatar_url')
+      .eq('id', user.id)
+      .single();
 
       await supabase.from('messages').insert({
         'room_id': widget.roomId,
@@ -298,7 +298,7 @@ class _ChatScreenState extends State<ChatScreen> {
               },
             ),
           ),
-          ChatInput(onSend: _sendMessage),
+          ChatInputBar(onSend: _sendMessage),
         ],
       ),
     );
