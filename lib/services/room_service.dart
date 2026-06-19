@@ -2,29 +2,25 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart';
 import '../core/constants/supabase_config.dart';
 import '../models/room_model.dart';
-import '../models/message_model.dart';
-import '../models/user_model.dart';
 
 class RoomService {
   final _sb = Supabase.instance.client;
 
+  // --- Rooms ---
   Future<List<RoomModel>> getRooms() async {
     try {
-      final data = await _sb.from(SupabaseConfig.tRooms).select()
-   .eq('is_approved', true)
-   .order('is_official', ascending: false)
-   .order('online_count', ascending: false)
-   .order('member_count', ascending: false);
-      return (data as List).map((e) => RoomModel.fromJson(e as Map<String, dynamic>)).toList();
+      final data = await _sb
+          .from(SupabaseConfig.tRooms)
+          .select()
+          .eq('is_approved', true)
+          .order('is_official', ascending: false)
+          .order('online_count', ascending: false)
+          .order('member_count', ascending: false);
+      return (data as List)
+          .map((e) => RoomModel.fromJson(e as Map<String, dynamic>))
+          .toList();
     } on PostgrestException catch (e, s) {
-      debugPrint('''
-      ❌ Supabase Error - getRooms
-      Code: ${e.code}
-      Message: ${e.message}
-      Details: ${e.details}
-      Hint: ${e.hint}
-      $s
-      ''');
+      debugPrint('❌ Supabase Error - getRooms: ${e.message}\n$s');
       return [];
     } catch (e, s) {
       debugPrint('❌ Unknown Error - getRooms: $e\n$s');
@@ -35,16 +31,9 @@ class RoomService {
   Future<RoomModel?> getRoom(String id) async {
     try {
       final data = await _sb.from(SupabaseConfig.tRooms).select().eq('id', id).maybeSingle();
-      return data!= null? RoomModel.fromJson(data) : null;
-    } on PostgrestException catch (e, s) {
-      debugPrint('''
-      ❌ Supabase Error - getRoom
-      Code: ${e.code}
-      Message: ${e.message}
-      Details: ${e.details}
-      Hint: ${e.hint}
-      $s
-      ''');
+      return data != null ? RoomModel.fromJson(data) : null;
+    } catch (e) {
+      debugPrint('getRoom error: $e');
       return null;
     }
   }
@@ -52,70 +41,28 @@ class RoomService {
   Future<RoomModel> createRoom(RoomModel room, String userId) async {
     final user = _sb.auth.currentUser;
     if (user == null) throw Exception('User not authenticated');
-    if (user.id!= userId) throw Exception('userId mismatch with auth.uid()');
+    if (user.id != userId) throw Exception('userId mismatch with auth.uid()');
 
-    try {
-      final data = room.toJson();
-      data['owner_id'] = userId;
-      data['created_by'] = userId;
-      data['members'] = [userId];
+    final data = room.toJson()
+      ..['owner_id'] = userId
+      ..['created_by'] = userId
+      ..['members'] = [userId];
 
-      final response = await _sb.from(SupabaseConfig.tRooms).insert(data).select().single();
-      final newRoom = RoomModel.fromJson(response);
-
-      await joinRoom(newRoom.id, userId);
-      return newRoom;
-    } on PostgrestException catch (e, s) {
-      debugPrint('''
-      ❌ Supabase Error - createRoom
-      Code: ${e.code}
-      Message: ${e.message}
-      Details: ${e.details}
-      Hint: ${e.hint}
-      $s
-      ''');
-      rethrow;
-    } catch (e, s) {
-      debugPrint('❌ Unknown Error - createRoom: $e\n$s');
-      rethrow;
-    }
+    final response = await _sb.from(SupabaseConfig.tRooms).insert(data).select().single();
+    final newRoom = RoomModel.fromJson(response);
+    await joinRoom(newRoom.id, userId);
+    return newRoom;
   }
 
   Future<void> updateRoom(RoomModel room) async {
-    try {
-      await _sb
-         .from(SupabaseConfig.tRooms)
-         .update(room.toJson())
-         .eq('id', room.id);
-    } on PostgrestException catch (e, s) {
-      debugPrint('''
-      ❌ Supabase Error - updateRoom
-      Code: ${e.code}
-      Message: ${e.message}
-      Details: ${e.details}
-      Hint: ${e.hint}
-      $s
-      ''');
-      rethrow;
-    }
+    await _sb.from(SupabaseConfig.tRooms).update(room.toJson()).eq('id', room.id);
   }
 
   Future<void> deleteRoom(String roomId) async {
-    try {
-      await _sb.from(SupabaseConfig.tRooms).delete().eq('id', roomId);
-    } on PostgrestException catch (e, s) {
-      debugPrint('''
-      ❌ Supabase Error - deleteRoom
-      Code: ${e.code}
-      Message: ${e.message}
-      Details: ${e.details}
-      Hint: ${e.hint}
-      $s
-      ''');
-      rethrow;
-    }
+    await _sb.from(SupabaseConfig.tRooms).delete().eq('id', roomId);
   }
 
+  // --- Members ---
   Future<void> joinRoom(String roomId, String userId) async {
     try {
       await _sb.from(SupabaseConfig.tRoomMembers).upsert({
@@ -125,156 +72,87 @@ class RoomService {
         'is_online': true,
       });
       await _sb.rpc('increment_room_member', params: {'room_id': roomId});
-    } on PostgrestException catch (e, s) {
-      debugPrint('''
-      ❌ Supabase Error - joinRoom
-      Code: ${e.code}
-      Message: ${e.message}
-      Details: ${e.details}
-      Hint: ${e.hint}
-      $s
-      ''');
+    } catch (e) {
+      debugPrint('joinRoom error: $e');
     }
   }
 
   Future<void> leaveRoom(String roomId, String userId) async {
-    try {
-      await _sb
-         .from(SupabaseConfig.tRoomMembers)
-         .delete()
-         .eq('room_id', roomId)
-         .eq('user_id', userId);
-      await _sb.rpc('decrement_room_member', params: {'room_id': roomId});
-    } on PostgrestException catch (e, s) {
-      debugPrint('''
-      ❌ Supabase Error - leaveRoom
-      Code: ${e.code}
-      Message: ${e.message}
-      Details: ${e.details}
-      Hint: ${e.hint}
-      $s
-      ''');
-    }
+    await _sb.from(SupabaseConfig.tRoomMembers).delete().eq('room_id', roomId).eq('user_id', userId);
+    await _sb.rpc('decrement_room_member', params: {'room_id': roomId});
   }
 
   Future<bool> isMember(String roomId, String userId) async {
-    try {
-      final data = await _sb.from(SupabaseConfig.tRoomMembers)
-   .select().eq('room_id', roomId).eq('user_id', userId).maybeSingle();
-      return data!= null;
-    } catch (e) {
-      debugPrint('isMember error: $e');
-      return false;
-    }
+    final data = await _sb.from(SupabaseConfig.tRoomMembers)
+        .select()
+        .eq('room_id', roomId)
+        .eq('user_id', userId)
+        .maybeSingle();
+    return data != null;
   }
 
   Future<List<Map<String, dynamic>>> getRoomMembers(String roomId) async {
-    try {
-      final res = await _sb
-         .from(SupabaseConfig.tRoomMembers)
-         .select('*, users(*)')
-         .eq('room_id', roomId)
-         .order('is_online', ascending: false);
-
-      return res.map((m) => {
-       ...m['users'] as Map<String, dynamic>,
-        'is_online': m['is_online']?? false,
-        'last_seen': m['last_seen'],
-      }).toList();
-    } on PostgrestException catch (e, s) {
-      debugPrint('''
-      ❌ Supabase Error - getRoomMembers
-      Code: ${e.code}
-      Message: ${e.message}
-      Details: ${e.details}
-      Hint: ${e.hint}
-      $s
-      ''');
-      return [];
-    }
+    final res = await _sb
+        .from(SupabaseConfig.tRoomMembers)
+        .select('*, users(*)')
+        .eq('room_id', roomId)
+        .order('is_online', ascending: false);
+    return res.map((m) => {
+      ...m['users'] as Map<String, dynamic>,
+      'is_online': m['is_online'] ?? false,
+      'last_seen': m['last_seen'],
+    }).toList();
   }
 
   Future<void> removeRoomMember(String roomId, String userId) async {
-    try {
-      await _sb
-         .from(SupabaseConfig.tRoomMembers)
-         .delete()
-         .eq('room_id', roomId)
-         .eq('user_id', userId);
-      await _sb.rpc('decrement_room_member', params: {'room_id': roomId});
-    } on PostgrestException catch (e, s) {
-      debugPrint('''
-      ❌ Supabase Error - removeRoomMember
-      Code: ${e.code}
-      Message: ${e.message}
-      Details: ${e.details}
-      Hint: ${e.hint}
-      $s
-      ''');
-      rethrow;
-    }
+    await _sb.from(SupabaseConfig.tRoomMembers).delete().eq('room_id', roomId).eq('user_id', userId);
+    await _sb.rpc('decrement_room_member', params: {'room_id': roomId});
   }
 
   Future<void> updateRoomImage(String roomId, String imageUrl) async {
-    try {
-      await _sb.from(SupabaseConfig.tRooms).update({'image_url': imageUrl}).eq('id', roomId);
-    } on PostgrestException catch (e, s) {
-      debugPrint('''
-      ❌ Supabase Error - updateRoomImage
-      Code: ${e.code}
-      Message: ${e.message}
-      Details: ${e.details}
-      Hint: ${e.hint}
-      $s
-      ''');
-      rethrow;
-    }
+    await _sb.from(SupabaseConfig.tRooms).update({'image_url': imageUrl}).eq('id', roomId);
   }
 
   Future<void> approveRoom(String roomId) async {
-    try {
-      await _sb.from(SupabaseConfig.tRooms)
-   .update({'is_approved': true})
-   .eq('id', roomId);
-    } on PostgrestException catch (e, s) {
-      debugPrint('''
-      ❌ Supabase Error - approveRoom
-      Code: ${e.code}
-      Message: ${e.message}
-      Details: ${e.details}
-      Hint: ${e.hint}
-      $s
-      ''');
-      rethrow;
-    }
+    await _sb.from(SupabaseConfig.tRooms).update({'is_approved': true}).eq('id', roomId);
   }
 
-  Future<void> sendRoomMessage(String roomId, MessageModel message) async {
-    try {
-      await _sb.from(SupabaseConfig.tRoomMessages).insert(message.toJson());
-    } on PostgrestException catch (e, s) {
-      debugPrint('''
-      ❌ Supabase Error - sendRoomMessage
-      Code: ${e.code}
-      Message: ${e.message}
-      Details: ${e.details}
-      Hint: ${e.hint}
-      $s
-      ''');
-      rethrow;
-    }
-  }
-
-  Stream<List<MessageModel>> getRoomMessages(String roomId) {
+  // --- Messages - موحد مع PrivateChat ---
+  /// stream رسائل الغرفة، نفس شكل messages الخاصة
+  Stream<List<Map<String, dynamic>>> getRoomMessagesStream(String roomId) {
     return _sb
- .from(SupabaseConfig.tRoomMessages)
- .stream(primaryKey: ['id'])
- .eq('chat_id', roomId)
- .order('created_at', ascending: false)
- .map((maps) => maps.map((map) => MessageModel.fromJson(map)).toList());
+        .from(SupabaseConfig.tRoomMessages)
+        .stream(primaryKey: ['id'])
+        .eq('room_id', roomId)
+        .order('created_at', ascending: true)
+        .map((maps) => maps);
   }
 
-  // دوال الأونلاين
+  /// إرسال رسالة غرفة – content '' بدل null
+  Future<void> sendRoomMessage({
+    required String roomId,
+    required String senderId,
+    String text = '',
+    String? imageUrl,
+    String? voiceUrl,
+  }) async {
+    await _sb.from(SupabaseConfig.tRoomMessages).insert({
+      'room_id': roomId,
+      'sender_id': senderId,
+      'content': text.isEmpty ? '' : text,
+      'media_url': imageUrl,
+      'audio_url': voiceUrl,
+      'type': voiceUrl != null ? 'audio' : imageUrl != null ? 'image' : 'text',
+      'created_at': DateTime.now().toIso8601String(),
+    });
+  }
+
+  /// حذف حقيقي
+  Future<void> deleteRoomMessage(String messageId) async {
+    await _sb.from(SupabaseConfig.tRoomMessages).delete().eq('id', messageId);
+  }
+
+  // --- Online ---
   Future<void> setOnline(String roomId, String userId) async {
     await _sb.rpc('set_user_online_room', params: {
       'room_id_input': roomId,
