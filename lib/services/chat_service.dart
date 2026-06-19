@@ -24,7 +24,6 @@ class ChatService {
     _flushOutbox('room');
   }
 
-  // ====== Private Chat ======
   String _getChatId(String id1, String id2) {
     final sorted = [id1, id2]..sort();
     return sorted.join('_');
@@ -33,11 +32,11 @@ class ChatService {
   Stream<List<Map<String, dynamic>>> getPrivateMessagesStream(String userId, String peerId) {
     final chatId = _getChatId(userId, peerId);
     return _supabase
-     .from('private_messages')
-     .stream(primaryKey: ['id'])
-     .eq('chat_id', chatId)
-     .order('created_at', ascending: true)
-     .map((maps) => maps.where((m) => m['deleted_at'] == null).toList());
+    .from('private_messages')
+    .stream(primaryKey: ['id'])
+    .eq('chat_id', chatId)
+    .order('created_at', ascending: true)
+    .map((maps) => maps.where((m) => m['deleted_at'] == null).toList());
   }
 
   Future<void> sendPrivateMessage(String peerId, MessageModel message) async {
@@ -64,14 +63,13 @@ class ChatService {
       'reply_to': replyTo,
     };
 
-    try {
-      final conn = await Connectivity().checkConnectivity();
-      if (conn.contains(ConnectivityResult.none)) throw Exception('offline');
-      await _sendPrivateOnline(payload);
-    } catch (_) {
+    final conn = await Connectivity().checkConnectivity();
+    final offline = conn.contains(ConnectivityResult.none);
+    if (offline) {
       await _outboxChat?.add(payload);
-      rethrow;
+      throw Exception('offline');
     }
+    await _sendPrivateOnline(payload);
   }
 
   Future<String> _upload(File file) async {
@@ -93,11 +91,10 @@ class ChatService {
       audioUrl = await _upload(File(payload['audio_path']));
     }
 
-    // جيب اسم وصورة المرسل - جدولك يتطلبهم
     final me = await _supabase.from('profiles')
-       .select('username, avatar_url')
-       .eq('id', payload['sender_id'])
-       .maybeSingle();
+      .select('username, avatar_url')
+      .eq('id', payload['sender_id'])
+      .maybeSingle();
 
     await _supabase.from('private_messages').insert({
       'chat_id': payload['chat_id'],
@@ -110,28 +107,26 @@ class ChatService {
       'audio_url': audioUrl,
       'type': audioUrl!= null? 'audio' : imageUrl!= null? 'image' : 'text',
       'reply_to': payload['reply_to'],
-      // created_at خليه للـ DB
     });
   }
 
   Future<void> markAsRead(String userId, String peerId) async {
     final chatId = _getChatId(userId, peerId);
     await _supabase
-     .from('private_messages')
-     .update({'is_read': true})
-     .eq('chat_id', chatId)
-     .eq('receiver_id', userId)
-     .eq('is_read', false);
+    .from('private_messages')
+    .update({'is_read': true})
+    .eq('chat_id', chatId)
+    .eq('receiver_id', userId)
+    .eq('is_read', false);
   }
 
-  // ====== Room Chat ======
   Stream<List<Map<String, dynamic>>> getRoomMessagesStream(String roomId) {
     return _supabase
-     .from('room_messages')
-     .stream(primaryKey: ['id'])
-     .eq('room_id', roomId)
-     .order('created_at', ascending: true)
-     .map((maps) => maps.where((m) => m['deleted_at'] == null).toList());
+    .from('room_messages')
+    .stream(primaryKey: ['id'])
+    .eq('room_id', roomId)
+    .order('created_at', ascending: true)
+    .map((maps) => maps.where((m) => m['deleted_at'] == null).toList());
   }
 
   Future<void> sendMessageToRoom(String roomId, MessageModel message) async {
@@ -154,14 +149,14 @@ class ChatService {
       'audio_path': audioFile?.path,
       'reply_to': replyTo,
     };
-    try {
-      final conn = await Connectivity().checkConnectivity();
-      if (conn.contains(ConnectivityResult.none)) throw Exception('offline');
-      await _sendRoomOnline(payload);
-    } catch (_) {
+
+    final conn = await Connectivity().checkConnectivity();
+    final offline = conn.contains(ConnectivityResult.none);
+    if (offline) {
       await _outboxRoom?.add(payload);
-      rethrow;
+      throw Exception('offline');
     }
+    await _sendRoomOnline(payload);
   }
 
   Future<void> _sendRoomOnline(Map payload) async {
@@ -173,7 +168,6 @@ class ChatService {
     if (payload['audio_path']!= null) {
       audioUrl = await _upload(File(payload['audio_path']));
     }
-    // room_messages ما بيه type / sender_name - مطابق لجدولك الجديد
     await _supabase.from('room_messages').insert({
       'room_id': payload['room_id'],
       'sender_id': payload['sender_id'],
@@ -215,17 +209,14 @@ class ChatService {
     }).eq('user_id', userId).eq('room_id', roomId);
   }
 
-  // ====== حذف الرسائل - ناعم ======
-  // تقدر تستدعيه deleteMessage(id) أو deleteMessage(id, isRoom: true)
   Future<void> deleteMessage(String messageId, {bool isRoom = false}) async {
     final table = isRoom? 'room_messages' : 'private_messages';
     await _supabase.from(table)
-    .update({'deleted_at': DateTime.now().toIso8601String()})
-    .eq('id', messageId)
-    .eq('sender_id', _supabase.auth.currentUser!.id);
+   .update({'deleted_at': DateTime.now().toIso8601String()})
+   .eq('id', messageId)
+   .eq('sender_id', _supabase.auth.currentUser!.id);
   }
 
-  // ====== تبليغ ======
   Future<void> reportUser(String reportedId, String reason) async {
     await _supabase.from('reports').insert({
       'reporter_id': _supabase.auth.currentUser!.id,
@@ -234,32 +225,31 @@ class ChatService {
     });
   }
 
-  // ====== باقي الدوال ======
   Future<Map<String, dynamic>?> getLastPrivateMessage(String userId, String peerId) async {
     final chatId = _getChatId(userId, peerId);
     final res = await _supabase.from('private_messages').select()
-    .eq('chat_id', chatId).order('created_at', ascending: false).limit(1).maybeSingle();
+   .eq('chat_id', chatId).order('created_at', ascending: false).limit(1).maybeSingle();
     return res;
   }
 
   Future<Map<String, dynamic>?> getLastRoomMessage(String roomId) async {
     final res = await _supabase.from('room_messages').select()
-    .eq('room_id', roomId).order('created_at', ascending: false).limit(1).maybeSingle();
+   .eq('room_id', roomId).order('created_at', ascending: false).limit(1).maybeSingle();
     return res;
   }
 
   Future<int> getUnreadCount(String userId, String peerId) async {
     final chatId = _getChatId(userId, peerId);
     final res = await _supabase.from('private_messages').select('id')
-    .eq('chat_id', chatId).eq('receiver_id', userId).eq('is_read', false);
+   .eq('chat_id', chatId).eq('receiver_id', userId).eq('is_read', false);
     return res.length;
   }
 
   Future<List<Map<String, dynamic>>> getUserChats(String userId) async {
     final response = await _supabase.from('private_messages')
-    .select('chat_id, sender_id, receiver_id, content, created_at, is_read')
-    .or('sender_id.eq.$userId,receiver_id.eq.$userId')
-    .order('created_at', ascending: false);
+   .select('chat_id, sender_id, receiver_id, content, created_at, is_read')
+   .or('sender_id.eq.$userId,receiver_id.eq.$userId')
+   .order('created_at', ascending: false);
 
     final Map<String, Map<String, dynamic>> chats = {};
     for (var msg in response) {
