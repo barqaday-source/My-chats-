@@ -1,269 +1,139 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import '../../core/constants/app_colors.dart';
-import '../../models/chat_model.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:timeago/timeago.dart' as timeago;
 import '../../models/user_model.dart';
-import '../../providers/auth_provider.dart';
-import '../../services/chat_service.dart';
-import '../../widgets/user_avatar.dart';
-import 'private_chat_screen.dart';
+import '../../widgets/chat/chat_input_bar.dart';
+import '../../widgets/chat/message_bubble.dart';
 
-class ChatsListScreen extends StatefulWidget {
-  const ChatsListScreen({super.key});
+class PrivateChatScreen extends StatefulWidget {
+  final String chatId;
+  final UserModel peer;
+
+  const PrivateChatScreen({
+    super.key,
+    required this.chatId,
+    required this.peer,
+  });
 
   @override
-  State<ChatsListScreen> createState() => _ChatsListScreenState();
+  State<PrivateChatScreen> createState() => _PrivateChatScreenState();
 }
 
-class _ChatsListScreenState extends State<ChatsListScreen> {
-  final _chatService = ChatService();
-  final _searchController = TextEditingController();
-  List<ChatModel> _chats = [];
-  List<ChatModel> _filteredChats = [];
-  bool _loading = true;
+class _PrivateChatScreenState extends State<PrivateChatScreen> {
+  final supabase = Supabase.instance.client;
+  final ScrollController _scrollController = ScrollController();
+  late final Stream<List<Map<String, dynamic>>> _messagesStream;
 
   @override
   void initState() {
     super.initState();
-    _loadChats();
+    timeago.setLocaleMessages('ar', timeago.ArMessages());
+
+    // مطابق لجدول messages عندك
+    _messagesStream = supabase
+       .from('messages')
+       .stream(primaryKey: ['id'])
+       .eq('chat_id', widget.chatId)
+       .order('created_at', ascending: true);
   }
 
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
+  void _scrollToBottom() {
+    if (_scrollController.hasClients) {
+      Future.delayed(const Duration(milliseconds: 100), () {
+        if (_scrollController.hasClients) {
+          _scrollController.animateTo(
+            _scrollController.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+          );
+        }
+      });
+    }
   }
 
-  Future<void> _loadChats() async {
-    setState(() => _loading = true);
+  Future<void> _sendMessage(String text, String? imageUrl, String? voiceUrl) async {
     try {
-      final user = context.read<AuthProvider>().user!;
-      final chats = await _chatService.getUserChats(user.id);
-      if (mounted) {
-        setState(() {
-          _chats = chats.map((c) => ChatModel.fromJson(c)).toList();
-          _filteredChats = _chats;
-          _loading = false;
-        });
-      }
+      final user = supabase.auth.currentUser!;
+      await supabase.from('messages').insert({
+        'chat_id': widget.chatId,
+        'sender_id': user.id,
+        'receiver_id': widget.peer.id,
+        'content': text.isEmpty? null : text,
+        'media_url': imageUrl,
+        'audio_url': voiceUrl,
+        'type': voiceUrl!= null? 'audio' : imageUrl!= null? 'image' : 'text',
+      });
+      _scrollToBottom();
     } catch (e) {
       if (mounted) {
-        setState(() => _loading = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('فشل تحميل المحادثات: $e', style: const TextStyle(fontFamily: 'Tajawal')),
-            backgroundColor: AppColors.danger,
+            content: Text('فشل الإرسال: $e', style: const TextStyle(fontFamily: 'Tajawal')),
+            backgroundColor: Colors.red,
           ),
         );
       }
     }
   }
 
-  void _filterChats(String query) {
-    setState(() {
-      if (query.isEmpty) {
-        _filteredChats = _chats;
-      } else {
-        _filteredChats = _chats
-           .where((chat) => chat.peer.username.toLowerCase().contains(query.toLowerCase()))
-           .toList();
-      }
-    });
-  }
-
-  void _openChat(ChatModel chat) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => PrivateChatScreen(otherUser: chat.peer),
-      ),
-    ).then((_) => _loadChats());
-  }
-
   @override
   Widget build(BuildContext context) {
+    final currentUserId = supabase.auth.currentUser!.id;
+
     return Scaffold(
+      backgroundColor: const Color(0xFF121212),
       appBar: AppBar(
-        backgroundColor: AppColors.bgCard,
-        title: const Text(
-          'المحادثات',
-          style: TextStyle(fontFamily: 'Tajawal', color: AppColors.white),
+        backgroundColor: const Color(0xFF1E1E1E),
+        title: Text(
+          widget.peer.username,
+          style: const TextStyle(fontFamily: 'Tajawal', fontWeight: FontWeight.w700),
         ),
       ),
-      body: Container(
-        decoration: BoxDecoration(gradient: AppColors.bgGrad),
-        child: Column(
-          children: [
-            _buildSearchBar(),
-            Expanded(
-              child: _loading
-            ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
-                  : _filteredChats.isEmpty
-               ? _buildEmptyState()
-                      : RefreshIndicator(
-                          onRefresh: _loadChats,
-                          color: AppColors.primary,
-                          child: ListView.builder(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                            itemCount: _filteredChats.length,
-                            itemBuilder: (context, index) {
-                              final chat = _filteredChats[index];
-                              return _buildChatTile(chat);
-                            },
-                          ),
-                        ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSearchBar() {
-    return Container(
-      margin: const EdgeInsets.all(12),
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      decoration: BoxDecoration(
-        color: AppColors.bgCard,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.glassBorder),
-      ),
-      child: TextField(
-        controller: _searchController,
-        style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.white),
-        decoration: const InputDecoration(
-          icon: Icon(Icons.search_rounded, color: AppColors.textSub),
-          hintText: 'ابحث عن محادثة...',
-          hintStyle: TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub),
-          border: InputBorder.none,
-        ),
-        onChanged: _filterChats,
-      ),
-    );
-  }
-
-  Widget _buildEmptyState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+      body: Column(
         children: [
-          Icon(Icons.chat_bubble_outline_rounded, size: 64, color: AppColors.textSub),
-          const SizedBox(height: 16),
-          const Text(
-            'لا توجد محادثات',
-            style: TextStyle(
-              fontFamily: 'Tajawal',
-              color: AppColors.textSub,
-              fontSize: 16,
+          Expanded(
+            child: StreamBuilder<List<Map<String, dynamic>>>(
+              stream: _messagesStream,
+              builder: (context, snapshot) {
+                if (snapshot.hasError) {
+                  return Center(child: Text('خطأ: ${snapshot.error}', style: const TextStyle(color: Colors.red, fontFamily: 'Tajawal')));
+                }
+                if (!snapshot.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                final messages = snapshot.data!;
+                if (messages.isEmpty) {
+                  return Center(
+                    child: Text('لا توجد رسائل بعد', style: TextStyle(color: Colors.white.withOpacity(0.5), fontFamily: 'Tajawal')),
+                  );
+                }
+                WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
+                return ListView.builder(
+                  controller: _scrollController,
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  itemCount: messages.length,
+                  itemBuilder: (context, index) {
+                    final msg = messages[index];
+                    final isMe = msg['sender_id'] == currentUserId;
+                    return MessageBubble(
+                      message: msg,
+                      isMe: isMe,
+                      showAvatar: true,
+                    );
+                  },
+                );
+              },
             ),
           ),
+          ChatInputBar(onSend: _sendMessage),
         ],
       ),
     );
   }
 
-  Widget _buildChatTile(ChatModel chat) {
-    return InkWell(
-      onTap: () => _openChat(chat),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: AppColors.bgCard,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.glassBorder),
-        ),
-        child: Row(
-          children: [
-            UserAvatar(
-              url: chat.peer.avatarUrl,
-              name: chat.peer.username,
-              isOnline: chat.peer.isOnline,
-              size: 50,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          chat.peer.username,
-                          style: const TextStyle(
-                            fontFamily: 'Tajawal',
-                            color: AppColors.white,
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                      Text(
-                        _formatTime(chat.lastMessageTime),
-                        style: const TextStyle(
-                          fontFamily: 'Tajawal',
-                          color: AppColors.textSub,
-                          fontSize: 11,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          chat.lastMessage?? 'لا توجد رسائل',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontFamily: 'Tajawal',
-                            color: chat.unreadCount > 0? AppColors.white : AppColors.textSub,
-                            fontSize: 13,
-                            fontWeight: chat.unreadCount > 0? FontWeight.w600 : FontWeight.normal,
-                          ),
-                        ),
-                      ),
-                      if (chat.unreadCount > 0)
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: AppColors.primary,
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Text(
-                            chat.unreadCount.toString(),
-                            style: const TextStyle(
-                              fontFamily: 'Tajawal',
-                              color: Colors.white,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  String _formatTime(DateTime time) {
-    final now = DateTime.now();
-    final diff = now.difference(time);
-    if (diff.inDays > 0) {
-      return '${time.day}/${time.month}';
-    } else if (diff.inHours > 0) {
-      return '${diff.inHours}س';
-    } else if (diff.inMinutes > 0) {
-      return '${diff.inMinutes}د';
-    } else {
-      return 'الآن';
-    }
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
   }
 }
