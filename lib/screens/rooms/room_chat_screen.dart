@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -28,6 +29,17 @@ class _RoomChatScreenState extends State<RoomChatScreen> with WidgetsBindingObse
   List<UserModel> _onlineMembers = [];
   StreamSubscription? _membersSub;
   late String _userId;
+
+  // FIXED: توليد uuid v4 بدون باكج خارجي - يحل PostgrestException null id
+  String _uuid() {
+    final rnd = Random.secure();
+    final bytes = List<int>.generate(16, (_) => rnd.nextInt(256));
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    String h(int n) => n.toRadixString(16).padLeft(2, '0');
+    final p = bytes.map(h).join();
+    return '${p.substring(0,8)}-${p.substring(8,12)}-${p.substring(12,16)}-${p.substring(16,20)}-${p.substring(20)}';
+  }
 
   @override
   void initState() {
@@ -69,10 +81,10 @@ class _RoomChatScreenState extends State<RoomChatScreen> with WidgetsBindingObse
 
   void _subscribeToMembers() {
     _membersSub = _supabase
-      .from('room_members')
-      .stream(primaryKey: ['id'])
-      .eq('room_id', widget.room.id)
-      .listen((data) async {
+     .from('room_members')
+     .stream(primaryKey: ['id'])
+     .eq('room_id', widget.room.id)
+     .listen((data) async {
       final members = await _roomService.getRoomMembers(widget.room.id);
       if (!mounted) return;
       final onlineData = members.where((m) => m['is_online'] == true).toList();
@@ -89,6 +101,7 @@ class _RoomChatScreenState extends State<RoomChatScreen> with WidgetsBindingObse
       final profile = auth.userProfile;
 
       await _supabase.from('room_messages').insert({
+        'id': _uuid(), // FIXED: يحل null value in column "id"
         'chat_id': widget.room.id,
         'sender_id': user.id,
         'sender_name': profile?['username']?? 'مستخدم',
@@ -168,10 +181,10 @@ class _RoomChatScreenState extends State<RoomChatScreen> with WidgetsBindingObse
             Expanded(
               child: StreamBuilder<List<Map<String, dynamic>>>(
                 stream: _supabase
-                   .from('room_messages')
-                   .stream(primaryKey: ['id'])
-                   .eq('chat_id', widget.room.id)
-                   .order('created_at', ascending: false),
+                  .from('room_messages')
+                  .stream(primaryKey: ['id'])
+                  .eq('chat_id', widget.room.id)
+                  .order('created_at', ascending: false),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(
@@ -249,7 +262,7 @@ class _RoomChatScreenState extends State<RoomChatScreen> with WidgetsBindingObse
                 const SizedBox(height: 2),
                 Text(
                   member.username.length > 6
-                    ? '${member.username.substring(0, 6)}...'
+                   ? '${member.username.substring(0, 6)}...'
                       : member.username,
                   style: const TextStyle(
                     fontFamily: 'Tajawal',
