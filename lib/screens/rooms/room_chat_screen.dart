@@ -4,7 +4,7 @@ import 'package:timeago/timeago.dart' as timeago;
 import '../../core/constants/app_colors.dart';
 import '../../models/room_model.dart';
 import '../../widgets/chat/chat_input_bar.dart';
-import '../../widgets/chat/message_bubble.dart';
+import '../../widgets/message_bubble.dart';
 
 class RoomChatScreen extends StatefulWidget {
   final RoomModel room;
