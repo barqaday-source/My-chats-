@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/constants/app_colors.dart';
 import '../../models/user_model.dart';
 import '../../providers/auth_provider.dart';
-import '../../services/user_service.dart';
 import '../../widgets/user_avatar.dart';
 import '../chat/private_chat_screen.dart';
 
@@ -16,7 +16,7 @@ class UserProfileScreen extends StatefulWidget {
 }
 
 class _UserProfileScreenState extends State<UserProfileScreen> {
-  final _userService = UserService();
+  final supabase = Supabase.instance.client;
   UserModel? _user;
   bool _loading = true;
   bool _isFollowing = false;
@@ -30,16 +30,36 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   Future<void> _loadUser() async {
     setState(() => _loading = true);
     try {
-      final userData = await _userService.getUserById(widget.userId);
-      final me = context.read<AuthProvider>().user!;
-      final following = await _userService.isFollowing(me.id, widget.userId);
+      // نقرأ من profiles مباشرة، هذا اللي يتحدث منه ProfileScreen
+      final data = await supabase
+         .from('profiles')
+         .select()
+         .eq('id', widget.userId)
+         .maybeSingle();
+
+      if (data == null && mounted) {
+        setState(() => _loading = false);
+        return;
+      }
+
       if (mounted) {
         setState(() {
-          _user = UserModel.fromJson(userData);
-          _isFollowing = following;
+          _user = UserModel.fromJson(data!);
           _loading = false;
         });
       }
+
+      // المتابعة - إذا ما عندك جدول follows، خليها false
+      try {
+        final me = context.read<AuthProvider>().user!;
+        final follow = await supabase
+           .from('follows')
+           .select()
+           .eq('follower_id', me.id)
+           .eq('following_id', widget.userId)
+           .maybeSingle();
+        if (mounted) setState(() => _isFollowing = follow!= null);
+      } catch (_) {}
     } catch (e) {
       if (mounted) {
         setState(() => _loading = false);
@@ -55,16 +75,22 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
 
   Future<void> _toggleFollow() async {
     if (_user == null) return;
-    final me = context.read<AuthProvider>().user!;
-    setState(() => _isFollowing =!_isFollowing);
+    final meId = supabase.auth.currentUser!.id;
+    final newState =!_isFollowing;
+    setState(() => _isFollowing = newState);
     try {
-      if (_isFollowing) {
-        await _userService.followUser(me.id, _user!.id);
+      if (newState) {
+        await supabase.from('follows').insert({
+          'follower_id': meId,
+          'following_id': _user!.id,
+        });
       } else {
-        await _userService.unfollowUser(me.id, _user!.id);
+        await supabase.from('follows').delete()
+         .eq('follower_id', meId)
+         .eq('following_id', _user!.id);
       }
     } catch (e) {
-      setState(() => _isFollowing =!_isFollowing);
+      setState(() => _isFollowing =!newState);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -78,10 +104,18 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
 
   void _startChat() {
     if (_user == null) return;
+    final meId = supabase.auth.currentUser!.id;
+    // chat_id ثابت للطرفين، حتى الرسائل توصل
+    final ids = [meId, _user!.id]..sort();
+    final chatId = ids.join('_');
+
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => PrivateChatScreen(otherUser: _user!),
+        builder: (_) => PrivateChatScreen(
+          chatId: chatId,
+          peer: _user!,
+        ),
       ),
     );
   }
@@ -99,9 +133,9 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       body: Container(
         decoration: BoxDecoration(gradient: AppColors.bgGrad),
         child: _loading
-      ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+     ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
             : _user == null
-         ? const Center(
+        ? const Center(
                     child: Text(
                       'المستخدم غير موجود',
                       style: TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub),
@@ -193,8 +227,8 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   }
 
   Widget _buildActions() {
-    final me = context.read<AuthProvider>().user!;
-    if (me.id == _user!.id) {
+    final meId = supabase.auth.currentUser!.id;
+    if (meId == _user!.id) {
       return const SizedBox.shrink();
     }
     return Row(
@@ -207,7 +241,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
               padding: const EdgeInsets.symmetric(vertical: 12),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
-                side: BorderSide(color: AppColors.primary),
+                side: const BorderSide(color: AppColors.primary),
               ),
             ),
             icon: Icon(
@@ -232,7 +266,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
             padding: const EdgeInsets.all(12),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
-              side: BorderSide(color: AppColors.glassBorder),
+              side: const BorderSide(color: AppColors.glassBorder),
             ),
           ),
           child: const Icon(Icons.message_rounded, color: AppColors.primary),
