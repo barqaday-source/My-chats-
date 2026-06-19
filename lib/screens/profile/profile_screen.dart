@@ -140,7 +140,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   void _showSnack(String msg, bool success) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(msg, style: const TextStyle(fontFamily: 'Tajawal')), backgroundColor: success ? Colors.green : Colors.red),
+      SnackBar(
+        content: Text(msg, style: const TextStyle(fontFamily: 'Tajawal')),
+        backgroundColor: success ? const Color(0xFF00D1A0) : Colors.red, // نعناعي
+      ),
     );
   }
 
@@ -247,7 +250,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         child: ElevatedButton(
                           onPressed: _isSaving ? null : _updateProfile,
                           style: ElevatedButton.styleFrom(
-                              backgroundColor: AppColors.primary,
+                              backgroundColor: const Color(0xFF00D1A0), // نعناعي
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                               elevation: 0),
                           child: _isSaving
@@ -282,7 +285,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AppColors.glassBorder)),
         enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AppColors.glassBorder.withOpacity(0.5))),
         focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.primary, width: 1.5)),
-        counterStyle: const TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub, fontSize: 11),
       ),
     );
   }
