@@ -6,9 +6,9 @@ class MessageModel {
   final String senderName;
   final String? senderAvatar;
   final String content;
-  final String type; // 'text' 'voice' 'image'
+  final String type; // 'text' 'image' 'audio'
   final String? audioUrl;
-  final String? fileUrl;
+  final String? fileUrl; // maps to media_url in DB
   final int? duration;
   final String? replyToId;
   final DateTime createdAt;
@@ -33,7 +33,7 @@ class MessageModel {
 
   factory MessageModel.fromJson(Map<String, dynamic> json) {
     return MessageModel(
-      id: json['id']?? '',
+      id: json['id']?.toString()?? '',
       chatId: json['chat_id']?? '',
       senderId: json['sender_id']?? '',
       receiverId: json['receiver_id']?? '',
@@ -42,48 +42,35 @@ class MessageModel {
       content: json['content']?? '',
       type: json['type']?? 'text',
       audioUrl: json['audio_url'],
-      fileUrl: json['file_url'],
+      fileUrl: json['media_url']?? json['file_url'],
       duration: json['duration'],
-      replyToId: json['reply_to_id'],
-      createdAt: DateTime.parse(json['created_at']),
+      replyToId: json['reply_to']?? json['reply_to_id'],
+      createdAt: json['created_at']!= null? DateTime.parse(json['created_at']) : DateTime.now(),
       isRead: json['is_read']?? false,
     );
   }
 
   Map<String, dynamic> toJson() {
-    return {
-      'id': id,
+    final map = {
       'chat_id': chatId,
       'sender_id': senderId,
       'receiver_id': receiverId,
-      'sender_name': senderName,
-      'sender_avatar': senderAvatar,
       'content': content,
       'type': type,
+      'media_url': fileUrl,
       'audio_url': audioUrl,
-      'file_url': fileUrl,
-      'duration': duration,
-      'reply_to_id': replyToId,
-      'created_at': createdAt.toIso8601String(),
+      'reply_to': replyToId,
       'is_read': isRead,
     };
+    if (id.isNotEmpty) map['id'] = id;
+    return map;
   }
 
   MessageModel copyWith({
-    String? id,
-    String? chatId,
-    String? senderId,
-    String? receiverId,
-    String? senderName,
-    String? senderAvatar,
-    String? content,
-    String? type,
-    String? audioUrl,
-    String? fileUrl,
-    int? duration,
-    String? replyToId,
-    DateTime? createdAt,
-    bool? isRead,
+    String? id, String? chatId, String? senderId, String? receiverId,
+    String? senderName, String? senderAvatar, String? content, String? type,
+    String? audioUrl, String? fileUrl, int? duration, String? replyToId,
+    DateTime? createdAt, bool? isRead,
   }) {
     return MessageModel(
       id: id?? this.id,
