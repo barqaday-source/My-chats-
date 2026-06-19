@@ -47,13 +47,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _loadProfile() async {
     setState(() => _isLoading = true);
     try {
-      final auth = context.read<AuthProvider>();
-      final profile = auth.userProfile;
-      if (profile!= null) {
+      final userId = supabase.auth.currentUser!.id;
+      // نقرأ مباشرة من profiles، هذا المصدر الصحيح
+      final profile = await supabase
+         .from('profiles')
+         .select()
+         .eq('id', userId)
+         .maybeSingle();
+
+      if (profile!= null && mounted) {
         _usernameCtrl.text = profile['username']?? '';
         _bioCtrl.text = profile['bio']?? '';
         _whatsappCtrl.text = profile['whatsapp']?? '';
-        _birthDateCtrl.text = profile['birth_date']?.toString().split(' ')[0]?? '';
+        final birth = profile['birth_date'];
+        _birthDateCtrl.text = birth!= null? birth.toString().split(' ')[0] : '';
         _zodiacCtrl.text = profile['zodiac']?? '';
         _avatarUrl = profile['avatar_url'];
       }
@@ -68,21 +75,45 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isSaving = true);
-    final success = await context.read<AuthProvider>().updateProfile({
-      'username': _usernameCtrl.text.trim(),
-      'bio': _bioCtrl.text.trim(),
-      'whatsapp': _whatsappCtrl.text.trim(),
-      'birth_date': _birthDateCtrl.text.trim().isEmpty? null : _birthDateCtrl.text.trim(),
-      'zodiac': _zodiacCtrl.text.trim(),
-      'avatar_url': _avatarUrl,
-      'updated_at': DateTime.now().toIso8601String(),
-    });
+    try {
+      final userId = supabase.auth.currentUser!.id;
+      final data = {
+        'username': _usernameCtrl.text.trim(),
+        'bio': _bioCtrl.text.trim(),
+        'whatsapp': _whatsappCtrl.text.trim().isEmpty? null : _whatsappCtrl.text.trim(),
+        'birth_date': _birthDateCtrl.text.trim().isEmpty? null : _birthDateCtrl.text.trim(),
+        'zodiac': _zodiacCtrl.text.trim().isEmpty? null : _zodiacCtrl.text.trim(),
+        'avatar_url': _avatarUrl,
+        'updated_at': DateTime.now().toIso8601String(),
+      };
 
-    if (mounted) {
-      _showSnack(success? 'تم تحديث البروفايل بنجاح' : 'فشل تحديث البروفايل', success);
-      if (success) Navigator.pop(context, true);
+      // 1. نحدث profiles - هذا الأساسي
+      await supabase.from('profiles').update(data).eq('id', userId);
+
+      // 2. نحدث users أيضا إذا موجود، حتى ما يصير تضارب - نتجاهل الخطأ إذا الجدول ما بيه هاي الأعمدة
+      try {
+        await supabase.from('users').update({
+          'username': data['username'],
+          'avatar_url': data['avatar_url'],
+        }).eq('id', userId);
+      } catch (_) {}
+
+      // 3. نعمل refresh للـ AuthProvider حتى باقي التطبيق يشوف التغيير
+      if (mounted) {
+        try {
+          await context.read<AuthProvider>().refreshProfile();
+        } catch (_) {}
+      }
+
+      if (mounted) {
+        _showSnack('تم تحديث البروفايل بنجاح', true);
+        Navigator.pop(context, true);
+      }
+    } catch (e) {
+      if (mounted) _showSnack('فشل تحديث البروفايل: $e', false);
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
     }
-    if (mounted) setState(() => _isSaving = false);
   }
 
   Future<void> _uploadAvatar() async {
@@ -126,7 +157,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       body: Container(
         decoration: const BoxDecoration(gradient: AppColors.bgGrad),
         child: _isLoading
-       ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+      ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
             : SafeArea(
                 child: SingleChildScrollView(
                   padding: EdgeInsets.fromLTRB(16, 24, 16, MediaQuery.of(context).padding.bottom + 20),
@@ -142,7 +173,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: AppColors.primary, width: 3)),
                             child: ClipOval(
                               child: _avatarUrl!= null
-                             ? CachedNetworkImage(imageUrl: _avatarUrl!, fit: BoxFit.cover, placeholder: (c, u) => Container(color: AppColors.bgCard2), errorWidget: (c, u, e) => Container(color: AppColors.bgCard2, child: const Icon(Icons.person, size: 60, color: AppColors.white)))
+                            ? CachedNetworkImage(imageUrl: _avatarUrl!, fit: BoxFit.cover, placeholder: (c, u) => Container(color: AppColors.bgCard2), errorWidget: (c, u, e) => Container(color: AppColors.bgCard2, child: const Icon(Icons.person, size: 60, color: AppColors.white)))
                                   : Container(color: AppColors.bgCard2, child: const Icon(Icons.person, size: 60, color: AppColors.white)),
                             ),
                           ),
