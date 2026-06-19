@@ -113,10 +113,8 @@ class _RoomSettingsScreenState extends State<RoomSettingsScreen> {
       setState(() => _loading = true);
       try {
         await _roomService.deleteRoom(widget.room.id);
-        if (mounted) {
-          Navigator.pop(context);
-          Navigator.pop(context);
-        }
+        if (!mounted) return;
+        Navigator.of(context).popUntil((route) => route.isFirst);
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -125,9 +123,8 @@ class _RoomSettingsScreenState extends State<RoomSettingsScreen> {
               backgroundColor: AppColors.danger,
             ),
           );
+          setState(() => _loading = false);
         }
-      } finally {
-        if (mounted) setState(() => _loading = false);
       }
     }
   }
@@ -165,8 +162,7 @@ class _RoomSettingsScreenState extends State<RoomSettingsScreen> {
     if (confirm == true) {
       await _roomService.leaveRoom(widget.room.id, user.id);
       if (mounted) {
-        Navigator.pop(context);
-        Navigator.pop(context);
+        Navigator.of(context).popUntil((route) => route.isFirst);
       }
     }
   }
@@ -182,9 +178,9 @@ class _RoomSettingsScreenState extends State<RoomSettingsScreen> {
         ),
       ),
       body: Container(
-        decoration: BoxDecoration(gradient: AppColors.bgGrad),
+        decoration: const BoxDecoration(gradient: AppColors.bgGrad),
         child: _loading
-    ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+   ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
             : ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
@@ -343,10 +339,10 @@ class _RoomSettingsScreenState extends State<RoomSettingsScreen> {
               return ListTile(
                 leading: CircleAvatar(
                   backgroundImage: member.avatarUrl!= null
-              ? NetworkImage(member.avatarUrl!)
+             ? NetworkImage(member.avatarUrl!)
                       : null,
                   child: member.avatarUrl == null
-              ? Text(member.username[0].toUpperCase())
+             ? Text(member.username[0].toUpperCase())
                       : null,
                 ),
                 title: Text(
@@ -354,13 +350,13 @@ class _RoomSettingsScreenState extends State<RoomSettingsScreen> {
                   style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.white),
                 ),
                 subtitle: isOwner
-            ? const Text(
+           ? const Text(
                         'المالك',
                         style: TextStyle(fontFamily: 'Tajawal', color: AppColors.primary, fontSize: 11),
                       )
                     : null,
                 trailing: _isOwner &&!isOwner
-            ? IconButton(
+           ? IconButton(
                         icon: const Icon(Icons.person_remove_rounded, color: AppColors.danger),
                         onPressed: () async {
                           await _roomService.removeRoomMember(widget.room.id, member.id);
