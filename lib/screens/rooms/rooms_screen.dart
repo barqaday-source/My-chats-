@@ -104,7 +104,7 @@ class _RoomsScreenState extends State<RoomsScreen> {
                         await _svc.createRoom(room, auth.user!.id);
                         if (ctx.mounted) {
                           Navigator.pop(ctx);
-                          _snack('تم إنشاء الغرفة بنجاح', true);
+                          _snack('تم وصول الطلب للمدير ', true);
                         }
                         _load();
                       } catch (_) {
