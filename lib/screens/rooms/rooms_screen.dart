@@ -1,311 +1,278 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import '../../core/constants/app_colors.dart';
-import '../../models/room_model.dart';
+import '../../models/chat_model.dart';
 import '../../providers/auth_provider.dart';
-import '../../services/room_service.dart';
-import 'room_chat_screen.dart';
-import 'room_settings_screen.dart';
+import '../../services/chat_service.dart';
+import '../../widgets/user_avatar.dart';
+import 'private_chat_screen.dart';
 
-class RoomsScreen extends StatefulWidget {
-  const RoomsScreen({super.key});
+class ChatsListScreen extends StatefulWidget {
+  const ChatsListScreen({super.key});
+
   @override
-  State<RoomsScreen> createState() => _RoomsScreenState();
+  State<ChatsListScreen> createState() => _ChatsListScreenState();
 }
 
-class _RoomsScreenState extends State<RoomsScreen> {
-  final _svc = RoomService();
-  List<RoomModel> _rooms = [];
+class _ChatsListScreenState extends State<ChatsListScreen> {
+  final _chatService = ChatService();
+  final _searchController = TextEditingController();
+  List<ChatModel> _chats = [];
+  List<ChatModel> _filteredChats = [];
   bool _loading = true;
-  String _search = '';
-  int _tab = 0;
-  final _tabs = ['الكل', 'النشطة', 'الرسمية', 'المغلقة'];
 
   @override
-  void initState() { super.initState(); _load(); }
+  void initState() {
+    super.initState();
+    _loadChats();
+  }
 
-  Future<void> _load() async {
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadChats() async {
     setState(() => _loading = true);
     try {
-      _rooms = await _svc.getRooms();
-    } catch (_) {
-      if (mounted) _snack('فشل تحميل الغرف', false);
-    }
-    if (mounted) setState(() => _loading = false);
-  }
-
-  List<RoomModel> _filtered() {
-    var list = _rooms;
-    if (_search.isNotEmpty) list = list.where((r) => r.name.contains(_search)).toList();
-    switch (_tab) {
-      case 1: return list.where((r) => r.onlineCount > 0).toList();
-      case 2: return list.where((r) => r.isOfficial).toList();
-      case 3: return list.where((r) => r.isLocked).toList();
-      default: return list;
-    }
-  }
-
-  Future<void> _openRoom(RoomModel room) async {
-    final result = await Navigator.push(context, MaterialPageRoute(builder: (_) => RoomChatScreen(room: room)));
-    if (result == true) _load();
-  }
-
-  void _snack(String msg, bool success) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(msg, style: const TextStyle(fontFamily: 'Tajawal')),
-        backgroundColor: success? AppColors.success : AppColors.danger,
-      ),
-    );
-  }
-
-  void _showCreateRoom(BuildContext ctx) {
-    final nameCtrl = TextEditingController();
-    final descCtrl = TextEditingController();
-    showModalBottomSheet(
-      context: ctx, isScrollControlled: true, backgroundColor: Colors.transparent,
-      builder: (_) => Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
-        child: Container(
-          decoration: BoxDecoration(color: AppColors.bgCard, borderRadius: const BorderRadius.vertical(top: Radius.circular(24))),
-          child: SafeArea(
-            top: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
-              child: Column(mainAxisSize: MainAxisSize.min, children: [
-                Container(width: 40, height: 4, margin: const EdgeInsets.only(bottom: 16), decoration: BoxDecoration(color: AppColors.divider, borderRadius: BorderRadius.circular(2))),
-                const Text('إنشاء غرفة جديدة', style: TextStyle(fontFamily: 'Tajawal', color: AppColors.text, fontSize: 18, fontWeight: FontWeight.w700)),
-                const SizedBox(height: 16),
-                TextField(controller: nameCtrl, style: const TextStyle(color: AppColors.text), decoration: const InputDecoration(labelText: 'اسم الغرفة *', labelStyle: TextStyle(color: AppColors.textSub), prefixIcon: Icon(Icons.meeting_room_outlined, color: AppColors.textSub))),
-                const SizedBox(height: 12),
-                TextField(controller: descCtrl, maxLines: 2, style: const TextStyle(color: AppColors.text), decoration: const InputDecoration(labelText: 'وصف الغرفة (اختياري)', labelStyle: TextStyle(color: AppColors.textSub), prefixIcon: Icon(Icons.description_outlined, color: AppColors.textSub))),
-                const SizedBox(height: 20),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, foregroundColor: Colors.white),
-                    onPressed: () async {
-                      if (nameCtrl.text.trim().isEmpty) {
-                        _snack('فشل الطلب', false);
-                        return;
-                      }
-                      final auth = ctx.read<AuthProvider>();
-                      final room = RoomModel(
-                        id: DateTime.now().millisecondsSinceEpoch.toString(),
-                        name: nameCtrl.text.trim(),
-                        description: descCtrl.text.trim().isEmpty? null : descCtrl.text.trim(),
-                        ownerId: auth.user!.id,
-                        ownerName: auth.userProfile?['username']?? auth.user!.email?.split('@')[0]?? 'مجهول',
-                        ownerAvatar: auth.userProfile?['avatar_url'],
-                        createdAt: DateTime.now(),
-                        updatedAt: DateTime.now(),
-                        members: [auth.user!.id],
-                      );
-                      try {
-                        await _svc.createRoom(room, auth.user!.id);
-                        if (ctx.mounted) {
-                          Navigator.pop(ctx);
-                          _snack('تم وصول الطلب للمدير', true);
-                        }
-                        _load();
-                      } catch (_) {
-                        if (ctx.mounted) _snack('فشل إنشاء الغرفة', false);
-                      }
-                    },
-                    child: const Text('إنشاء الغرفة', style: TextStyle(fontFamily: 'Tajawal', fontWeight: FontWeight.w700)),
-                  ),
-                ),
-              ]),
-            ),
+      final user = context.read<AuthProvider>().user!;
+      final chats = await _chatService.getUserChats(user.id);
+      if (mounted) {
+        setState(() {
+          _chats = chats.map((c) => ChatModel.fromJson(c)).toList();
+          _filteredChats = _chats;
+          _loading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _loading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('فشل تحميل المحادثات: $e', style: const TextStyle(fontFamily: 'Tajawal')),
+            backgroundColor: AppColors.danger,
           ),
+        );
+      }
+    }
+  }
+
+  void _filterChats(String query) {
+    setState(() {
+      if (query.isEmpty) {
+        _filteredChats = _chats;
+      } else {
+        _filteredChats = _chats
+           .where((chat) => chat.peer.username.toLowerCase().contains(query.toLowerCase()))
+           .toList();
+      }
+    });
+  }
+
+  void _openChat(ChatModel chat) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PrivateChatScreen(
+          chatId: chat.id,
+          peer: chat.peer,
         ),
       ),
-    );
+    ).then((_) => _loadChats());
   }
-
-  @override
-  Widget build(BuildContext context) => Container(
-    decoration: const BoxDecoration(gradient: AppColors.bgGrad),
-    child: SafeArea(
-      bottom: true,
-      child: Column(children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
-          child: Row(children: [
-            const Expanded(child: Text('الغرف', style: TextStyle(fontFamily: 'Tajawal', color: AppColors.text, fontSize: 24, fontWeight: FontWeight.w800))),
-            Container(
-              decoration: BoxDecoration(color: AppColors.glass, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.glassBorder)),
-              child: IconButton(icon: const Icon(Icons.add_rounded, color: AppColors.primaryDark, size: 22), onPressed: () => _showCreateRoom(context), padding: const EdgeInsets.all(8), constraints: const BoxConstraints()),
-            ),
-          ]),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-          child: TextField(
-            onChanged: (v) => setState(() => _search = v),
-            style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.text),
-            decoration: InputDecoration(
-              prefixIcon: const Icon(Icons.search_rounded, color: AppColors.textSub, size: 20),
-              hintText: 'ابحث عن غرفة...', hintStyle: const TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub),
-              contentPadding: const EdgeInsets.symmetric(vertical: 10),
-              filled: true, fillColor: AppColors.bgCard2,
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: AppColors.glassBorder, width: 0.8)),
-              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: AppColors.glassBorder, width: 0.8)),
-            ),
-          ),
-        ),
-        SizedBox(
-          height: 38,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 16), itemCount: _tabs.length,
-            itemBuilder: (_, i) => GestureDetector(
-              onTap: () => setState(() => _tab = i),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200), margin: const EdgeInsets.only(right: 8), padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
-                decoration: BoxDecoration(color: _tab == i? AppColors.primary : AppColors.bgCard, borderRadius: BorderRadius.circular(20), border: Border.all(color: _tab == i? AppColors.primaryDark : AppColors.glassBorder, width: 0.8)),
-                child: Text(_tabs[i], style: TextStyle(fontFamily: 'Tajawal', color: _tab == i? Colors.white : AppColors.textSub, fontWeight: FontWeight.w600, fontSize: 13)),
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        Expanded(
-          child: _loading
-       ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
-              : RefreshIndicator(
-                  onRefresh: _load, color: AppColors.primary,
-                  child: Builder(builder: (_) {
-                    final list = _filtered();
-                    if (list.isEmpty) {
-                      return ListView(children: [
-                        SizedBox(height: 120, child: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-                          const Icon(Icons.meeting_room_outlined, color: AppColors.textSub, size: 40),
-                          const SizedBox(height: 8),
-                          const Text('لا توجد غرف بعد', style: TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub, fontSize: 14)),
-                          const SizedBox(height: 12),
-                          ElevatedButton.icon(onPressed: () => _showCreateRoom(context), style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, foregroundColor: Colors.white), icon: const Icon(Icons.add_rounded, size: 18), label: const Text('أنشئ أول غرفة', style: TextStyle(fontFamily: 'Tajawal'))),
-                        ]))),
-                      ]);
-                    }
-                    return ListView.builder(
-                      padding: EdgeInsets.fromLTRB(16, 0, 16, MediaQuery.of(context).padding.bottom + 80),
-                      itemCount: list.length,
-                      itemBuilder: (_, i) => _RoomCard(room: list[i], onEnter: () => _openRoom(list[i]), onSettingsChanged: _load),
-                    );
-                  }),
-                ),
-        ),
-      ]),
-    ),
-  );
-}
-
-class _RoomCard extends StatelessWidget {
-  final RoomModel room;
-  final VoidCallback onEnter;
-  final VoidCallback? onSettingsChanged;
-  const _RoomCard({required this.room, required this.onEnter, this.onSettingsChanged});
 
   @override
   Widget build(BuildContext context) {
-    final isOwner = room.ownerId == context.read<AuthProvider>().user!.id;
     return Container(
-      margin: const EdgeInsets.only(bottom: 14),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20), color: AppColors.bgCard,
-        border: Border.all(color: room.isOfficial? AppColors.primary : AppColors.glassBorder, width: room.isOfficial? 1.2 : 0.8),
-        boxShadow: [BoxShadow(color: AppColors.text.withOpacity(0.04), blurRadius: 8, offset: const Offset(0, 2))],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
-        child: Stack(children: [
-          if (room.imageUrl!= null) Positioned.fill(child: CachedNetworkImage(imageUrl: room.imageUrl!, fit: BoxFit.cover, errorWidget: (_, __, ___) => const SizedBox())),
-          if (room.imageUrl!= null) Positioned.fill(child: BackdropFilter(filter: ImageFilter.blur(sigmaX: 3, sigmaY: 3), child: Container(color: Colors.black.withOpacity(0.3)))),
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-              Row(children: [
-                CircleAvatar(radius: 14, backgroundColor: AppColors.glass, backgroundImage: room.ownerAvatar!= null? CachedNetworkImageProvider(room.ownerAvatar!) : null, child: room.ownerAvatar == null? Text(room.ownerName.isNotEmpty? room.ownerName[0].toUpperCase() : 'U', style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.primaryDark, fontSize: 10, fontWeight: FontWeight.bold)) : null),
-                const SizedBox(width: 8),
-                Expanded(child: Text(room.ownerName, style: TextStyle(fontFamily: 'Tajawal', color: room.imageUrl!= null? Colors.white.withOpacity(0.85) : AppColors.textSub, fontSize: 12), overflow: TextOverflow.ellipsis)),
-                if (room.isOfficial) _badge('رسمي', AppColors.navy),
-                if (room.isLocked)...[const SizedBox(width: 6), _badge('مغلق', AppColors.navy, icon: Icons.lock_outline_rounded)],
-                if (isOwner)...[
-                  const SizedBox(width: 4),
-                  Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(8),
-                      onTap: () async {
-                        final changed = await Navigator.push(context, MaterialPageRoute(builder: (_) => RoomSettingsScreen(room: room)));
-                        if (changed == true) onSettingsChanged?.call();
-                      },
-                      child: Padding(padding: const EdgeInsets.all(4), child: Icon(Icons.settings_rounded, size: 18, color: room.imageUrl!= null? Colors.white.withOpacity(0.8) : AppColors.textSub)),
-                    ),
-                  ),
-                ],
-              ]),
-              const SizedBox(height: 10),
-              Text(room.name, style: TextStyle(fontFamily: 'Tajawal', color: room.imageUrl!= null? Colors.white : AppColors.text, fontSize: 17, fontWeight: FontWeight.w800), maxLines: 2, overflow: TextOverflow.ellipsis),
-              if (room.description!= null && room.description!.isNotEmpty)...[
-                const SizedBox(height: 4),
-                Text(room.description!, style: TextStyle(fontFamily: 'Tajawal', color: room.imageUrl!= null? Colors.white.withOpacity(0.75) : AppColors.textSub, fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis),
-              ],
-              const SizedBox(height: 12),
-              Row(children: [
-                // عداد المتصلين فقط – عداد الأعضاء الكلي محذوف
-                Container(width: 6, height: 6, decoration: BoxDecoration(color: room.onlineCount > 0? AppColors.success : AppColors.offline, shape: BoxShape.circle)),
-                const SizedBox(width: 4),
-                Text(
-                  room.onlineCount > 0? '${room.onlineCount} متصل' : 'لا أحد متصل',
+      decoration: const BoxDecoration(gradient: AppColors.bgGrad),
+      child: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            // عنوان مثل شاشة الغرف
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 14, 16, 8),
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: Text(
+                  'المحادثات',
                   style: TextStyle(
                     fontFamily: 'Tajawal',
-                    color: room.onlineCount > 0? AppColors.success : (room.imageUrl!= null? Colors.white.withOpacity(0.7) : AppColors.textSub),
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
+                    color: AppColors.text,
+                    fontSize: 24,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
-                const Spacer(),
-                Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    onTap: onEnter, borderRadius: BorderRadius.circular(12),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                      decoration: BoxDecoration(
-                        color: room.isLocked? AppColors.bgCard2 : AppColors.primary,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Row(mainAxisSize: MainAxisSize.min, children: [
-                        Icon(room.isLocked? Icons.lock_outline_rounded : Icons.login_rounded, color: room.isLocked? AppColors.textSub : Colors.white, size: 16),
-                        const SizedBox(width: 6),
-                        Text(
-                          room.isLocked? 'طلب دخول' : 'دخول الغرفة',
-                          style: TextStyle(
-                            fontFamily: 'Tajawal',
-                            color: room.isLocked? AppColors.textSub : Colors.white,
-                            fontSize: 13, fontWeight: FontWeight.w700),
+              ),
+            ),
+            // شريط بحث – إطار واحد فقط، مطابق للغرف
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+              child: TextField(
+                controller: _searchController,
+                onChanged: _filterChats,
+                textAlign: TextAlign.right,
+                style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.text),
+                decoration: InputDecoration(
+                  hintText: 'ابحث عن محادثة...',
+                  hintStyle: const TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub),
+                  prefixIcon: const Icon(Icons.search_rounded, color: AppColors.navy),
+                  filled: true,
+                  fillColor: AppColors.bgCard2,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: const BorderSide(color: AppColors.glassBorder, width: 0.8),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: const BorderSide(color: AppColors.glassBorder, width: 0.8),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: const BorderSide(color: AppColors.primary, width: 1.2),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Expanded(
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+                  : _filteredChats.isEmpty
+                      ? _buildEmptyState()
+                      : RefreshIndicator(
+                          onRefresh: _loadChats,
+                          color: AppColors.primary,
+                          child: ListView.builder(
+                            padding: EdgeInsets.fromLTRB(16, 0, 16, MediaQuery.of(context).padding.bottom + 20),
+                            itemCount: _filteredChats.length,
+                            itemBuilder: (context, index) {
+                              final chat = _filteredChats[index];
+                              return _buildChatTile(chat);
+                            },
+                          ),
                         ),
-                      ]),
-                    ),
-                  ),
-                ),
-              ]),
-            ]),
-          ),
-        ]),
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _badge(String label, Color color, {IconData? icon}) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-    decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(8), border: Border.all(color: color.withOpacity(0.25))),
-    child: Row(mainAxisSize: MainAxisSize.min, children: [
-      if (icon!= null)...[Icon(icon, color: color, size: 10), const SizedBox(width: 3)],
-      Text(label, style: TextStyle(fontFamily: 'Tajawal', color: color, fontSize: 10, fontWeight: FontWeight.w700)),
-    ]),
-  );
+  Widget _buildEmptyState() {
+    return const Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.chat_bubble_outline_rounded, size: 56, color: AppColors.navy),
+          SizedBox(height: 12),
+          Text(
+            'لا توجد محادثات',
+            style: TextStyle(
+              fontFamily: 'Tajawal',
+              color: AppColors.textSub,
+              fontSize: 15,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildChatTile(ChatModel chat) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: AppColors.bgCard,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.glassBorder, width: 0.8),
+      ),
+      child: ListTile(
+        onTap: () => _openChat(chat),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        leading: UserAvatar(
+          url: chat.peer.avatarUrl,
+          name: chat.peer.username,
+          isOnline: chat.peer.isOnline,
+          size: 48,
+        ),
+        title: Row(
+          children: [
+            Expanded(
+              child: Text(
+                chat.peer.username,
+                style: const TextStyle(
+                  fontFamily: 'Tajawal',
+                  color: AppColors.text,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            Text(
+              _formatTime(chat.lastMessageTime),
+              style: const TextStyle(
+                fontFamily: 'Tajawal',
+                color: AppColors.textSub,
+                fontSize: 11,
+              ),
+            ),
+          ],
+        ),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  chat.lastMessage ?? 'لا توجد رسائل',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontFamily: 'Tajawal',
+                    color: chat.unreadCount > 0 ? AppColors.text : AppColors.textSub,
+                    fontSize: 13,
+                    fontWeight: chat.unreadCount > 0 ? FontWeight.w600 : FontWeight.normal,
+                  ),
+                ),
+              ),
+              if (chat.unreadCount > 0)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    chat.unreadCount.toString(),
+                    style: const TextStyle(
+                      fontFamily: 'Tajawal',
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _formatTime(DateTime time) {
+    final now = DateTime.now();
+    final diff = now.difference(time);
+    if (diff.inDays > 0) {
+      return '${time.day}/${time.month}';
+    } else if (diff.inHours > 0) {
+      return '${diff.inHours}س';
+    } else if (diff.inMinutes > 0) {
+      return '${diff.inMinutes}د';
+    } else {
+      return 'الآن';
+    }
+  }
 }
