@@ -28,6 +28,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
   List<Map<String, dynamic>> _pendingRooms = [];
   bool _loading = true;
   bool _isAdmin = false;
+  bool _busy = false;
 
   String adminPhone = '';
   String adminEmail = '';
@@ -55,10 +56,10 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     }
     try {
       final userData = await _sb.from(SupabaseConfig.tUsers)
-         .select('role')
-         .eq('id', user.id)
-         .single();
-      final role = userData['role'] as String?? 'user';
+        .select('role')
+        .eq('id', user.id)
+        .single();
+      final role = userData['role'] as String??? 'user';
       if (role == 'admin') {
         _isAdmin = true;
         await _load();
@@ -83,14 +84,14 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
       _users = rawUsers.map((json) => UserModel.fromMap(json)).toList();
 
       final rep = await _sb.from(SupabaseConfig.tReports)
-         .select('*, reporter:reporter_id(username, avatar_url), reported:reported_id(username, avatar_url)')
-         .order('created_at', ascending: false);
+        .select('*, reporter:reporter_id(username, avatar_url), reported:reported_id(username, avatar_url)')
+        .order('created_at', ascending: false);
       _reports = List<Map<String, dynamic>>.from(rep);
 
       final roomsData = await _sb.from(SupabaseConfig.tRooms)
-         .select()
-         .eq('is_approved', false)
-         .order('created_at', ascending: false);
+        .select()
+        .eq('is_approved', false)
+        .order('created_at', ascending: false);
       _pendingRooms = List<Map<String, dynamic>>.from(roomsData);
 
       final contactData = await _sb.from('app_contact').select().eq('id', 1).maybeSingle();
@@ -106,33 +107,39 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
   }
 
   Future<void> _changeRole(String userId, String role) async {
+    if (_busy) return;
+    _busy = true;
     try {
       final res = await _sb.from(SupabaseConfig.tUsers)
-         .update({'role': role})
-         .eq('id', userId)
-         .select();
+        .update({'role': role})
+        .eq('id', userId)
+        .select();
       if (res.isEmpty) throw Exception('فشل التحديث - تحقق من RLS');
       await _notifSvc.showNotification('تم التحديث', role == 'admin'? 'تم ترقية المستخدم لمدير' : 'تم إزالة صلاحية المدير');
-      _load();
+      await _load();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('فشل تغيير الصلاحية: $e', style: const TextStyle(fontFamily: 'Tajawal')), backgroundColor: Colors.red),
         );
       }
+    } finally {
+      _busy = false;
     }
   }
 
   Future<void> _blockUser(String uid, String username) async {
+    if (_busy) return;
+    _busy = true;
     try {
       final res = await _sb.from(SupabaseConfig.tUsers)
-         .update({
+        .update({
             'is_blocked': true,
             'blocked_at': DateTime.now().toIso8601String(),
             'role': 'user'
           })
-         .eq('id', uid)
-         .select();
+        .eq('id', uid)
+        .select();
       if (res.isEmpty) throw Exception('فشل الحظر - تحقق من RLS');
       await _notifSvc.sendNotification(NotificationModel(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
@@ -143,22 +150,26 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
         createdAt: DateTime.now(),
       ));
       await _notifSvc.showNotification('تم الحظر', 'تم حظر $username نهائيا');
-      _load();
+      await _load();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('فشل الحظر: $e', style: const TextStyle(fontFamily: 'Tajawal')), backgroundColor: Colors.red),
         );
       }
+    } finally {
+      _busy = false;
     }
   }
 
   Future<void> _unblockUser(String uid, String username) async {
+    if (_busy) return;
+    _busy = true;
     try {
       final res = await _sb.from(SupabaseConfig.tUsers)
-         .update({'is_blocked': false, 'blocked_at': null})
-         .eq('id', uid)
-         .select();
+        .update({'is_blocked': false, 'blocked_at': null})
+        .eq('id', uid)
+        .select();
       if (res.isEmpty) throw Exception('فشل إلغاء الحظر');
       await _notifSvc.sendNotification(NotificationModel(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
@@ -169,28 +180,30 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
         createdAt: DateTime.now(),
       ));
       await _notifSvc.showNotification('تم إلغاء الحظر', 'تم إلغاء حظر $username');
-      _load();
+      await _load();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('فشل إلغاء الحظر: $e', style: const TextStyle(fontFamily: 'Tajawal')), backgroundColor: Colors.red),
         );
       }
+    } finally {
+      _busy = false;
     }
   }
 
   Future<void> _replyReport(String reportId, String userId, String reply) async {
     try {
       await _sb.from(SupabaseConfig.tReports)
-         .update({'reply': reply, 'status': 'replied', 'updated_at': DateTime.now().toIso8601String()})
-         .eq('id', reportId)
-         .select();
+        .update({'reply': reply, 'status': 'replied', 'updated_at': DateTime.now().toIso8601String()})
+        .eq('id', reportId)
+        .select();
       await _notifSvc.sendNotification(NotificationModel(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         userId: userId, title: 'رد على بلاغك', body: reply,
         type: 'report_reply', createdAt: DateTime.now(),
       ));
-      _load();
+      await _load();
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('فشل الرد: $e', style: const TextStyle(fontFamily: 'Tajawal')), backgroundColor: Colors.red),
@@ -201,10 +214,10 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
   Future<void> _approveRoom(String roomId, String ownerId) async {
     try {
       await _sb.from(SupabaseConfig.tRooms)
-         .update({'is_approved': true})
-         .eq('id', roomId)
-         .select();
-      _load();
+        .update({'is_approved': true})
+        .eq('id', roomId)
+        .select();
+      await _load();
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('فشل الموافقة: $e', style: const TextStyle(fontFamily: 'Tajawal')), backgroundColor: Colors.red),
@@ -241,7 +254,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
             ),
             Expanded(
               child: _loading
-                 ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+                ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
                   : TabBarView(controller: _tabs, children: [
                       _UsersTab(
                         users: _users,
@@ -445,7 +458,7 @@ class ReportCard extends StatelessWidget {
   }
 }
 
-// ====== تبويب البلاغات – يستخدم ReportCard ======
+// ====== تبويب البلاغات ======
 class _ReportsTab extends StatelessWidget {
   final List<Map<String, dynamic>> reports;
   final Function(String, String, String) onReply;
