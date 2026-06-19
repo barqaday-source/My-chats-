@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:audioplayers/audioplayers.dart';
 import '../core/constants/app_colors.dart';
 import '../services/chat_service.dart';
+import '../screens/profile/user_profile_screen.dart';
 
 class MessageBubble extends StatefulWidget {
   final Map<String, dynamic> message;
@@ -72,27 +73,8 @@ class _MessageBubbleState extends State<MessageBubble> {
   void _openProfile() {
     final userId = widget.message['sender_id'];
     if (userId == null || widget.isMe) return;
-    showModalBottomSheet(context: context, backgroundColor: Colors.white, builder: (_) => SafeArea(
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        ListTile(leading: const Icon(Icons.message_rounded, color: AppColors.navy),
-          title: const Text('مراسلة خاصة', style: TextStyle(fontFamily: 'Tajawal')),
-          onTap: () { Navigator.pop(context); }),
-        ListTile(leading: const Icon(Icons.block_rounded, color: AppColors.danger),
-          title: const Text('حظر المستخدم', style: TextStyle(fontFamily: 'Tajawal')),
-          onTap: () { Navigator.pop(context); }),
-        ListTile(leading: const Icon(Icons.flag_rounded, color: AppColors.warning),
-          title: const Text('تبليغ للإدارة', style: TextStyle(fontFamily: 'Tajawal')),
-          onTap: () async {
-            Navigator.pop(context);
-            final reason = await _askReason();
-            if (reason!= null && reason.isNotEmpty) {
-              await ChatService().reportUser(userId, reason);
-              if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('تم إرسال البلاغ للإدارة', style: TextStyle(fontFamily: 'Tajawal'))),
-              );
-            }
-          }),
-      ]),
+    Navigator.push(context, MaterialPageRoute(
+      builder: (_) => UserProfileScreen(userId: userId),
     ));
   }
 
@@ -201,9 +183,9 @@ class _MessageBubbleState extends State<MessageBubble> {
                   child: CircleAvatar(
                     radius: 16, backgroundColor: AppColors.bgCard2,
                     backgroundImage: senderAvatar!= null && senderAvatar.toString().isNotEmpty
-                    ? CachedNetworkImageProvider(senderAvatar) : null,
+                   ? CachedNetworkImageProvider(senderAvatar) : null,
                     child: senderAvatar == null || senderAvatar.toString().isEmpty
-                    ? Text(senderName.isNotEmpty? senderName[0] : '?',
+                   ? Text(senderName.isNotEmpty? senderName[0] : '?',
                           style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.navy, fontWeight: FontWeight.w700))
                       : null,
                   ),
