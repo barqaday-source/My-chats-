@@ -30,9 +30,9 @@ class _ContactScreenState extends State<ContactScreen> {
           .eq('id', 1)
           .single();
       setState(() {
-        whatsapp = data['whatsapp_number'];
-        email = data['contact_email'];
-        msg = data['support_message'];
+        whatsapp = data['whatsapp_number']?.toString();
+        email = data['contact_email']?.toString();
+        msg = data['support_message']?.toString();
         _loading = false;
       });
     } catch (e) {
@@ -41,30 +41,58 @@ class _ContactScreenState extends State<ContactScreen> {
     }
   }
 
+  // FIXED: تنظيف رقم الواتساب
+  String _cleanWhatsApp(String raw) {
+    var n = raw.replaceAll(RegExp(r'[^0-9]'), '');
+    // 0785... -> 964785...
+    if (n.startsWith('0')) n = '964' + n.substring(1);
+    if (n.startsWith('9640')) n = '964' + n.substring(4);
+    return n;
+  }
+
   Future<void> _openWhatsApp() async {
-    if (whatsapp == null) return;
-    final text = Uri.encodeComponent(msg ?? 'مرحبا');
-    final uri = Uri.parse('https://wa.me/$whatsapp?text=$text');
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } else {
-      _showError('تأكد من تثبيت واتساب');
+    if (whatsapp == null || whatsapp!.isEmpty) {
+      _showError('رقم الواتساب غير متوفر');
+      return;
     }
+    final number = _cleanWhatsApp(whatsapp!);
+    final text = Uri.encodeComponent(msg ?? 'مرحبا');
+    
+    // FIXED: جرب 3 طرق
+    final urls = [
+      Uri.parse('https://wa.me/$number?text=$text'),
+      Uri.parse('whatsapp://send?phone=$number&text=$text'),
+      Uri.parse('https://api.whatsapp.com/send?phone=$number&text=$text'),
+    ];
+    
+    for (final uri in urls) {
+      try {
+        if (await launchUrl(uri, mode: LaunchMode.externalApplication)) return;
+      } catch (_) {}
+    }
+    _showError('تأكد من تثبيت واتساب');
   }
 
   Future<void> _openEmail() async {
-    if (email == null) return;
+    if (email == null || email!.isEmpty) {
+      _showError('البريد غير متوفر');
+      return;
+    }
     final subject = Uri.encodeComponent('دعم تطبيق CChat');
     final body = Uri.encodeComponent(msg ?? 'مرحبا');
     final uri = Uri.parse('mailto:$email?subject=$subject&body=$body');
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri);
-    } else {
-      _showError('لا يوجد تطبيق بريد');
-    }
+    
+    try {
+      // FIXED: externalApplication مهم للأندرويد
+      if (await launchUrl(uri, mode: LaunchMode.externalApplication)) return;
+      // fallback
+      if (await launchUrl(uri, mode: LaunchMode.platformDefault)) return;
+    } catch (_) {}
+    _showError('لا يوجد تطبيق بريد');
   }
 
   void _showError(String text) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(text, style: const TextStyle(fontFamily: 'Tajawal'))),
     );
@@ -85,16 +113,16 @@ class _ContactScreenState extends State<ContactScreen> {
                 padding: const EdgeInsets.all(16),
                 children: [
                   const SizedBox(height: 20),
-                  if (whatsapp != null)
+                  if (whatsapp != null && whatsapp!.isNotEmpty)
                     _ContactTile(
                       icon: Icons.chat_rounded,
                       title: 'واتساب',
-                      subtitle: '+$whatsapp',
+                      subtitle: whatsapp!,
                       color: Colors.green,
                       onTap: _openWhatsApp,
                     ),
                   const SizedBox(height: 12),
-                  if (email != null)
+                  if (email != null && email!.isNotEmpty)
                     _ContactTile(
                       icon: Icons.email_rounded,
                       title: 'البريد الإلكتروني',
@@ -102,7 +130,7 @@ class _ContactScreenState extends State<ContactScreen> {
                       color: Colors.blue,
                       onTap: _openEmail,
                     ),
-                  if (whatsapp == null && email == null)
+                  if ((whatsapp == null || whatsapp!.isEmpty) && (email == null || email!.isEmpty))
                     const Center(
                       child: Text(
                         'لا توجد وسائل تواصل متاحة حالياً',
