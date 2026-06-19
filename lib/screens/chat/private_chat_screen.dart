@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:timeago/timeago.dart' as timeago;
+import '../../core/constants/app_colors.dart';
 import '../../models/user_model.dart';
 import '../../widgets/chat/chat_input_bar.dart';
 import '../../widgets/chat/message_bubble.dart';
@@ -30,10 +31,10 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
     timeago.setLocaleMessages('ar', timeago.ArMessages());
 
     _messagesStream = supabase
-       .from('messages')
-       .stream(primaryKey: ['id'])
-       .eq('chat_id', widget.chatId)
-       .order('created_at', ascending: true);
+      .from('messages')
+      .stream(primaryKey: ['id'])
+      .eq('chat_id', widget.chatId)
+      .order('created_at', ascending: true);
   }
 
   void _scrollToBottom() {
@@ -53,11 +54,12 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
   Future<void> _sendMessage(String text, String? imageUrl, String? voiceUrl) async {
     try {
       final user = supabase.auth.currentUser!;
+      // FIX: content '' بدل null – يحل PostgrestException 23502
       await supabase.from('messages').insert({
         'chat_id': widget.chatId,
         'sender_id': user.id,
         'receiver_id': widget.peer.id,
-        'content': text.isEmpty? null : text,
+        'content': text.isEmpty? '' : text,
         'media_url': imageUrl,
         'audio_url': voiceUrl,
         'type': voiceUrl!= null? 'audio' : imageUrl!= null? 'image' : 'text',
@@ -68,7 +70,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('فشل الإرسال: $e', style: const TextStyle(fontFamily: 'Tajawal')),
-            backgroundColor: Colors.red,
+            backgroundColor: AppColors.danger,
           ),
         );
       }
@@ -80,10 +82,11 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
     final currentUserId = supabase.auth.currentUser!.id;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF121212),
+      backgroundColor: AppColors.bg,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF1E1E1E),
-        elevation: 0,
+        backgroundColor: Colors.white,
+        elevation: 0.5,
+        iconTheme: const IconThemeData(color: AppColors.text),
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -91,6 +94,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
               widget.peer.username,
               style: const TextStyle(
                 fontFamily: 'Tajawal',
+                color: AppColors.text,
                 fontWeight: FontWeight.w700,
                 fontSize: 16,
               ),
@@ -100,7 +104,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
               style: TextStyle(
                 fontFamily: 'Tajawal',
                 fontSize: 12,
-                color: widget.peer.isOnline? Colors.green[400] : Colors.white54,
+                color: widget.peer.isOnline? AppColors.success : AppColors.textSub,
               ),
             ),
           ],
@@ -115,11 +119,11 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
                 if (snapshot.hasError) {
                   return Center(
                     child: Text('خطأ: ${snapshot.error}',
-                        style: const TextStyle(color: Colors.red, fontFamily: 'Tajawal')),
+                        style: const TextStyle(color: AppColors.danger, fontFamily: 'Tajawal')),
                   );
                 }
                 if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
+                  return const Center(child: CircularProgressIndicator(color: AppColors.primary));
                 }
                 final messages = snapshot.data?? [];
                 if (messages.isEmpty) {
@@ -127,13 +131,13 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.chat_bubble_outline, size: 64, color: Colors.white.withOpacity(0.3)),
-                        const SizedBox(height: 16),
-                        Text('لا توجد رسائل بعد',
-                            style: TextStyle(color: Colors.white.withOpacity(0.5), fontFamily: 'Tajawal', fontSize: 16)),
-                        const SizedBox(height: 8),
-                        Text('كن أول من يبدأ المحادثة',
-                            style: TextStyle(color: Colors.white.withOpacity(0.3), fontFamily: 'Tajawal', fontSize: 14)),
+                        Icon(Icons.chat_bubble_outline_rounded, size: 56, color: AppColors.navy.withOpacity(0.5)),
+                        const SizedBox(height: 12),
+                        const Text('لا توجد رسائل بعد',
+                            style: TextStyle(color: AppColors.textSub, fontFamily: 'Tajawal', fontSize: 15)),
+                        const SizedBox(height: 4),
+                        const Text('كن أول من يبدأ المحادثة',
+                            style: TextStyle(color: AppColors.textSub, fontFamily: 'Tajawal', fontSize: 13)),
                       ],
                     ),
                   );
@@ -141,7 +145,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
                 WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
                 return ListView.builder(
                   controller: _scrollController,
-                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
                   itemCount: messages.length,
                   itemBuilder: (context, index) {
                     final msg = messages[index];
