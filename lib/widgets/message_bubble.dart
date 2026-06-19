@@ -10,6 +10,7 @@ class MessageBubble extends StatefulWidget {
   final bool isMe;
   final bool showAvatar;
   final VoidCallback? onReply;
+  final bool isRoom; // جديد
 
   const MessageBubble({
     super.key,
@@ -17,6 +18,7 @@ class MessageBubble extends StatefulWidget {
     required this.isMe,
     this.showAvatar = true,
     this.onReply,
+    this.isRoom = true,
   });
 
   @override
@@ -40,7 +42,10 @@ class _MessageBubbleState extends State<MessageBubble> {
 
   Future<void> _deleteMessage() async {
     try {
-      await ChatService().deleteMessage(widget.message['id'], true);
+      await ChatService().deleteMessage(
+        widget.message['id'].toString(),
+        isRoom: widget.isRoom,
+      );
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('تم حذف الرسالة', style: TextStyle(fontFamily: 'Tajawal'))),
       );
@@ -71,7 +76,7 @@ class _MessageBubbleState extends State<MessageBubble> {
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         ListTile(leading: const Icon(Icons.message_rounded, color: AppColors.navy),
           title: const Text('مراسلة خاصة', style: TextStyle(fontFamily: 'Tajawal')),
-          onTap: () { Navigator.pop(context); /* Navigator.push -> PrivateChatScreen(userId) */ }),
+          onTap: () { Navigator.pop(context); }),
         ListTile(leading: const Icon(Icons.block_rounded, color: AppColors.danger),
           title: const Text('حظر المستخدم', style: TextStyle(fontFamily: 'Tajawal')),
           onTap: () { Navigator.pop(context); }),
@@ -196,9 +201,9 @@ class _MessageBubbleState extends State<MessageBubble> {
                   child: CircleAvatar(
                     radius: 16, backgroundColor: AppColors.bgCard2,
                     backgroundImage: senderAvatar!= null && senderAvatar.toString().isNotEmpty
-                     ? CachedNetworkImageProvider(senderAvatar) : null,
+                    ? CachedNetworkImageProvider(senderAvatar) : null,
                     child: senderAvatar == null || senderAvatar.toString().isEmpty
-                     ? Text(senderName.isNotEmpty? senderName[0] : '?',
+                    ? Text(senderName.isNotEmpty? senderName[0] : '?',
                           style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.navy, fontWeight: FontWeight.w700))
                       : null,
                   ),
