@@ -11,6 +11,8 @@ class ChatService {
   Box? get _outboxChat => Hive.isBoxOpen('outbox_chat')? Hive.box('outbox_chat') : null;
   Box? get _outboxRoom => Hive.isBoxOpen('outbox_room')? Hive.box('outbox_room') : null;
 
+  static const String _bucket = 'chat_media';
+
   ChatService() {
     Connectivity().onConnectivityChanged.listen((r) {
       if (r!= ConnectivityResult.none) {
@@ -31,19 +33,17 @@ class ChatService {
   Stream<List<Map<String, dynamic>>> getPrivateMessagesStream(String userId, String peerId) {
     final chatId = _getChatId(userId, peerId);
     return _supabase
-      .from('private_messages')
-      .stream(primaryKey: ['id'])
-      .eq('chat_id', chatId)
-      .order('created_at', ascending: true)
-      .map((maps) => maps.where((m) => m['deleted_at'] == null).toList());
+     .from('private_messages')
+     .stream(primaryKey: ['id'])
+     .eq('chat_id', chatId)
+     .order('created_at', ascending: true)
+     .map((maps) => maps.where((m) => m['deleted_at'] == null).toList());
   }
 
-  // الدالة القديمة - بقت شغالة
   Future<void> sendPrivateMessage(String peerId, MessageModel message) async {
     await _supabase.from('private_messages').insert(message.toJson());
   }
 
-  // الدالة الجديدة مع ميديا + reply + outbox
   Future<void> sendPrivateMessageEx({
     required String peerId,
     required String text,
@@ -74,63 +74,70 @@ class ChatService {
     }
   }
 
-  Future<String> _upload(String bucket, File file) async {
+  Future<String> _upload(File file) async {
     final ext = p.extension(file.path);
     final name = '${DateTime.now().millisecondsSinceEpoch}$ext';
     final path = '${_supabase.auth.currentUser!.id}/$name';
-    await _supabase.storage.from(bucket).upload(path, file,
-      fileOptions: const FileOptions(upsert: false));
-    return _supabase.storage.from(bucket).getPublicUrl(path);
+    await _supabase.storage.from(_bucket).upload(path, file,
+        fileOptions: const FileOptions(upsert: false));
+    return _supabase.storage.from(_bucket).getPublicUrl(path);
   }
 
   Future<void> _sendPrivateOnline(Map payload) async {
     String? imageUrl;
     String? audioUrl;
     if (payload['image_path']!= null) {
-      imageUrl = await _upload('chat_media', File(payload['image_path']));
+      imageUrl = await _upload(File(payload['image_path']));
     }
     if (payload['audio_path']!= null) {
-      audioUrl = await _upload('chat_audio', File(payload['audio_path']));
+      audioUrl = await _upload(File(payload['audio_path']));
     }
+
+    // جيب اسم وصورة المرسل - جدولك يتطلبهم
+    final me = await _supabase.from('profiles')
+       .select('username, avatar_url')
+       .eq('id', payload['sender_id'])
+       .maybeSingle();
+
     await _supabase.from('private_messages').insert({
       'chat_id': payload['chat_id'],
       'sender_id': payload['sender_id'],
       'receiver_id': payload['receiver_id'],
+      'sender_name': me?['username']?? '',
+      'sender_avatar': me?['avatar_url'],
       'content': payload['content']?? '',
       'media_url': imageUrl,
       'audio_url': audioUrl,
       'type': audioUrl!= null? 'audio' : imageUrl!= null? 'image' : 'text',
       'reply_to': payload['reply_to'],
-      'created_at': DateTime.now().toIso8601String(),
+      // created_at خليه للـ DB
     });
   }
 
   Future<void> markAsRead(String userId, String peerId) async {
     final chatId = _getChatId(userId, peerId);
     await _supabase
-      .from('private_messages')
-      .update({'is_read': true})
-      .eq('chat_id', chatId)
-      .eq('receiver_id', userId)
-      .eq('is_read', false);
+     .from('private_messages')
+     .update({'is_read': true})
+     .eq('chat_id', chatId)
+     .eq('receiver_id', userId)
+     .eq('is_read', false);
   }
 
   // ====== Room Chat ======
   Stream<List<Map<String, dynamic>>> getRoomMessagesStream(String roomId) {
     return _supabase
-      .from('room_messages')
-      .stream(primaryKey: ['id'])
-      .eq('room_id', roomId)
-      .order('created_at', ascending: true)
-      .map((maps) => maps.where((m) => m['deleted_at'] == null).toList());
+     .from('room_messages')
+     .stream(primaryKey: ['id'])
+     .eq('room_id', roomId)
+     .order('created_at', ascending: true)
+     .map((maps) => maps.where((m) => m['deleted_at'] == null).toList());
   }
 
-  // الدالة القديمة - بقت شغالة
   Future<void> sendMessageToRoom(String roomId, MessageModel message) async {
     await _supabase.from('room_messages').insert(message.toJson());
   }
 
-  // الدالة الجديدة مع ميديا + reply + outbox
   Future<void> sendMessageToRoomEx({
     required String roomId,
     String text = '',
@@ -161,20 +168,19 @@ class ChatService {
     String? imageUrl;
     String? audioUrl;
     if (payload['image_path']!= null) {
-      imageUrl = await _upload('room_media', File(payload['image_path']));
+      imageUrl = await _upload(File(payload['image_path']));
     }
     if (payload['audio_path']!= null) {
-      audioUrl = await _upload('room_audio', File(payload['audio_path']));
+      audioUrl = await _upload(File(payload['audio_path']));
     }
+    // room_messages ما بيه type / sender_name - مطابق لجدولك الجديد
     await _supabase.from('room_messages').insert({
       'room_id': payload['room_id'],
       'sender_id': payload['sender_id'],
       'content': payload['content']?? '',
       'media_url': imageUrl,
       'audio_url': audioUrl,
-      'type': audioUrl!= null? 'audio' : imageUrl!= null? 'image' : 'text',
       'reply_to': payload['reply_to'],
-      'created_at': DateTime.now().toIso8601String(),
     });
   }
 
@@ -191,7 +197,9 @@ class ChatService {
           await _sendPrivateOnline(data);
         }
         await box.delete(k);
-      } catch (_) { break; }
+      } catch (_) {
+        break;
+      }
     }
   }
 
@@ -208,12 +216,13 @@ class ChatService {
   }
 
   // ====== حذف الرسائل - ناعم ======
-  Future<void> deleteMessage(String messageId, bool isRoom) async {
+  // تقدر تستدعيه deleteMessage(id) أو deleteMessage(id, isRoom: true)
+  Future<void> deleteMessage(String messageId, {bool isRoom = false}) async {
     final table = isRoom? 'room_messages' : 'private_messages';
     await _supabase.from(table)
-     .update({'deleted_at': DateTime.now().toIso8601String()})
-     .eq('id', messageId)
-     .eq('sender_id', _supabase.auth.currentUser!.id);
+    .update({'deleted_at': DateTime.now().toIso8601String()})
+    .eq('id', messageId)
+    .eq('sender_id', _supabase.auth.currentUser!.id);
   }
 
   // ====== تبليغ ======
@@ -225,46 +234,48 @@ class ChatService {
     });
   }
 
-  // ====== باقي دوالك القديمة - بدون تغيير ======
+  // ====== باقي الدوال ======
   Future<Map<String, dynamic>?> getLastPrivateMessage(String userId, String peerId) async {
     final chatId = _getChatId(userId, peerId);
     final res = await _supabase.from('private_messages').select()
-     .eq('chat_id', chatId).order('created_at', ascending: false).limit(1).maybeSingle();
+    .eq('chat_id', chatId).order('created_at', ascending: false).limit(1).maybeSingle();
     return res;
   }
 
   Future<Map<String, dynamic>?> getLastRoomMessage(String roomId) async {
     final res = await _supabase.from('room_messages').select()
-     .eq('room_id', roomId).order('created_at', ascending: false).limit(1).maybeSingle();
+    .eq('room_id', roomId).order('created_at', ascending: false).limit(1).maybeSingle();
     return res;
   }
 
   Future<int> getUnreadCount(String userId, String peerId) async {
     final chatId = _getChatId(userId, peerId);
     final res = await _supabase.from('private_messages').select('id')
-     .eq('chat_id', chatId).eq('receiver_id', userId).eq('is_read', false);
+    .eq('chat_id', chatId).eq('receiver_id', userId).eq('is_read', false);
     return res.length;
   }
 
   Future<List<Map<String, dynamic>>> getUserChats(String userId) async {
     final response = await _supabase.from('private_messages')
-     .select('chat_id, sender_id, receiver_id, content, created_at, is_read')
-     .or('sender_id.eq.$userId,receiver_id.eq.$userId')
-     .order('created_at', ascending: false);
+    .select('chat_id, sender_id, receiver_id, content, created_at, is_read')
+    .or('sender_id.eq.$userId,receiver_id.eq.$userId')
+    .order('created_at', ascending: false);
 
     final Map<String, Map<String, dynamic>> chats = {};
     for (var msg in response) {
       final chatId = msg['chat_id'];
       if (!chats.containsKey(chatId)) {
         final peerId = msg['sender_id'] == userId? msg['receiver_id'] : msg['sender_id'];
-        final peerData = await _supabase.from('profiles').select().eq('id', peerId).single();
-        chats[chatId] = {
-          'id': chatId,
-          'peer': peerData,
-          'last_message': msg['content'],
-          'last_message_time': msg['created_at'],
-          'unread_count': await getUnreadCount(userId, peerId),
-        };
+        final peerData = await _supabase.from('profiles').select().eq('id', peerId).maybeSingle();
+        if (peerData!= null) {
+          chats[chatId] = {
+            'id': chatId,
+            'peer': peerData,
+            'last_message': msg['content'],
+            'last_message_time': msg['created_at'],
+            'unread_count': await getUnreadCount(userId, peerId),
+          };
+        }
       }
     }
     return chats.values.toList();
