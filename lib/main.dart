@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 import 'package:timeago/timeago.dart' as timeago;
+import 'package:hive_flutter/hive_flutter.dart';
 import 'core/theme/app_theme.dart';
 import 'core/constants/supabase_config.dart';
 import 'providers/auth_provider.dart';
@@ -28,6 +29,11 @@ void main() async {
   ));
 
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+
+  // تهيئة Hive - outbox المراسلات
+  await Hive.initFlutter();
+  await Hive.openBox('outbox_chat');
+  await Hive.openBox('outbox_room');
 
   // تهيئة Supabase
   await SupabaseConfig.init();
