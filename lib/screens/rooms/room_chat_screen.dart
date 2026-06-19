@@ -41,16 +41,14 @@ class _RoomChatScreenState extends State<RoomChatScreen> {
     }
   }
 
-  // ملاحظة: ChatInputBar عندك يرسل (text, imageUrl, voiceUrl)
-  // إذا بدك يرسل File مباشرة، غير التوقيع هنا إلى (String text, File? image, File? audio)
-  Future<void> _sendMessage(String text, String? imageUrl, String? voiceUrl) async {
+  Future<void> _sendMessage(String text, File? imageFile, File? audioFile) async {
+    if (text.trim().isEmpty && imageFile == null && audioFile == null) return;
     try {
-      // إذا ChatInputBar يرجع URLs جاهزة، استخدم الإرسال القديم
-      // إذا بدك الرفع التلقائي + outbox، خلي ChatInputBar يرجع File
       await _chat.sendMessageToRoomEx(
         roomId: widget.room.id,
         text: text,
-        // imageFile: imageFile, audioFile: audioFile,
+        imageFile: imageFile,
+        audioFile: audioFile,
         replyTo: _replyToId,
       );
       setState(() { _replyToId = null; _replyText = null; });
@@ -104,8 +102,6 @@ class _RoomChatScreenState extends State<RoomChatScreen> {
                 Icon(Icons.forum_outlined, size: 56, color: AppColors.navy.withOpacity(0.5)),
                 const SizedBox(height: 12),
                 const Text('لا توجد رسائل بعد', style: TextStyle(color: AppColors.textSub, fontFamily: 'Tajawal', fontSize: 15)),
-                const SizedBox(height: 4),
-                const Text('كن أول من يبدأ المحادثة', style: TextStyle(color: AppColors.textSub, fontFamily: 'Tajawal', fontSize: 13)),
               ]));
               WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
               return ListView.builder(
@@ -119,6 +115,7 @@ class _RoomChatScreenState extends State<RoomChatScreen> {
                     message: msg,
                     isMe: isMe,
                     showAvatar: true,
+                    isRoom: true,
                     onReply: () => setState(() {
                       _replyToId = msg['id'].toString();
                       _replyText = msg['content']?? 'صورة / صوت';
@@ -140,8 +137,6 @@ class _RoomChatScreenState extends State<RoomChatScreen> {
         ),
         ChatInputBar(
           onSend: _sendMessage,
-          // إذا ChatInputBar عندك يرجع File، استخدم:
-          // onSend: (text, imageFile, audioFile) => _sendMessageEx(text, imageFile, audioFile),
         ),
       ]),
     );
