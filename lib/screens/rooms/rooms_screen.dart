@@ -173,7 +173,7 @@ class _RoomsScreenState extends State<RoomsScreen> {
         const SizedBox(height: 12),
         Expanded(
           child: _loading
-        ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+       ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
               : RefreshIndicator(
                   onRefresh: _load, color: AppColors.primary,
                   child: Builder(builder: (_) {
@@ -189,4 +189,123 @@ class _RoomsScreenState extends State<RoomsScreen> {
                         ]))),
                       ]);
                     }
-                    return ListView
+                    return ListView.builder(
+                      padding: EdgeInsets.fromLTRB(16, 0, 16, MediaQuery.of(context).padding.bottom + 80),
+                      itemCount: list.length,
+                      itemBuilder: (_, i) => _RoomCard(room: list[i], onEnter: () => _openRoom(list[i]), onSettingsChanged: _load),
+                    );
+                  }),
+                ),
+        ),
+      ]),
+    ),
+  );
+}
+
+class _RoomCard extends StatelessWidget {
+  final RoomModel room;
+  final VoidCallback onEnter;
+  final VoidCallback? onSettingsChanged;
+  const _RoomCard({required this.room, required this.onEnter, this.onSettingsChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    final isOwner = room.ownerId == context.read<AuthProvider>().user!.id;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20), color: AppColors.bgCard,
+        border: Border.all(color: room.isOfficial? AppColors.primary : AppColors.glassBorder, width: room.isOfficial? 1.2 : 0.8),
+        boxShadow: [BoxShadow(color: AppColors.text.withOpacity(0.04), blurRadius: 8, offset: const Offset(0, 2))],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: Stack(children: [
+          if (room.imageUrl!= null) Positioned.fill(child: CachedNetworkImage(imageUrl: room.imageUrl!, fit: BoxFit.cover, errorWidget: (_, __, ___) => const SizedBox())),
+          if (room.imageUrl!= null) Positioned.fill(child: BackdropFilter(filter: ImageFilter.blur(sigmaX: 3, sigmaY: 3), child: Container(color: Colors.black.withOpacity(0.3)))),
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+              Row(children: [
+                CircleAvatar(radius: 14, backgroundColor: AppColors.glass, backgroundImage: room.ownerAvatar!= null? CachedNetworkImageProvider(room.ownerAvatar!) : null, child: room.ownerAvatar == null? Text(room.ownerName.isNotEmpty? room.ownerName[0].toUpperCase() : 'U', style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.primaryDark, fontSize: 10, fontWeight: FontWeight.bold)) : null),
+                const SizedBox(width: 8),
+                Expanded(child: Text(room.ownerName, style: TextStyle(fontFamily: 'Tajawal', color: room.imageUrl!= null? Colors.white.withOpacity(0.85) : AppColors.textSub, fontSize: 12), overflow: TextOverflow.ellipsis)),
+                if (room.isOfficial) _badge('رسمي', AppColors.navy),
+                if (room.isLocked)...[const SizedBox(width: 6), _badge('مغلق', AppColors.navy, icon: Icons.lock_outline_rounded)],
+                if (isOwner)...[
+                  const SizedBox(width: 4),
+                  Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(8),
+                      onTap: () async {
+                        final changed = await Navigator.push(context, MaterialPageRoute(builder: (_) => RoomSettingsScreen(room: room)));
+                        if (changed == true) onSettingsChanged?.call();
+                      },
+                      child: Padding(padding: const EdgeInsets.all(4), child: Icon(Icons.settings_rounded, size: 18, color: room.imageUrl!= null? Colors.white.withOpacity(0.8) : AppColors.textSub)),
+                    ),
+                  ),
+                ],
+              ]),
+              const SizedBox(height: 10),
+              Text(room.name, style: TextStyle(fontFamily: 'Tajawal', color: room.imageUrl!= null? Colors.white : AppColors.text, fontSize: 17, fontWeight: FontWeight.w800), maxLines: 2, overflow: TextOverflow.ellipsis),
+              if (room.description!= null && room.description!.isNotEmpty)...[
+                const SizedBox(height: 4),
+                Text(room.description!, style: TextStyle(fontFamily: 'Tajawal', color: room.imageUrl!= null? Colors.white.withOpacity(0.75) : AppColors.textSub, fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis),
+              ],
+              const SizedBox(height: 12),
+              Row(children: [
+                // عداد المتصلين فقط – عداد الأعضاء الكلي محذوف
+                Container(width: 6, height: 6, decoration: BoxDecoration(color: room.onlineCount > 0? AppColors.success : AppColors.offline, shape: BoxShape.circle)),
+                const SizedBox(width: 4),
+                Text(
+                  room.onlineCount > 0? '${room.onlineCount} متصل' : 'لا أحد متصل',
+                  style: TextStyle(
+                    fontFamily: 'Tajawal',
+                    color: room.onlineCount > 0? AppColors.success : (room.imageUrl!= null? Colors.white.withOpacity(0.7) : AppColors.textSub),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const Spacer(),
+                Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: onEnter, borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: room.isLocked? AppColors.bgCard2 : AppColors.primary,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        Icon(room.isLocked? Icons.lock_outline_rounded : Icons.login_rounded, color: room.isLocked? AppColors.textSub : Colors.white, size: 16),
+                        const SizedBox(width: 6),
+                        Text(
+                          room.isLocked? 'طلب دخول' : 'دخول الغرفة',
+                          style: TextStyle(
+                            fontFamily: 'Tajawal',
+                            color: room.isLocked? AppColors.textSub : Colors.white,
+                            fontSize: 13, fontWeight: FontWeight.w700),
+                        ),
+                      ]),
+                    ),
+                  ),
+                ),
+              ]),
+            ]),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  Widget _badge(String label, Color color, {IconData? icon}) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+    decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(8), border: Border.all(color: color.withOpacity(0.25))),
+    child: Row(mainAxisSize: MainAxisSize.min, children: [
+      if (icon!= null)...[Icon(icon, color: color, size: 10), const SizedBox(width: 3)],
+      Text(label, style: TextStyle(fontFamily: 'Tajawal', color: color, fontSize: 10, fontWeight: FontWeight.w700)),
+    ]),
+  );
+}
