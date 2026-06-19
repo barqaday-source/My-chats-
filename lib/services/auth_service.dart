@@ -16,6 +16,26 @@ class AuthService {
     try {
       final res = await _supabase.auth.signInWithPassword(email: email, password: password);
       if (res.user == null) throw Exception('Login failed: user null');
+
+      // --- فحص الحظر ---
+      try {
+        final userData = await _supabase
+           .from('profiles')
+           .select('is_blocked')
+           .eq('id', res.user!.id)
+           .maybeSingle();
+
+        if (userData!= null && userData['is_blocked'] == true) {
+          await _supabase.auth.signOut();
+          throw AuthException('تم حظر هذا الحساب نهائيا من قبل الإدارة');
+        }
+      } catch (e) {
+        // إذا كان الخطأ هو الحظر نفسه، ارميه لفوق
+        if (e is AuthException && e.message.contains('تم حظر')) rethrow;
+        // غير ذلك، تجاهل خطأ قراءة is_blocked حتى لا نمنع دخول مستخدم سليم إذا العمود ناقص
+        debugPrint('Block check warning: $e');
+      }
+
       return res;
     } on AuthException catch (e, s) {
       debugPrint('''
@@ -36,7 +56,6 @@ class AuthService {
     try {
       final res = await _supabase.auth.signUp(email: email, password: password, data: data);
       if (res.user!= null) {
-        // نستخدم upsert على جدول profiles
         await _supabase.from('profiles').upsert({
           'id': res.user!.id,
           'email': email,
@@ -92,7 +111,6 @@ class AuthService {
     }
   }
 
-  // تم التعديل: upsert على جدول profiles
   Future<bool> updateProfile(Map<String, dynamic> data) async {
     try {
       final userId = _supabase.auth.currentUser?.id;
@@ -101,10 +119,7 @@ class AuthService {
       data['id'] = userId;
       data['updated_at'] = DateTime.now().toIso8601String();
 
-      await _supabase.from('profiles')
-       .upsert(data)
-       .select();
-
+      await _supabase.from('profiles').upsert(data).select();
       return true;
     } on PostgrestException catch (e, s) {
       debugPrint('''
