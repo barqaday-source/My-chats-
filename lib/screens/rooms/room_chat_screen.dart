@@ -6,7 +6,7 @@ import '../../core/constants/app_colors.dart';
 import '../../models/room_model.dart';
 import '../../services/chat_service.dart';
 import '../../services/room_service.dart';
-import '../../widgets/chat_input_bar.dart';
+import '../../widgets/chat/chat_input_bar.dart';
 import '../../widgets/message_bubble.dart';
 
 class RoomChatScreen extends StatefulWidget {
