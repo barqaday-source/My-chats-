@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart';
 import '../core/constants/supabase_config.dart';
@@ -111,6 +112,20 @@ class RoomService {
 
   Future<void> updateRoomImage(String roomId, String imageUrl) async {
     await _sb.from(SupabaseConfig.tRooms).update({'image_url': imageUrl}).eq('id', roomId);
+  }
+
+  // --- Upload ---
+  Future<String> uploadRoomImage(File file, String roomId) async {
+    final ext = file.path.split('.').last;
+    final path = 'rooms/$roomId/${DateTime.now().millisecondsSinceEpoch}.$ext';
+
+    await _sb.storage.from('chat_media').upload(
+      path,
+      file,
+      fileOptions: const FileOptions(upsert: true),
+    );
+
+    return _sb.storage.from('chat_media').getPublicUrl(path);
   }
 
   Future<void> approveRoom(String roomId) async {
