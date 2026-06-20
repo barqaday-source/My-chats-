@@ -56,15 +56,17 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
     }
   }
 
-  Future<void> _send(String text, File? image, File? audio) async {
-    if (text.trim().isEmpty && image == null && audio == null) return;
+  // التوقيع الجديد: text, image, audioPath, audioDuration
+  Future<void> _send(String text, File? image, String? audioPath, int audioDuration) async {
+    if (text.trim().isEmpty && image == null && audioPath == null) return;
     try {
       await _chat.sendPrivateMessageEx(
         chatId: _chatId,
         peerId: widget.peer.id,
         content: text,
         imageFile: image,
-        audioFile: audio,
+        audioFile: audioPath!= null? File(audioPath) : null,
+        audioDuration: audioDuration,
       );
       _scrollToBottom();
     } catch (e) {
@@ -163,9 +165,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
               },
             ),
           ),
-          ChatInputBar(
-            onSend: _send,
-          ),
+          ChatInputBar(onSend: _send),
         ],
       ),
     );
