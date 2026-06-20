@@ -6,7 +6,7 @@ import '../../core/constants/app_colors.dart';
 import 'voice_recorder_button.dart';
 
 class ChatInputBar extends StatefulWidget {
-  final Future<void> Function(String text, File? imageFile, File? audioFile) onSend;
+  final Future<void> Function(String text, File? imageFile, String? audioPath, int audioDuration) onSend;
   const ChatInputBar({super.key, required this.onSend});
 
   @override
@@ -16,14 +16,13 @@ class ChatInputBar extends StatefulWidget {
 class _ChatInputBarState extends State<ChatInputBar> {
   final _ctrl = TextEditingController();
   bool _sending = false;
-  bool _isRecordingVoice = false;
 
   Future<void> _sendText() async {
     final t = _ctrl.text.trim();
     if (t.isEmpty || _sending) return;
     setState(() => _sending = true);
     try {
-      await widget.onSend(t, null, null);
+      await widget.onSend(t, null, null, 0);
       _ctrl.clear();
       setState(() {});
     } finally {
@@ -41,7 +40,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
     if (x == null) return;
     setState(() => _sending = true);
     try {
-      await widget.onSend('', File(x.path), null);
+      await widget.onSend('', File(x.path), null, 0);
     } finally {
       if (mounted) setState(() => _sending = false);
     }
@@ -50,7 +49,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
   Future<void> _sendAudio(String path, int duration) async {
     setState(() => _sending = true);
     try {
-      await widget.onSend('', null, File(path));
+      await widget.onSend('', null, path, duration);
     } finally {
       if (mounted) setState(() => _sending = false);
     }
@@ -59,7 +58,6 @@ class _ChatInputBarState extends State<ChatInputBar> {
   @override
   Widget build(BuildContext context) {
     final hasText = _ctrl.text.trim().isNotEmpty;
-
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: const BoxDecoration(
@@ -67,23 +65,19 @@ class _ChatInputBarState extends State<ChatInputBar> {
           border: Border(top: BorderSide(color: AppColors.divider))),
       child: SafeArea(
         child: Row(children: [
-          // زر الإرسال
           GestureDetector(
             onTap: hasText && !_sending ? _sendText : null,
             child: Container(
-              width: 44,
-              height: 44,
+              width: 44, height: 44,
               decoration: BoxDecoration(
                   color: hasText ? AppColors.primary : AppColors.bgCard2,
                   shape: BoxShape.circle),
               child: Icon(Icons.send_rounded,
                   color: hasText ? Colors.white : AppColors.textSub,
-                  size: 20,
-                  textDirection: TextDirection.rtl),
+                  size: 20, textDirection: TextDirection.rtl),
             ),
           ),
           const SizedBox(width: 8),
-          // حقل الكتابة
           Expanded(
             child: Container(
               decoration: BoxDecoration(
@@ -93,42 +87,28 @@ class _ChatInputBarState extends State<ChatInputBar> {
               child: Row(children: [
                 IconButton(
                     onPressed: _sending ? null : _pickImage,
-                    icon: const Icon(Icons.image_outlined,
-                        color: AppColors.textSub, size: 22)),
+                    icon: const Icon(Icons.image_outlined, color: AppColors.textSub, size: 22)),
                 Expanded(
                     child: TextField(
                   controller: _ctrl,
                   onChanged: (_) => setState(() {}),
                   textAlign: TextAlign.right,
-                  style: const TextStyle(
-                      fontFamily: 'Tajawal',
-                      color: AppColors.text,
-                      fontSize: 15),
+                  style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.text, fontSize: 15),
                   decoration: const InputDecoration(
                       hintText: 'اكتب رسالة...',
-                      hintStyle: TextStyle(
-                          fontFamily: 'Tajawal', color: AppColors.textSub),
+                      hintStyle: TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub),
                       border: InputBorder.none,
                       contentPadding: EdgeInsets.symmetric(vertical: 10)),
                   onSubmitted: (_) => _sendText(),
                 )),
-                // زر المايك - يستخدم VoiceRecorderButton
                 Padding(
                   padding: const EdgeInsets.only(left: 4, right: 4),
                   child: SizedBox(
-                    width: 42,
-                    height: 42,
+                    width: 42, height: 42,
                     child: _sending
-                        ? const Center(
-                            child: SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                    strokeWidth: 2)))
+                        ? const Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)))
                         : VoiceRecorderButton(
-                            onRecordComplete: (path, duration) {
-                              _sendAudio(path, duration);
-                            },
+                            onRecordComplete: (path, duration) => _sendAudio(path, duration),
                           ),
                   ),
                 ),
