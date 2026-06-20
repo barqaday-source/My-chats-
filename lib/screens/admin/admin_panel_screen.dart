@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/supabase_config.dart';
 import '../../models/user_model.dart';
@@ -9,6 +8,7 @@ import '../../models/notification_model.dart';
 import '../../services/auth_service.dart';
 import '../../services/notification_service.dart';
 import '../../widgets/user_avatar.dart';
+import '../../widgets/app_snackbar.dart';
 import '../../providers/auth_provider.dart';
 import 'edit_contact_screen.dart';
 
@@ -56,18 +56,16 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     }
     try {
       final userData = await _sb.from(SupabaseConfig.tUsers)
-        .select('role')
-        .eq('id', user.id)
-        .single();
-      final role = userData['role'] as String?? 'user';
+       .select('role')
+       .eq('id', user.id)
+       .single();
+      final role = userData['role'] as String??? 'user';
       if (role == 'admin') {
         _isAdmin = true;
         await _load();
       } else {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('ليس لديك صلاحية', style: TextStyle(fontFamily: 'Tajawal')), backgroundColor: Colors.red),
-          );
+          showAppSnack(context, 'ليس لديك صلاحية', success: false);
           Navigator.pop(context);
         }
       }
@@ -84,14 +82,14 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
       _users = rawUsers.map((json) => UserModel.fromMap(json)).toList();
 
       final rep = await _sb.from(SupabaseConfig.tReports)
-        .select('*, reporter:reporter_id(username, avatar_url), reported:reported_id(username, avatar_url)')
-        .order('created_at', ascending: false);
+       .select('*, reporter:reporter_id(username, avatar_url), reported:reported_id(username, avatar_url)')
+       .order('created_at', ascending: false);
       _reports = List<Map<String, dynamic>>.from(rep);
 
       final roomsData = await _sb.from(SupabaseConfig.tRooms)
-        .select()
-        .eq('is_approved', false)
-        .order('created_at', ascending: false);
+       .select()
+       .eq('is_approved', false)
+       .order('created_at', ascending: false);
       _pendingRooms = List<Map<String, dynamic>>.from(roomsData);
 
       final contactData = await _sb.from('app_contact').select().eq('id', 1).maybeSingle();
@@ -102,44 +100,24 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
       }
     } catch (e) {
       debugPrint('Load admin data error: $e');
+      if (mounted) showAppSnack(context, 'فشل تحميل بيانات الإدارة', success: false);
     }
     if (mounted) setState(() => _loading = false);
   }
 
-  Future<void> _changeRole(String userId, String role) async {
-    if (_busy) return;
-    _busy = true;
-    try {
-      final res = await _sb.from(SupabaseConfig.tUsers)
-        .update({'role': role})
-        .eq('id', userId)
-        .select();
-      if (res.isEmpty) throw Exception('فشل التحديث - تحقق من RLS');
-      await _notifSvc.showNotification('تم التحديث', role == 'admin'? 'تم ترقية المستخدم لمدير' : 'تم إزالة صلاحية المدير');
-      await _load();
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('فشل تغيير الصلاحية: $e', style: const TextStyle(fontFamily: 'Tajawal')), backgroundColor: Colors.red),
-        );
-      }
-    } finally {
-      _busy = false;
-    }
-  }
+  // ترقية المدير ملغية نهائيا
 
   Future<void> _blockUser(String uid, String username) async {
     if (_busy) return;
     _busy = true;
     try {
       final res = await _sb.from(SupabaseConfig.tUsers)
-        .update({
-            'is_blocked': true,
-            'blocked_at': DateTime.now().toIso8601String(),
-            'role': 'user'
-          })
-        .eq('id', uid)
-        .select();
+       .update({
+          'is_blocked': true,
+          'blocked_at': DateTime.now().toIso8601String(),
+        })
+       .eq('id', uid)
+       .select();
       if (res.isEmpty) throw Exception('فشل الحظر - تحقق من RLS');
       await _notifSvc.sendNotification(NotificationModel(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
@@ -149,14 +127,10 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
         type: 'account_blocked',
         createdAt: DateTime.now(),
       ));
-      await _notifSvc.showNotification('تم الحظر', 'تم حظر $username نهائيا');
+      if (mounted) showAppSnack(context, 'تم حظر $username نهائيا', success: true);
       await _load();
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('فشل الحظر: $e', style: const TextStyle(fontFamily: 'Tajawal')), backgroundColor: Colors.red),
-        );
-      }
+      if (mounted) showAppSnack(context, 'فشل الحظر: $e', success: false);
     } finally {
       _busy = false;
     }
@@ -167,9 +141,9 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     _busy = true;
     try {
       final res = await _sb.from(SupabaseConfig.tUsers)
-        .update({'is_blocked': false, 'blocked_at': null})
-        .eq('id', uid)
-        .select();
+       .update({'is_blocked': false, 'blocked_at': null})
+       .eq('id', uid)
+       .select();
       if (res.isEmpty) throw Exception('فشل إلغاء الحظر');
       await _notifSvc.sendNotification(NotificationModel(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
@@ -179,14 +153,10 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
         type: 'account_unblocked',
         createdAt: DateTime.now(),
       ));
-      await _notifSvc.showNotification('تم إلغاء الحظر', 'تم إلغاء حظر $username');
+      if (mounted) showAppSnack(context, 'تم إلغاء حظر $username', success: true);
       await _load();
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('فشل إلغاء الحظر: $e', style: const TextStyle(fontFamily: 'Tajawal')), backgroundColor: Colors.red),
-        );
-      }
+      if (mounted) showAppSnack(context, 'فشل إلغاء الحظر: $e', success: false);
     } finally {
       _busy = false;
     }
@@ -195,33 +165,29 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
   Future<void> _replyReport(String reportId, String userId, String reply) async {
     try {
       await _sb.from(SupabaseConfig.tReports)
-        .update({'reply': reply, 'status': 'replied', 'updated_at': DateTime.now().toIso8601String()})
-        .eq('id', reportId)
-        .select();
+       .update({'reply': reply, 'status': 'replied', 'updated_at': DateTime.now().toIso8601String()})
+       .eq('id', reportId);
       await _notifSvc.sendNotification(NotificationModel(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         userId: userId, title: 'رد على بلاغك', body: reply,
         type: 'report_reply', createdAt: DateTime.now(),
       ));
+      if (mounted) showAppSnack(context, 'تم الرد', success: true);
       await _load();
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('فشل الرد: $e', style: const TextStyle(fontFamily: 'Tajawal')), backgroundColor: Colors.red),
-      );
+      if (mounted) showAppSnack(context, 'فشل الرد: $e', success: false);
     }
   }
 
   Future<void> _approveRoom(String roomId, String ownerId) async {
     try {
       await _sb.from(SupabaseConfig.tRooms)
-        .update({'is_approved': true})
-        .eq('id', roomId)
-        .select();
+       .update({'is_approved': true})
+       .eq('id', roomId);
+      if (mounted) showAppSnack(context, 'تمت الموافقة على الغرفة', success: true);
       await _load();
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('فشل الموافقة: $e', style: const TextStyle(fontFamily: 'Tajawal')), backgroundColor: Colors.red),
-      );
+      if (mounted) showAppSnack(context, 'فشل الموافقة: $e', success: false);
     }
   }
 
@@ -254,21 +220,20 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
             ),
             Expanded(
               child: _loading
-                ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
-                  : TabBarView(controller: _tabs, children: [
-                      _UsersTab(
-                        users: _users,
-                        myId: Supabase.instance.client.auth.currentUser?.id?? '',
-                        onBlock: _blockUser,
-                        onUnblock: _unblockUser,
-                        onChangeRole: _changeRole),
-                      _ReportsTab(reports: _reports, onReply: _replyReport),
-                      _PendingRoomsTab(rooms: _pendingRooms, onApprove: _approveRoom),
-                      _ContactTab(phone: adminPhone, email: adminEmail, message: adminMessage, onEdit: () async {
-                        await Navigator.push(context, MaterialPageRoute(builder: (_) => const EditContactScreen()));
-                        _load();
-                      }),
-                    ]),
+               ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+                : TabBarView(controller: _tabs, children: [
+                    _UsersTab(
+                      users: _users,
+                      myId: Supabase.instance.client.auth.currentUser?.id?? '',
+                      onBlock: _blockUser,
+                      onUnblock: _unblockUser),
+                    _ReportsTab(reports: _reports, onReply: _replyReport),
+                    _PendingRoomsTab(rooms: _pendingRooms, onApprove: _approveRoom),
+                    _ContactTab(phone: adminPhone, email: adminEmail, message: adminMessage, onEdit: () async {
+                      await Navigator.push(context, MaterialPageRoute(builder: (_) => const EditContactScreen()));
+                      _load();
+                    }),
+                  ]),
             ),
           ]),
         ),
@@ -283,14 +248,12 @@ class _UsersTab extends StatelessWidget {
   final String myId;
   final Function(String, String) onBlock;
   final Function(String, String) onUnblock;
-  final Function(String, String) onChangeRole;
 
   const _UsersTab({
     required this.users,
     required this.myId,
     required this.onBlock,
     required this.onUnblock,
-    required this.onChangeRole,
   });
 
   @override
@@ -349,19 +312,8 @@ class _UsersTab extends StatelessWidget {
                 onSelected: (v) {
                   if (v == 'block') onBlock(u.id, u.username);
                   else if (v == 'unblock') onUnblock(u.id, u.username);
-                  else onChangeRole(u.id, v);
                 },
                 itemBuilder: (_) => [
-                  PopupMenuItem(
-                    value: isAdmin? 'user' : 'admin',
-                    child: Text(
-                      isAdmin? 'إزالة الإدارة' : 'جعله مدير',
-                      style: TextStyle(
-                        fontFamily: 'Tajawal',
-                        color: isAdmin? AppColors.textSub : AppColors.primary,
-                      ),
-                    ),
-                  ),
                   PopupMenuItem(
                     value: isBlocked? 'unblock' : 'block',
                     child: Text(
@@ -382,7 +334,7 @@ class _UsersTab extends StatelessWidget {
   }
 }
 
-// ====== كرت البلاغ ======
+// ====== باقي التابات بدون تغيير منطقي، فقط السناك ======
 class ReportCard extends StatelessWidget {
   final Map<String, dynamic> report;
   final Function(String, String, String) onReply;
@@ -435,12 +387,9 @@ class ReportCard extends StatelessWidget {
         Row(children: [
           Expanded(
             child: OutlinedButton(
-              style: OutlinedButton.styleFrom(
-                side: const BorderSide(color: AppColors.glassBorder),
-              ),
+              style: OutlinedButton.styleFrom(side: const BorderSide(color: AppColors.glassBorder)),
               onPressed: () => onReply(report['id'], report['reported_id'], 'تم رفض البلاغ'),
-              child: const Text('تجاهل',
-                  style: TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub)),
+              child: const Text('تجاهل', style: TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub)),
             ),
           ),
           const SizedBox(width: 8),
@@ -448,8 +397,7 @@ class ReportCard extends StatelessWidget {
             child: ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: AppColors.danger),
               onPressed: () => onReply(report['id'], report['reported_id'], 'تم حظر المستخدم'),
-              child: const Text('حظر المستخدم',
-                  style: TextStyle(fontFamily: 'Tajawal', color: Colors.white)),
+              child: const Text('حظر المستخدم', style: TextStyle(fontFamily: 'Tajawal', color: Colors.white)),
             ),
           ),
         ])
@@ -458,7 +406,6 @@ class ReportCard extends StatelessWidget {
   }
 }
 
-// ====== تبويب البلاغات ======
 class _ReportsTab extends StatelessWidget {
   final List<Map<String, dynamic>> reports;
   final Function(String, String, String) onReply;
@@ -467,9 +414,7 @@ class _ReportsTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (reports.isEmpty) {
-      return const Center(
-          child: Text('لا توجد بلاغات',
-              style: TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub)));
+      return const Center(child: Text('لا توجد بلاغات', style: TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub)));
     }
     return ListView.builder(
       padding: const EdgeInsets.all(12),
@@ -479,7 +424,6 @@ class _ReportsTab extends StatelessWidget {
   }
 }
 
-// ====== تبويب الغرف المعلقة ======
 class _PendingRoomsTab extends StatelessWidget {
   final List<Map<String, dynamic>> rooms;
   final Function(String, String) onApprove;
@@ -488,9 +432,7 @@ class _PendingRoomsTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (rooms.isEmpty) {
-      return const Center(
-          child: Text('لا توجد غرف معلقة',
-              style: TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub)));
+      return const Center(child: Text('لا توجد غرف معلقة', style: TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub)));
     }
     return ListView.builder(
       padding: const EdgeInsets.all(12),
@@ -500,20 +442,13 @@ class _PendingRoomsTab extends StatelessWidget {
         return Container(
           margin: const EdgeInsets.only(bottom: 8),
           padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-              color: AppColors.bgCard,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppColors.glassBorder)),
+          decoration: BoxDecoration(color: AppColors.bgCard, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.glassBorder)),
           child: Row(children: [
-            Expanded(
-                child: Text(r['name']?? 'غرفة',
-                    style: const TextStyle(
-                        fontFamily: 'Tajawal', color: AppColors.white))),
+            Expanded(child: Text(r['name']?? 'غرفة', style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.white))),
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: AppColors.success),
               onPressed: () => onApprove(r['id'], r['owner_id']?? ''),
-              child: const Text('موافقة',
-                  style: TextStyle(fontFamily: 'Tajawal', color: Colors.white)),
+              child: const Text('موافقة', style: TextStyle(fontFamily: 'Tajawal', color: Colors.white)),
             )
           ]),
         );
@@ -522,15 +457,10 @@ class _PendingRoomsTab extends StatelessWidget {
   }
 }
 
-// ====== تبويب تواصل معنا ======
 class _ContactTab extends StatelessWidget {
   final String phone, email, message;
   final VoidCallback onEdit;
-  const _ContactTab(
-      {required this.phone,
-      required this.email,
-      required this.message,
-      required this.onEdit});
+  const _ContactTab({required this.phone, required this.email, required this.message, required this.onEdit});
 
   @override
   Widget build(BuildContext context) {
@@ -539,24 +469,19 @@ class _ContactTab extends StatelessWidget {
       children: [
         ListTile(
           leading: const Icon(Icons.phone, color: AppColors.primary),
-          title: Text(phone.isEmpty? 'لا يوجد' : phone,
-              style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.white)),
-          subtitle: const Text('واتساب',
-              style: TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub)),
+          title: Text(phone.isEmpty? 'لا يوجد' : phone, style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.white)),
+          subtitle: const Text('واتساب', style: TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub)),
         ),
         ListTile(
           leading: const Icon(Icons.email_rounded, color: AppColors.primary),
-          title: Text(email.isEmpty? 'لا يوجد' : email,
-              style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.white)),
-          subtitle: const Text('البريد',
-              style: TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub)),
+          title: Text(email.isEmpty? 'لا يوجد' : email, style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.white)),
+          subtitle: const Text('البريد', style: TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub)),
         ),
         const SizedBox(height: 12),
         ElevatedButton.icon(
           onPressed: onEdit,
           icon: const Icon(Icons.edit_rounded),
-          label: const Text('تعديل معلومات التواصل',
-              style: TextStyle(fontFamily: 'Tajawal')),
+          label: const Text('تعديل معلومات التواصل', style: TextStyle(fontFamily: 'Tajawal')),
           style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
         )
       ],
