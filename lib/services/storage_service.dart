@@ -5,7 +5,6 @@ import 'package:path/path.dart' as path;
 import '../core/constants/supabase_config.dart';
 
 class StorageService {
-  // استخدم SupabaseConfig مباشرة - حذف التضارب
   static SupabaseStorageClient get storage => SupabaseConfig.storage;
 
   Future<String?> uploadChatMedia(String chatId, File file, String type) async {
@@ -13,16 +12,14 @@ class StorageService {
       final fileExt = path.extension(file.path);
       final fileName = '${DateTime.now().millisecondsSinceEpoch}_$type$fileExt';
       final filePath = 'chats/$chatId/$fileName';
-      await storage.from(SupabaseConfig.bucketMedia).upload(filePath, file);
+      await storage.from(SupabaseConfig.bucketMedia).upload(
+        filePath,
+        file,
+        fileOptions: const FileOptions(upsert: true),
+      );
       return storage.from(SupabaseConfig.bucketMedia).getPublicUrl(filePath);
     } on StorageException catch (e, s) {
-      debugPrint('''
-      ❌ Storage Error - uploadChatMedia
-      StatusCode: ${e.statusCode}
-      Message: ${e.message}
-      Error: ${e.error}
-      $s
-      ''');
+      debugPrint('❌ Storage Error - uploadChatMedia ${e.message}\n$s');
       return null;
     }
   }
@@ -32,16 +29,14 @@ class StorageService {
       final fileExt = path.extension(file.path);
       final fileName = '${DateTime.now().millisecondsSinceEpoch}_room$fileExt';
       final filePath = 'rooms/$roomId/$fileName';
-      await storage.from(SupabaseConfig.bucketRooms).upload(filePath, file);
+      await storage.from(SupabaseConfig.bucketRooms).upload(
+        filePath,
+        file,
+        fileOptions: const FileOptions(upsert: true),
+      );
       return storage.from(SupabaseConfig.bucketRooms).getPublicUrl(filePath);
     } on StorageException catch (e, s) {
-      debugPrint('''
-      ❌ Storage Error - uploadRoomImage
-      StatusCode: ${e.statusCode}
-      Message: ${e.message}
-      Error: ${e.error}
-      $s
-      ''');
+      debugPrint('❌ Storage Error - uploadRoomImage ${e.message}\n$s');
       return null;
     }
   }
@@ -58,13 +53,7 @@ class StorageService {
       );
       return storage.from(SupabaseConfig.bucketAvatars).getPublicUrl(filePath);
     } on StorageException catch (e, s) {
-      debugPrint('''
-      ❌ Storage Error - uploadAvatar
-      StatusCode: ${e.statusCode}
-      Message: ${e.message}
-      Error: ${e.error}
-      $s
-      ''');
+      debugPrint('❌ Storage Error - uploadAvatar ${e.message}\n$s');
       return null;
     }
   }
@@ -74,13 +63,7 @@ class StorageService {
       await storage.from(bucket).remove([filePath]);
       return true;
     } on StorageException catch (e, s) {
-      debugPrint('''
-      ❌ Storage Error - deleteFile
-      StatusCode: ${e.statusCode}
-      Message: ${e.message}
-      Error: ${e.error}
-      $s
-      ''');
+      debugPrint('❌ Storage Error - deleteFile ${e.message}\n$s');
       return false;
     }
   }
