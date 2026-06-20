@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'core/constants/app_colors.dart';
+import 'package:mychats/core/constants/app_colors.dart';
 
 void showAppSnack(BuildContext context, String msg, {bool success = true}) {
   ScaffoldMessenger.of(context).showSnackBar(
