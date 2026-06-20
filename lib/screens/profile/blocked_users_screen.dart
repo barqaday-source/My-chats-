@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/constants/app_colors.dart';
 import '../../models/user_model.dart';
-import '../../providers/auth_provider.dart';
+import '../../services/chat_service.dart';
 import '../../widgets/user_avatar.dart';
+import '../../widgets/app_snackbar.dart';
 import 'user_profile_screen.dart';
 
 class BlockedUsersScreen extends StatefulWidget {
@@ -16,6 +16,7 @@ class BlockedUsersScreen extends StatefulWidget {
 
 class _BlockedUsersScreenState extends State<BlockedUsersScreen> {
   final _supabase = Supabase.instance.client;
+  final _chat = ChatService();
   List<UserModel> _blockedUsers = [];
   bool _loading = true;
 
@@ -28,78 +29,56 @@ class _BlockedUsersScreenState extends State<BlockedUsersScreen> {
   Future<void> _loadBlockedUsers() async {
     setState(() => _loading = true);
     try {
-      final me = context.read<AuthProvider>().user!;
+      final meId = _supabase.auth.currentUser!.id;
 
-      // ✅ عدلنا الجدول + الأسماء
       final blockRes = await _supabase
-        .from('blocked_users')
-        .select('blocked_id')
-        .eq('blocker_id', me.id);
+       .from('blocked_users')
+       .select('blocked_id')
+       .eq('blocker_id', meId);
 
       final blockedIds = (blockRes as List)
-        .map((e) => e['blocked_id'] as String)
-        .toList();
+       .map((e) => e['blocked_id'] as String)
+       .toList();
 
       if (blockedIds.isEmpty) {
-        setState(() {
+        if (mounted) setState(() {
           _blockedUsers = [];
           _loading = false;
         });
         return;
       }
 
+      // profiles مو users
       final usersRes = await _supabase
-        .from('users')
-        .select()
-        .inFilter('id', blockedIds);
+       .from('profiles')
+       .select()
+       .inFilter('id', blockedIds);
 
-      _blockedUsers =
-          (usersRes as List).map((e) => UserModel.fromJson(e)).toList();
-    } catch (e) {
-      debugPrint('Load blocked users error: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('فشل تحميل المحظورين', style: TextStyle(fontFamily: 'Tajawal')),
-            backgroundColor: AppColors.danger,
-          ),
-        );
+        setState(() {
+          _blockedUsers = (usersRes as List).map((e) => UserModel.fromJson(e)).toList();
+          _loading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _loading = false);
+        showAppSnack(context, 'فشل تحميل المحظورين', success: false);
       }
     }
-    if (mounted) setState(() => _loading = false);
   }
 
   Future<void> _unblockUser(String userId) async {
-    final me = context.read<AuthProvider>().user!;
     try {
-      // ✅ عدلنا الأسماء
-      await _supabase
-        .from('blocked_users')
-        .delete()
-        .eq('blocker_id', me.id)
-        .eq('blocked_id', userId);
+      await _chat.unblockUser(userId);
 
       setState(() {
         _blockedUsers.removeWhere((u) => u.id == userId);
       });
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('تم إلغاء الحظر', style: TextStyle(fontFamily: 'Tajawal')),
-            backgroundColor: AppColors.primary,
-          ),
-        );
-      }
+      if (mounted) showAppSnack(context, 'تم إلغاء الحظر', success: true);
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('فشل إلغاء الحظر', style: TextStyle(fontFamily: 'Tajawal')),
-            backgroundColor: AppColors.danger,
-          ),
-        );
-      }
+      if (mounted) showAppSnack(context, 'فشل إلغاء الحظر', success: false);
     }
   }
 
@@ -120,74 +99,83 @@ class _BlockedUsersScreenState extends State<BlockedUsersScreen> {
       body: Container(
         decoration: BoxDecoration(gradient: AppColors.bgGrad),
         child: SafeArea(
-          child: _loading
-            ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+          child: RefreshIndicator(
+            color: AppColors.primary,
+            onRefresh: _loadBlockedUsers,
+            child: _loading
+             ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
               : _blockedUsers.isEmpty
-                ? const Center(
-                      child: Text('لا يوجد مستخدمين محظورين',
-                          style: TextStyle(
-                              fontFamily: 'Tajawal', color: AppColors.textSub)))
-                  : ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
-                      itemCount: _blockedUsers.length,
-                      itemBuilder: (_, i) {
-                        final user = _blockedUsers[i];
-                        return Container(
-                          margin: const EdgeInsets.only(bottom: 12),
-                          decoration: BoxDecoration(
-                            color: AppColors.bgCard.withOpacity(0.6),
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: AppColors.glassBorder, width: 0.8),
-                          ),
-                          child: ListTile(
-                            contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 8),
-                            leading: GestureDetector(
-                              onTap: () => Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => UserProfileScreen(userId: user.id),
-                                ),
-                              ),
-                              child: UserAvatar(
-                                url: user.avatarUrl,
-                                name: user.username,
-                                size: 44,
-                                isOnline: user.isOnline,
+               ? ListView(
+                    children: const [
+                      SizedBox(height: 120),
+                      Center(
+                        child: Text('لا يوجد مستخدمين محظورين',
+                          style: TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub))
+                      )
+                    ],
+                  )
+                : ListView.builder(
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+                    itemCount: _blockedUsers.length,
+                    itemBuilder: (_, i) {
+                      final user = _blockedUsers[i];
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        decoration: BoxDecoration(
+                          color: AppColors.bgCard.withOpacity(0.6),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: AppColors.glassBorder, width: 0.8),
+                        ),
+                        child: ListTile(
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 8),
+                          leading: GestureDetector(
+                            onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => UserProfileScreen(userId: user.id),
                               ),
                             ),
-                            title: Text(user.username,
-                                style: const TextStyle(
-                                    fontFamily: 'Tajawal',
-                                    color: AppColors.white,
-                                    fontWeight: FontWeight.w600)),
-                            subtitle: Text(
-                              user.bio?? 'لا توجد نبذة',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                            child: UserAvatar(
+                              url: user.avatarUrl,
+                              name: user.username,
+                              size: 44,
+                              isOnline: user.isOnline,
+                            ),
+                          ),
+                          title: Text(user.username,
                               style: const TextStyle(
                                   fontFamily: 'Tajawal',
-                                  color: AppColors.textSub,
-                                  fontSize: 12),
-                            ),
-                            trailing: TextButton(
-                              style: TextButton.styleFrom(
-                                backgroundColor: AppColors.danger.withOpacity(0.15),
-                                shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(10)),
-                              ),
-                              onPressed: () => _unblockUser(user.id),
-                              child: const Text('إلغاء الحظر',
-                                  style: TextStyle(
-                                      fontFamily: 'Tajawal',
-                                      color: AppColors.danger,
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w700)),
-                            ),
+                                  color: AppColors.white,
+                                  fontWeight: FontWeight.w600)),
+                          subtitle: Text(
+                            user.bio?? 'لا توجد نبذة',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                fontFamily: 'Tajawal',
+                                color: AppColors.textSub,
+                                fontSize: 12),
                           ),
-                        );
-                      },
-                    ),
+                          trailing: TextButton(
+                            style: TextButton.styleFrom(
+                              backgroundColor: AppColors.danger.withOpacity(0.15),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10)),
+                            ),
+                            onPressed: () => _unblockUser(user.id),
+                            child: const Text('إلغاء الحظر',
+                                style: TextStyle(
+                                    fontFamily: 'Tajawal',
+                                    color: AppColors.danger,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700)),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+          ),
         ),
       ),
     );
