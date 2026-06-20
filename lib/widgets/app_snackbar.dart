@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
+import 'core/constants/app_colors.dart';
 
-void showAppSnack(BuildContext context, String message, {bool success = true}) {
+void showAppSnack(BuildContext context, String msg, {bool success = true}) {
   ScaffoldMessenger.of(context).showSnackBar(
     SnackBar(
-      content: Text(message),
-      backgroundColor: success ? const Color(0xFF00C4A7) : const Color(0xFFE53935),
-      behavior: SnackBarBehavior.floating,
-      duration: const Duration(seconds: 2),
+      content: Text(msg, style: const TextStyle(fontFamily: 'Tajawal')),
+      backgroundColor: success ? AppColors.success : AppColors.danger,
     ),
   );
 }
