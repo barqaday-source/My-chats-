@@ -7,12 +7,16 @@ class AudioMessageWidget extends StatefulWidget {
   final String audioUrl;
   final int duration;
   final bool isMe;
+  final VoidCallback? onReply;
+  final VoidCallback? onDelete;
 
   const AudioMessageWidget({
     super.key,
     required this.audioUrl,
     required this.duration,
     required this.isMe,
+    this.onReply,
+    this.onDelete,
   });
 
   @override
@@ -84,9 +88,10 @@ class _AudioMessageWidgetState extends State<AudioMessageWidget> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('تعذّر تشغيل الصوت',
-                style: const TextStyle(fontFamily: 'Tajawal')),
+            content: const Text('تعذّر تشغيل الصوت',
+                style: TextStyle(fontFamily: 'Tajawal')),
             duration: const Duration(seconds: 2),
+            backgroundColor: AppColors.danger,
           ),
         );
       }
@@ -106,95 +111,171 @@ class _AudioMessageWidgetState extends State<AudioMessageWidget> {
 
   @override
   Widget build(BuildContext context) {
-    final iconColor = widget.isMe ? AppColors.white : AppColors.primary;
+    final iconColor = widget.isMe? AppColors.white : AppColors.primary;
     final trackColor = widget.isMe
-        ? AppColors.white.withOpacity(0.3)
+       ? AppColors.white.withOpacity(0.3)
         : AppColors.glassBorder;
-    final fillColor = widget.isMe ? AppColors.white : AppColors.primary;
+    final fillColor = widget.isMe? AppColors.white : AppColors.primary;
 
-    return Container(
-      constraints: const BoxConstraints(maxWidth: 250),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: widget.isMe ? AppColors.primary : AppColors.bgCard,
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          GestureDetector(
-            onTap: _isLoading ? null : _togglePlay,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: widget.isMe
-                    ? AppColors.white.withOpacity(0.2)
-                    : AppColors.primary.withOpacity(0.15),
-                shape: BoxShape.circle,
-              ),
-              child: _isLoading
-                  ? Padding(
-                      padding: const EdgeInsets.all(8),
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: iconColor),
-                    )
-                  : Icon(
-                      _isPlaying
-                          ? Icons.pause_rounded
-                          : Icons.play_arrow_rounded,
-                      color: iconColor,
-                      size: 20,
-                    ),
-            ),
+    return Column(
+      crossAxisAlignment:
+          widget.isMe? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // فقاعة الفويس
+        Container(
+          constraints: const BoxConstraints(maxWidth: 300, minWidth: 260),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: widget.isMe? AppColors.primary : AppColors.bgCard,
+            borderRadius: BorderRadius.circular(18),
           ),
-          const SizedBox(width: 10),
-          Flexible(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SizedBox(
-                  height: 20,
-                  child: CustomPaint(
-                    painter: _WaveformPainter(
-                      progress: _progress,
-                      trackColor: trackColor,
-                      fillColor: fillColor,
-                    ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // زر تشغيل دائري
+              GestureDetector(
+                onTap: _isLoading? null : _togglePlay,
+                child: Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: widget.isMe
+                       ? AppColors.white.withOpacity(0.2)
+                        : AppColors.primary.withOpacity(0.15),
+                    shape: BoxShape.circle,
                   ),
+                  child: _isLoading
+                     ? Padding(
+                          padding: const EdgeInsets.all(10),
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: iconColor),
+                        )
+                      : Icon(
+                          _isPlaying
+                             ? Icons.pause_rounded
+                              : Icons.play_arrow_rounded,
+                          color: iconColor,
+                          size: 26,
+                        ),
                 ),
-                const SizedBox(height: 4),
-                Row(
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(
-                      _fmt(_position),
-                      style: TextStyle(
-                        fontFamily: 'Tajawal',
-                        color: widget.isMe
-                            ? AppColors.white.withOpacity(0.8)
-                            : AppColors.textSub,
-                        fontSize: 10,
+                    SizedBox(
+                      height: 28,
+                      width: double.infinity,
+                      child: CustomPaint(
+                        painter: _WaveformPainter(
+                          progress: _progress,
+                          trackColor: trackColor,
+                          fillColor: fillColor,
+                        ),
                       ),
                     ),
+                    const SizedBox(height: 4),
                     Text(
-                      ' / ${_fmt(_total)}',
+                      _isPlaying
+                         ? _fmt(_position)
+                          : _fmt(_total.inMilliseconds > 0
+                             ? _total
+                              : Duration(seconds: widget.duration)),
                       style: TextStyle(
                         fontFamily: 'Tajawal',
                         color: widget.isMe
-                            ? AppColors.white.withOpacity(0.5)
+                           ? AppColors.white.withOpacity(0.8)
                             : AppColors.textSub,
-                        fontSize: 10,
+                        fontSize: 11,
                       ),
                     ),
                   ],
                 ),
-              ],
-            ),
+              ),
+              const SizedBox(width: 8),
+              Icon(Icons.mic_rounded,
+                  color: widget.isMe
+                     ? AppColors.white.withOpacity(0.7)
+                      : AppColors.textSub,
+                  size: 18),
+            ],
           ),
-        ],
+        ),
+        const SizedBox(height: 4),
+        // أزرار الرد والحذف - مفصولة
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (widget.onReply!= null)
+                _actionChip(
+                  Icons.reply_rounded,
+                  'رد',
+                  AppColors.textSub,
+                  widget.onReply!,
+                ),
+              if (widget.onReply!= null && widget.onDelete!= null)
+                const SizedBox(width: 18),
+              if (widget.onDelete!= null)
+                _actionChip(
+                  Icons.delete_outline_rounded,
+                  'حذف',
+                  AppColors.danger,
+                  () async {
+                    final ok = await showDialog<bool>(
+                      context: context,
+                      builder: (c) => AlertDialog(
+                        backgroundColor: AppColors.bgCard,
+                        title: const Text('حذف التسجيل؟',
+                            style: TextStyle(
+                                fontFamily: 'Tajawal',
+                                color: AppColors.white)),
+                        actions: [
+                          TextButton(
+                              onPressed: () => Navigator.pop(c, false),
+                              child: const Text('إلغاء',
+                                  style: TextStyle(color: AppColors.textSub))),
+                          TextButton(
+                              onPressed: () => Navigator.pop(c, true),
+                              child: const Text('حذف',
+                                  style: TextStyle(color: AppColors.danger))),
+                        ],
+                      ),
+                    );
+                    if (ok == true) widget.onDelete!();
+                  },
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _actionChip(
+      IconData icon, String label, Color color, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 15, color: color),
+            const SizedBox(width: 4),
+            Text(label,
+                style: TextStyle(
+                    fontFamily: 'Tajawal',
+                    color: color,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600)),
+          ],
+        ),
       ),
     );
   }
@@ -207,8 +288,9 @@ class _WaveformPainter extends CustomPainter {
 
   static const _bars = [
     4, 8, 12, 7, 16, 11, 5, 9, 14, 8,
-    13, 6, 15, 10, 7, 12, 5, 9, 8, 4,
-    6, 11, 14, 7, 10
+    13, 6, 15, 10, 7, 12, 5, 9, 8, 14,
+    6, 11, 14, 7, 10, 16, 9, 13, 7, 12,
+    5, 10
   ];
 
   const _WaveformPainter({
@@ -219,10 +301,10 @@ class _WaveformPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    const count = 25;
+    const count = 32;
     const barW = 2.0;
     final spacing = size.width > count * barW
-        ? (size.width - count * barW) / (count - 1)
+       ? (size.width - count * barW) / (count - 1)
         : 1.0;
     final filled = (count * progress).round();
 
@@ -231,8 +313,8 @@ class _WaveformPainter extends CustomPainter {
       final x = i * (barW + spacing);
       final top = (size.height - h) / 2;
       final paint = Paint()
-        ..color = i < filled ? fillColor : trackColor
-        ..style = PaintingStyle.fill;
+       ..color = i < filled? fillColor : trackColor
+       ..style = PaintingStyle.fill;
       canvas.drawRRect(
         RRect.fromRectAndRadius(
           Rect.fromLTWH(x, top, barW, h),
@@ -245,5 +327,7 @@ class _WaveformPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_WaveformPainter old) =>
-      old.progress != progress || old.trackColor != trackColor || old.fillColor != fillColor;
+      old.progress!= progress ||
+      old.trackColor!= trackColor ||
+      old.fillColor!= fillColor;
 }
