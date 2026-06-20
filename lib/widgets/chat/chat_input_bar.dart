@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:record/record.dart';
+import 'package:flutter_sound/flutter_sound.dart';
 import 'package:path_provider/path_provider.dart';
 import '../../core/constants/app_colors.dart';
 
@@ -27,12 +27,24 @@ class _ChatInputBarState extends State<ChatInputBar> {
   final _ctrl = TextEditingController();
   bool _sending = false;
 
-  // تسجيل صوتي
-  final _recorder = AudioRecorder();
+  // flutter_sound
+  final FlutterSoundRecorder _recorder = FlutterSoundRecorder();
+  bool _recorderReady = false;
   bool _isRecording = false;
   Timer? _timer;
   Duration _recordDuration = Duration.zero;
   String? _recordPath;
+
+  @override
+  void initState() {
+    super.initState();
+    _initRecorder();
+  }
+
+  Future<void> _initRecorder() async {
+    await _recorder.openRecorder();
+    _recorderReady = true;
+  }
 
   String _format(Duration d) {
     final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
@@ -67,18 +79,17 @@ class _ChatInputBarState extends State<ChatInputBar> {
   }
 
   Future<void> _startRecord() async {
-    if (_sending || _isRecording) return;
+    if (!_recorderReady || _sending || _isRecording) return;
     final mic = await Permission.microphone.request();
     if (!mic.isGranted) return;
 
     final dir = await getTemporaryDirectory();
-    _recordPath = '${dir.path}/voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
-    
-    await _recorder.start(const RecordConfig(
-      encoder: AudioEncoder.aacLc,
-      bitRate: 128000,
-      sampleRate: 44100,
-    ), path: _recordPath!);
+    _recordPath = '${dir.path}/voice_${DateTime.now().millisecondsSinceEpoch}.aac';
+
+    await _recorder.startRecorder(
+      toFile: _recordPath,
+      codec: Codec.aacADTS,
+    );
 
     setState(() {
       _isRecording = true;
@@ -93,7 +104,8 @@ class _ChatInputBarState extends State<ChatInputBar> {
   Future<void> _stopRecord({bool cancel = false}) async {
     if (!_isRecording) return;
     _timer?.cancel();
-    await _recorder.stop();
+    await _recorder.stopRecorder();
+
     final path = _recordPath;
     final duration = _recordDuration.inSeconds;
 
@@ -122,7 +134,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
   @override
   void dispose() {
     _timer?.cancel();
-    _recorder.dispose();
+    _recorder.closeRecorder();
     _ctrl.dispose();
     super.dispose();
   }
@@ -142,7 +154,6 @@ class _ChatInputBarState extends State<ChatInputBar> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // معاينة الرد
             if (reply != null)
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
@@ -196,7 +207,6 @@ class _ChatInputBarState extends State<ChatInputBar> {
                 ),
               ),
 
-            // الشريط الموحد
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
               child: Row(
@@ -231,7 +241,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
                   ),
                   const SizedBox(width: 8),
 
-                  // حقل الكتابة الموحد
+                  // الحقل الموحد
                   Expanded(
                     child: Container(
                       constraints: const BoxConstraints(minHeight: 52),
@@ -241,12 +251,10 @@ class _ChatInputBarState extends State<ChatInputBar> {
                         border: Border.all(color: AppColors.glassBorder),
                       ),
                       child: _isRecording
-                          // وضع التسجيل
                           ? Padding(
                               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
                               child: Row(
                                 children: [
-                                  // زر إلغاء مفرغ
                                   InkWell(
                                     onTap: () => _stopRecord(cancel: true),
                                     borderRadius: BorderRadius.circular(20),
@@ -291,7 +299,6 @@ class _ChatInputBarState extends State<ChatInputBar> {
                                 ],
                               ),
                             )
-                          // وضع الكتابة
                           : Row(
                               crossAxisAlignment: CrossAxisAlignment.end,
                               children: [
