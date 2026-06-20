@@ -46,7 +46,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
     try {
       await _chat.sendPrivateMessageEx(
         peerId: widget.peer.id,
-        text: text,
+        content: text,
         imageFile: imageFile,
         audioFile: audioFile,
         replyTo: _replyToId,
@@ -91,7 +91,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
       ),
       body: Column(children: [
         Expanded(child: StreamBuilder<List<Map<String, dynamic>>>(
-          stream: _chat.getPrivateMessagesStream(currentUserId, widget.peer.id),
+          stream: _chat.getPrivateMessagesStream(widget.peer.id),
           builder: (context, snapshot) {
             if (snapshot.hasError) return Center(child: Text('خطأ: ${snapshot.error}', style: const TextStyle(color: AppColors.danger, fontFamily: 'Tajawal')));
             if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator(color: AppColors.primary));
