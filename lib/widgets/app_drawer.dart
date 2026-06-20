@@ -184,7 +184,7 @@ class _AppDrawerState extends State<AppDrawer> {
                       else if (_blocked.isEmpty)
                         const Padding(
                           padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
-                          child: Text('لا يوجد محظورين',
+                          child: Text('رؤيه الــ  محظورين',
                             style: TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub, fontSize: 12)),
                         )
                       else
