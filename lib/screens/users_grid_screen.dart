@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/constants/app_colors.dart';
 import '../core/constants/supabase_config.dart';
-import 'user_profile_screen.dart';
+import 'profile/user_profile_screen.dart';
 
 class UsersGridScreen extends StatefulWidget {
   const UsersGridScreen({super.key});
