@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/constants/app_colors.dart';
 import '../core/constants/app_strings.dart';
 import '../providers/auth_provider.dart';
@@ -8,10 +9,47 @@ import '../screens/pages/privacy_screen.dart';
 import '../screens/pages/contact_screen.dart';
 import '../screens/admin/admin_panel_screen.dart';
 import '../screens/profile/blocked_users_screen.dart';
+import '../services/chat_service.dart';
 import '../widgets/user_avatar.dart';
+import '../widgets/app_snackbar.dart';
 
-class AppDrawer extends StatelessWidget {
+class AppDrawer extends StatefulWidget {
   const AppDrawer({super.key});
+
+  @override
+  State<AppDrawer> createState() => _AppDrawerState();
+}
+
+class _AppDrawerState extends State<AppDrawer> {
+  final _chat = ChatService();
+  final _supabase = Supabase.instance.client;
+  List<Map<String, dynamic>> _blocked = [];
+  bool _blockedOpen = false;
+  bool _blockedLoading = false;
+
+  Future<void> _loadBlocked() async {
+    if (_blockedLoading) return;
+    setState(() => _blockedLoading = true);
+    try {
+      final meId = _supabase.auth.currentUser!.id;
+      final res = await _supabase
+          .from('blocked_users')
+          .select('blocked_id, profiles!blocked_users_blocked_id_fkey(id, username, avatar_url)')
+          .eq('blocker_id', meId);
+      if (mounted) setState(() => _blocked = List<Map<String, dynamic>>.from(res));
+    } catch (_) {}
+    if (mounted) setState(() => _blockedLoading = false);
+  }
+
+  Future<void> _unblock(String peerId) async {
+    try {
+      await _chat.unblockUser(peerId);
+      setState(() => _blocked.removeWhere((b) => b['blocked_id'] == peerId));
+      if (mounted) showAppSnack(context, 'تم إلغاء الحظر', success: true);
+    } catch (_) {
+      if (mounted) showAppSnack(context, 'فشل إلغاء الحظر', success: false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -123,15 +161,79 @@ class AppDrawer extends StatelessWidget {
                   () => Navigator.push(context,
                       MaterialPageRoute(builder: (_) => const ContactScreen())),
                 ),
-                _tile(
-                  context,
-                  Icons.block_rounded,
-                  'المحظورين',
-                  () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (_) => const BlockedUsersScreen())),
+                
+                // ===== قسم المحظورين - مع عرض مباشر =====
+                Theme(
+                  data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                  child: ExpansionTile(
+                    tilePadding: const EdgeInsets.symmetric(horizontal: 16),
+                    leading: const Icon(Icons.block_rounded, color: AppColors.white70, size: 22),
+                    title: const Text('المحظورين',
+                      style: TextStyle(fontFamily: 'Tajawal', color: AppColors.text, fontSize: 15, fontWeight: FontWeight.w500)),
+                    trailing: Icon(_blockedOpen ? Icons.expand_less : Icons.expand_more, color: AppColors.textSub),
+                    onExpansionChanged: (v) {
+                      setState(() => _blockedOpen = v);
+                      if (v) _loadBlocked();
+                    },
+                    children: [
+                      if (_blockedLoading)
+                        const Padding(
+                          padding: EdgeInsets.all(16),
+                          child: CircularProgressIndicator(color: AppColors.primary, strokeWidth: 2),
+                        )
+                      else if (_blocked.isEmpty)
+                        const Padding(
+                          padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
+                          child: Text('لا يوجد محظورين',
+                            style: TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub, fontSize: 12)),
+                        )
+                      else
+                        ..._blocked.map((b) {
+                          final p = b['profiles'] as Map<String, dynamic>?;
+                          final peerId = b['blocked_id'] as String;
+                          final name = p?['username'] ?? 'مستخدم';
+                          final avatar = p?['avatar_url'] as String?;
+                          return Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                            child: Row(
+                              children: [
+                                UserAvatar(url: avatar, name: name, size: 32),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(name,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.white, fontSize: 13)),
+                                ),
+                                TextButton(
+                                  onPressed: () => _unblock(peerId),
+                                  style: TextButton.styleFrom(
+                                    backgroundColor: AppColors.danger.withOpacity(0.15),
+                                    minimumSize: const Size(0, 32),
+                                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                  ),
+                                  child: const Text('فك',
+                                    style: TextStyle(fontFamily: 'Tajawal', color: AppColors.danger, fontSize: 11, fontWeight: FontWeight.w700)),
+                                ),
+                              ],
+                            ),
+                          );
+                        }),
+                      // رابط لفتح الصفحة الكاملة
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: TextButton(
+                          onPressed: () => Navigator.push(context,
+                            MaterialPageRoute(builder: (_) => const BlockedUsersScreen())),
+                          child: const Text('عرض الكل →',
+                            style: TextStyle(fontFamily: 'Tajawal', color: AppColors.primary, fontSize: 12)),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
+                // ===== نهاية قسم المحظورين =====
+
                 if (hasPrivileges)
                   _tile(
                     context,
