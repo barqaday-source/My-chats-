@@ -22,8 +22,7 @@ class _RoomChatScreenState extends State<RoomChatScreen> {
   final _roomSvc = RoomService();
   final ScrollController _scrollController = ScrollController();
 
-  String? _replyToId;
-  String? _replyText;
+  Map<String, dynamic>? _replyingTo;
 
   @override
   void initState() {
@@ -65,10 +64,12 @@ class _RoomChatScreenState extends State<RoomChatScreen> {
         imageFile: imageFile,
         audioFile: audioPath!= null? File(audioPath) : null,
         audioDuration: audioDuration,
-        replyTo: _replyToId,
+        replyMessage: _replyingTo,
       );
-      if (mounted) showAppSnack(context, 'تم الإرسال', success: true);
-      setState(() { _replyToId = null; _replyText = null; });
+      if (mounted) {
+        showAppSnack(context, 'تم الإرسال', success: true);
+        setState(() => _replyingTo = null);
+      }
       _scrollToBottom();
     } catch (e) {
       final isOffline = e.toString().contains('offline');
@@ -77,8 +78,8 @@ class _RoomChatScreenState extends State<RoomChatScreen> {
           isOffline? 'تم الحفظ، سترسل تلقائيا عند عودة النت' : 'فشل الإرسال',
           success: isOffline,
         );
+        setState(() => _replyingTo = null);
       }
-      setState(() { _replyToId = null; _replyText = null; });
     }
   }
 
@@ -139,27 +140,19 @@ class _RoomChatScreenState extends State<RoomChatScreen> {
                     message: msg,
                     isMe: isMe,
                     showAvatar: true,
-                    onReply: () => setState(() {
-                      _replyToId = msg['id'].toString();
-                      _replyText = msg['content']?? 'صورة / صوت';
-                    }),
+                    isRoom: true,
+                    onReply: () => setState(() => _replyingTo = msg),
+                    onDelete: (_) => setState(() {}),
                   );
                 },
               );
             },
           ),
         ),
-        if (_replyText!= null) Container(
-          color: AppColors.bgCard2,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          child: Row(children: [
-            Expanded(child: Text('رد على: $_replyText', maxLines: 1, overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontFamily: 'Tajawal', fontSize: 12, color: AppColors.textSub))),
-            IconButton(icon: const Icon(Icons.close, size: 18, color: AppColors.textSub), onPressed: () => setState(() { _replyToId = null; _replyText = null; }))
-          ]),
-        ),
         ChatInputBar(
           onSend: _sendMessage,
+          replyTo: _replyingTo,
+          onCancelReply: () => setState(() => _replyingTo = null),
         ),
       ]),
     );
