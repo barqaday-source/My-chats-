@@ -8,6 +8,8 @@ import '../../services/chat_service.dart';
 import '../../widgets/user_avatar.dart';
 import '../../widgets/app_snackbar.dart';
 import 'private_chat_screen.dart';
+// شاشة البحث عن المستخدمين
+import '../users_grid_screen.dart';
 
 class ChatsListScreen extends StatefulWidget {
   const ChatsListScreen({super.key});
@@ -18,21 +20,13 @@ class ChatsListScreen extends StatefulWidget {
 
 class _ChatsListScreenState extends State<ChatsListScreen> {
   final _chatService = ChatService();
-  final _searchController = TextEditingController();
   List<ChatModel> _chats = [];
-  List<ChatModel> _filteredChats = [];
   bool _loading = true;
 
   @override
   void initState() {
     super.initState();
     _loadChats();
-  }
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
   }
 
   Future<void> _loadChats() async {
@@ -43,7 +37,6 @@ class _ChatsListScreenState extends State<ChatsListScreen> {
       if (!mounted) return;
       setState(() {
         _chats = chats.map((c) => ChatModel.fromJson(c)).toList();
-        _filteredChats = _chats;
         _loading = false;
       });
     } catch (e) {
@@ -52,18 +45,6 @@ class _ChatsListScreenState extends State<ChatsListScreen> {
         showAppSnack(context, 'فشل تحميل المحادثات', success: false);
       }
     }
-  }
-
-  void _filterChats(String query) {
-    setState(() {
-      if (query.isEmpty) {
-        _filteredChats = _chats;
-      } else {
-        _filteredChats = _chats
-          .where((chat) => chat.peer.username.toLowerCase().contains(query.toLowerCase()))
-          .toList();
-      }
-    });
   }
 
   void _openChat(ChatModel chat) {
@@ -75,6 +56,13 @@ class _ChatsListScreenState extends State<ChatsListScreen> {
           peer: chat.peer,
         ),
       ),
+    ).then((_) => _loadChats());
+  }
+
+  void _openUsersSearch() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const UsersGridScreen()),
     ).then((_) => _loadChats());
   }
 
@@ -91,20 +79,20 @@ class _ChatsListScreenState extends State<ChatsListScreen> {
       ),
       body: Column(
         children: [
-          _buildSearchBar(),
+          _buildUsersSearchButton(),
           Expanded(
             child: _loading
-         ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
-                : _filteredChats.isEmpty
-            ? _buildEmptyState()
+        ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+                : _chats.isEmpty
+           ? _buildEmptyState()
                     : RefreshIndicator(
                         onRefresh: _loadChats,
                         color: AppColors.primary,
                         child: ListView.builder(
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                          itemCount: _filteredChats.length,
+                          itemCount: _chats.length,
                           itemBuilder: (context, index) {
-                            final chat = _filteredChats[index];
+                            final chat = _chats[index];
                             return _buildChatTile(chat);
                           },
                         ),
@@ -115,25 +103,33 @@ class _ChatsListScreenState extends State<ChatsListScreen> {
     );
   }
 
-  Widget _buildSearchBar() {
-    return Container(
-      margin: const EdgeInsets.all(12),
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      decoration: BoxDecoration(
-        color: AppColors.bgCard,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.glassBorder),
-      ),
-      child: TextField(
-        controller: _searchController,
-        style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.white),
-        decoration: const InputDecoration(
-          icon: Icon(Icons.search_rounded, color: AppColors.textSub),
-          hintText: 'ابحث عن محادثة...',
-          hintStyle: TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub),
-          border: InputBorder.none,
+  Widget _buildUsersSearchButton() {
+    return InkWell(
+      onTap: _openUsersSearch,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        margin: const EdgeInsets.all(12),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: AppColors.bgCard,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.glassBorder),
         ),
-        onChanged: _filterChats,
+        child: const Row(
+          textDirection: TextDirection.rtl,
+          children: [
+            Icon(Icons.person_search_outlined, color: AppColors.primary),
+            SizedBox(width: 12),
+            Text(
+              'ابحث عن أشخاص للدردشة...',
+              style: TextStyle(
+                fontFamily: 'Tajawal',
+                color: AppColors.textSub,
+                fontSize: 14,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -151,6 +147,17 @@ class _ChatsListScreenState extends State<ChatsListScreen> {
               fontFamily: 'Tajawal',
               color: AppColors.textSub,
               fontSize: 16,
+            ),
+          ),
+          const SizedBox(height: 12),
+          ElevatedButton.icon(
+            onPressed: _openUsersSearch,
+            icon: const Icon(Icons.person_search_outlined),
+            label: const Text('ابحث عن أشخاص', style: TextStyle(fontFamily: 'Tajawal')),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
           ),
         ],
