@@ -19,8 +19,6 @@ class UserProfileScreen extends StatefulWidget {
 
 class _UserProfileScreenState extends State<UserProfileScreen> {
   final supabase = Supabase.instance.client;
-  bool _isFollowing = false;
-  bool _followChecked = false;
 
   Stream<UserModel?> getUserStream() {
     return supabase
@@ -28,47 +26,6 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         .stream(primaryKey: ['id'])
         .eq('id', widget.userId)
         .map((list) => list.isEmpty ? null : UserModel.fromJson(list.first));
-  }
-
-  Future<void> _checkFollowStatus() async {
-    if (_followChecked) return;
-    try {
-      final me = context.read<AuthProvider>().user;
-      if (me == null) return;
-      final follow = await supabase
-          .from('follows')
-          .select()
-          .eq('follower_id', me.id)
-          .eq('following_id', widget.userId)
-          .maybeSingle();
-      if (mounted) setState(() {
-        _isFollowing = follow != null;
-        _followChecked = true;
-      });
-    } catch (_) {
-      _followChecked = true;
-    }
-  }
-
-  Future<void> _toggleFollow(String targetUserId) async {
-    final meId = supabase.auth.currentUser!.id;
-    final newState = !_isFollowing;
-    setState(() => _isFollowing = newState);
-    try {
-      if (newState) {
-        await supabase.from('follows').insert({
-          'follower_id': meId,
-          'following_id': targetUserId,
-        });
-      } else {
-        await supabase.from('follows').delete()
-          .eq('follower_id', meId)
-          .eq('following_id', targetUserId);
-      }
-    } catch (e) {
-      setState(() => _isFollowing = !newState);
-      if (mounted) showAppSnack(context, 'فشل العملية', success: false);
-    }
   }
 
   void _startChat(UserModel user) {
@@ -117,15 +74,22 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     );
   }
 
-  Future<void> _reportUser() async {
+  // === البلاغ - مطابق لجدول reports الفعلي ===
+  Future<void> _reportUser(UserModel reportedUser) async {
     final reason = await _askReason();
     if (reason == null || reason.isEmpty) return;
     try {
+      final auth = context.read<AuthProvider>();
       final meId = supabase.auth.currentUser!.id;
+      final myName = auth.userProfile?['username'] as String? ?? 'مستخدم';
+
       await supabase.from(SupabaseConfig.tReports).insert({
         'reporter_id': meId,
+        'reporter_name': myName,
         'reported_id': widget.userId,
+        'user_id': widget.userId,
         'reason': reason,
+        'status': 'pending',
       });
       if (mounted) showAppSnack(context, 'تم إرسال البلاغ للإدارة', success: true);
     } catch (e) {
@@ -133,6 +97,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     }
   }
 
+  // === الحظر - ما لمسته ===
   Future<void> _blockUser() async {
     try {
       final meId = supabase.auth.currentUser!.id;
@@ -204,7 +169,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
               leading: const Icon(Icons.flag_rounded, color: AppColors.warning),
               title: const Text('تبليغ للإدارة',
                   style: TextStyle(fontFamily: 'Tajawal', color: AppColors.white)),
-              onTap: () { Navigator.pop(context); _reportUser(); },
+              onTap: () { Navigator.pop(context); _reportUser(user); },
             ),
           ],
           if (isAdmin && !isMe)...[
@@ -226,10 +191,6 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   Widget build(BuildContext context) {
     final meId = supabase.auth.currentUser?.id;
     final isOwnProfile = meId == widget.userId;
-
-    if (!_followChecked && !isOwnProfile) {
-      _checkFollowStatus();
-    }
 
     return StreamBuilder<UserModel?>(
       stream: getUserStream(),
@@ -270,8 +231,6 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                       children: [
                         _buildHeader(user),
                         const SizedBox(height: 24),
-                        _buildStats(user),
-                        const SizedBox(height: 24),
                         _buildActions(user),
                         const SizedBox(height: 24),
                         _buildInfo(user),
@@ -284,6 +243,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   }
 
   Widget _buildHeader(UserModel user) {
+    final bio = user.bio?.trim();
     return Column(
       children: [
         UserAvatar(
@@ -302,109 +262,55 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
             fontWeight: FontWeight.w700,
           ),
         ),
-        const SizedBox(height: 4),
-        Text(
-          user.bio ?? 'لا يوجد نبذة',
-          textAlign: TextAlign.center,
-          style: const TextStyle(
-            fontFamily: 'Tajawal',
-            color: AppColors.textSub,
-            fontSize: 14,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildStats(UserModel user) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-      children: [
-        _buildStatItem('المتابعون', user.followersCount.toString()),
-        _buildStatItem('يتابع', user.followingCount.toString()),
-        _buildStatItem('المنشورات', user.postsCount.toString()),
-      ],
-    );
-  }
-
-  Widget _buildStatItem(String label, String value) {
-    return Column(
-      children: [
-        Text(
-          value,
-          style: const TextStyle(
-            fontFamily: 'Tajawal',
-            color: AppColors.white,
-            fontSize: 18,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          label,
-          style: const TextStyle(
-            fontFamily: 'Tajawal',
-            color: AppColors.textSub,
-            fontSize: 12,
-          ),
-        ),
+        const SizedBox(height: 8),
+        if (bio != null && bio.isNotEmpty)
+          Text(
+            bio,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontFamily: 'Tajawal',
+              color: AppColors.textSub,
+              fontSize: 14,
+            ),
+          )
+        else
+          const SizedBox(height: 16),
       ],
     );
   }
 
   Widget _buildActions(UserModel user) {
     final meId = supabase.auth.currentUser!.id;
-    if (meId == user.id) {
-      return const SizedBox.shrink();
-    }
-    return Row(
-      children: [
-        Expanded(
-          child: ElevatedButton.icon(
-            onPressed: () => _toggleFollow(user.id),
-            style: ElevatedButton.styleFrom(
-              backgroundColor:
-                  _isFollowing ? AppColors.bgCard : AppColors.primary,
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-                side: const BorderSide(color: AppColors.primary),
-              ),
-            ),
-            icon: Icon(
-              _isFollowing
-                ? Icons.person_remove_rounded
-                  : Icons.person_add_rounded,
-              color: _isFollowing ? AppColors.primary : Colors.white,
-            ),
-            label: Text(
-              _isFollowing ? 'إلغاء المتابعة' : 'متابعة',
-              style: TextStyle(
-                fontFamily: 'Tajawal',
-                color: _isFollowing ? AppColors.primary : Colors.white,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
+    if (meId == user.id) return const SizedBox.shrink();
+    
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton.icon(
+        onPressed: () => _startChat(user),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: AppColors.primary,
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+        icon: const Icon(Icons.message_rounded, color: Colors.white),
+        label: const Text(
+          'مراسلة',
+          style: TextStyle(
+            fontFamily: 'Tajawal',
+            color: Colors.white,
+            fontWeight: FontWeight.w600,
+            fontSize: 16,
           ),
         ),
-        const SizedBox(width: 12),
-        ElevatedButton(
-          onPressed: () => _startChat(user),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppColors.bgCard,
-            padding: const EdgeInsets.all(12),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-              side: const BorderSide(color: AppColors.glassBorder),
-            ),
-          ),
-          child: const Icon(Icons.message_rounded, color: AppColors.primary),
-        ),
-      ],
+      ),
     );
   }
 
   Widget _buildInfo(UserModel user) {
+    // استخدم الـ getters من UserModel مباشرة
+    final age = user.age;
+    final zodiac = user.zodiacResolved;
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -414,8 +320,18 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       ),
       child: Column(
         children: [
-          _buildInfoRow(Icons.email_rounded, 'البريد', user.email ?? 'مخفي'),
-          const Divider(color: AppColors.glassBorder),
+          if (age != null)
+            _buildInfoRow(Icons.cake_rounded, 'العمر', '$age سنة'),
+          if (age != null && zodiac != null)
+            const Divider(color: AppColors.glassBorder),
+          if (zodiac != null)
+            _buildInfoRow(Icons.auto_awesome_rounded, 'البرج', zodiac),
+          if (zodiac != null)
+            const Divider(color: AppColors.glassBorder),
+          if (user.whatsapp != null && user.whatsapp!.isNotEmpty) ...[
+            _buildInfoRow(Icons.phone_rounded, 'واتساب', user.whatsapp!),
+            const Divider(color: AppColors.glassBorder),
+          ],
           _buildInfoRow(
               Icons.calendar_today_rounded,
               'تاريخ الانضمام',
