@@ -32,7 +32,7 @@ class RoomModel {
     this.members = const [],
     this.isOfficial = false,
     this.isLocked = false,
-    this.isApproved = false, // ✅ تم التعديل
+    this.isApproved = false,
     this.isFollowEnabled = true,
     this.onlineCount = 0,
     this.memberCount = 0,
@@ -41,6 +41,9 @@ class RoomModel {
     required this.updatedAt,
   });
 
+  // توافق مع room_settings_screen اللي يستخدم avatarUrl
+  String? get avatarUrl => imageUrl ?? backgroundUrl;
+
   factory RoomModel.fromJson(Map<String, dynamic> json) {
     return RoomModel(
       id: json['id'] as String,
@@ -48,20 +51,20 @@ class RoomModel {
       description: json['description'] as String?,
       bio: json['bio'] as String?,
       backgroundUrl: json['background_url'] as String?,
-      imageUrl: json['image_url'] as String?,
+      imageUrl: json['image_url'] as String? ?? json['avatar_url'] as String?,
       ownerId: json['owner_id'] as String,
       ownerName: json['owner_name'] as String,
       ownerAvatar: json['owner_avatar'] as String?,
-      members: json['members']!= null
+      members: json['members'] != null
         ? List<String>.from(json['members'] as List)
-          : [],
-      isOfficial: json['is_official'] as bool?? false,
-      isLocked: json['is_locked'] as bool?? false,
-      isApproved: json['is_approved'] as bool?? false, // ✅ تم التعديل
-      isFollowEnabled: json['is_follow_enabled'] as bool?? true,
-      onlineCount: json['online_count'] as int?? 0,
-      memberCount: json['member_count'] as int?? 0,
-      followersCount: json['followers_count'] as int?? 0,
+        : [],
+      isOfficial: json['is_official'] as bool? ?? false,
+      isLocked: json['is_locked'] as bool? ?? false,
+      isApproved: json['is_approved'] as bool? ?? false,
+      isFollowEnabled: json['is_follow_enabled'] as bool? ?? true,
+      onlineCount: json['online_count'] as int? ?? 0,
+      memberCount: json['member_count'] as int? ?? 0,
+      followersCount: json['followers_count'] as int? ?? 0,
       createdAt: DateTime.parse(json['created_at'] as String),
       updatedAt: DateTime.parse(json['updated_at'] as String),
     );
@@ -92,6 +95,7 @@ class RoomModel {
     String? bio,
     String? backgroundUrl,
     String? imageUrl,
+    String? avatarUrl, // alias مقبول
     String? ownerId,
     String? ownerName,
     String? ownerAvatar,
@@ -107,25 +111,25 @@ class RoomModel {
     DateTime? updatedAt,
   }) {
     return RoomModel(
-      id: id?? this.id,
-      name: name?? this.name,
-      description: description?? this.description,
-      bio: bio?? this.bio,
-      backgroundUrl: backgroundUrl?? this.backgroundUrl,
-      imageUrl: imageUrl?? this.imageUrl,
-      ownerId: ownerId?? this.ownerId,
-      ownerName: ownerName?? this.ownerName,
-      ownerAvatar: ownerAvatar?? this.ownerAvatar,
-      members: members?? this.members,
-      isOfficial: isOfficial?? this.isOfficial,
-      isLocked: isLocked?? this.isLocked,
-      isApproved: isApproved?? this.isApproved,
-      isFollowEnabled: isFollowEnabled?? this.isFollowEnabled,
-      onlineCount: onlineCount?? this.onlineCount,
-      memberCount: memberCount?? this.memberCount,
-      followersCount: followersCount?? this.followersCount,
-      createdAt: createdAt?? this.createdAt,
-      updatedAt: updatedAt?? this.updatedAt,
+      id: id ?? this.id,
+      name: name ?? this.name,
+      description: description ?? this.description,
+      bio: bio ?? this.bio,
+      backgroundUrl: backgroundUrl ?? this.backgroundUrl,
+      imageUrl: imageUrl ?? avatarUrl ?? this.imageUrl,
+      ownerId: ownerId ?? this.ownerId,
+      ownerName: ownerName ?? this.ownerName,
+      ownerAvatar: ownerAvatar ?? this.ownerAvatar,
+      members: members ?? this.members,
+      isOfficial: isOfficial ?? this.isOfficial,
+      isLocked: isLocked ?? this.isLocked,
+      isApproved: isApproved ?? this.isApproved,
+      isFollowEnabled: isFollowEnabled ?? this.isFollowEnabled,
+      onlineCount: onlineCount ?? this.onlineCount,
+      memberCount: memberCount ?? this.memberCount,
+      followersCount: followersCount ?? this.followersCount,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
     );
   }
 }
