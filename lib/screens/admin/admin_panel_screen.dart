@@ -59,7 +59,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
        .select('role')
        .eq('id', user.id)
        .single();
-      final role = userData['role'] as String??? 'user';
+      final role = userData['role'] as String?? 'user';
       if (role == 'admin') {
         _isAdmin = true;
         await _load();
