@@ -3,9 +3,10 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:path/path.dart' as p;
+import '../core/constants/supabase_config.dart';
 
 class ChatService {
-  final _supabase = Supabase.instance.client;
+  final SupabaseClient _supabase = SupabaseConfig.client;
   static const String _bucket = 'chat_media';
 
   Box? get _outboxChat => Hive.isBoxOpen('outbox_chat')? Hive.box('outbox_chat') : null;
@@ -27,9 +28,51 @@ class ChatService {
     return sorted.join('_');
   }
 
-  // ===== الخاص =====
-  Stream<List<Map<String, dynamic>>> getPrivateMessagesStream(String userId, String peerId) {
-    final chatId = _getChatId(userId, peerId);
+  // ====== Block system ======
+  Future<bool> isBlocked(String userId, String peerId) async {
+    try {
+      final res = await _supabase
+         .from('blocked_users')
+         .select('blocker_id')
+         .or('and(blocker_id.eq.$userId,blocked_id.eq.$peerId),and(blocker_id.eq.$peerId,blocked_id.eq.$userId)')
+         .limit(1)
+         .maybeSingle();
+      return res!= null;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> blockUser(String peerId) async {
+    final user = _supabase.auth.currentUser;
+    if (user == null) throw Exception('not_authenticated');
+    await _supabase.from('blocked_users').upsert({
+      'blocker_id': user.id,
+      'blocked_id': peerId,
+    }, onConflict: 'blocker_id,blocked_id');
+  }
+
+  Future<void> unblockUser(String peerId) async {
+    final user = _supabase.auth.currentUser;
+    if (user == null) throw Exception('not_authenticated');
+    await _supabase.from('blocked_users')
+       .delete()
+       .eq('blocker_id', user.id)
+       .eq('blocked_id', peerId);
+  }
+
+  Future<void> reportUser(String peerId, String reason) async {
+    final user = _supabase.auth.currentUser;
+    if (user == null) throw Exception('not_authenticated');
+    await _supabase.from('reports').insert({
+      'reporter_id': user.id,
+      'reported_id': peerId,
+      'reason': reason,
+    });
+  }
+
+  // ====== Private messages ======
+  Stream<List<Map<String, dynamic>>> getPrivateMessagesStream(String chatId) {
     return _supabase
        .from('private_messages')
        .stream(primaryKey: ['id'])
@@ -38,20 +81,38 @@ class ChatService {
        .map((maps) => maps.where((m) => m['deleted_at'] == null).toList());
   }
 
+  // توافق مع نسختك القديمة
+  Stream<List<Map<String, dynamic>>> getPrivateMessagesStreamByUsers(String userId, String peerId) {
+    final chatId = _getChatId(userId, peerId);
+    return getPrivateMessagesStream(chatId);
+  }
+
   Future<void> sendPrivateMessageEx({
+    required String chatId,
     required String peerId,
-    required String text,
+    String content = '',
+    String? mediaUrl,
+    String? audioUrl,
     File? imageFile,
     File? audioFile,
     String? replyTo,
   }) async {
-    final userId = _supabase.auth.currentUser!.id;
-    final chatId = _getChatId(userId, peerId);
+    final user = _supabase.auth.currentUser;
+    if (user == null) throw Exception('not_authenticated');
+    final userId = user.id;
+
+    // فحص الحظر قبل أي شيء
+    if (await isBlocked(userId, peerId)) {
+      throw Exception('blocked');
+    }
+
     final payload = {
       'chat_id': chatId,
       'sender_id': userId,
       'receiver_id': peerId,
-      'content': text,
+      'content': content,
+      'media_url': mediaUrl,
+      'audio_url': audioUrl,
       'image_path': imageFile?.path,
       'audio_path': audioFile?.path,
       'reply_to': replyTo,
@@ -66,12 +127,13 @@ class ChatService {
   }
 
   Future<void> _sendPrivateOnline(Map payload) async {
-    String? imageUrl;
-    String? audioUrl;
-    if (payload['image_path']!= null) {
+    String? imageUrl = payload['media_url'];
+    String? audioUrl = payload['audio_url'];
+
+    if (imageUrl == null && payload['image_path']!= null) {
       imageUrl = await _upload(File(payload['image_path']));
     }
-    if (payload['audio_path']!= null) {
+    if (audioUrl == null && payload['audio_path']!= null) {
       audioUrl = await _upload(File(payload['audio_path']));
     }
 
@@ -86,7 +148,7 @@ class ChatService {
     });
   }
 
-  // ===== الغرف =====
+  // ====== Room messages ======
   Stream<List<Map<String, dynamic>>> getRoomMessagesStream(String roomId) {
     return _supabase
        .from('room_messages')
@@ -98,16 +160,22 @@ class ChatService {
 
   Future<void> sendMessageToRoomEx({
     required String roomId,
-    String text = '',
+    String content = '',
+    String? mediaUrl,
+    String? audioUrl,
     File? imageFile,
     File? audioFile,
     String? replyTo,
   }) async {
-    final senderId = _supabase.auth.currentUser!.id;
+    final senderId = _supabase.auth.currentUser?.id;
+    if (senderId == null) throw Exception('not_authenticated');
+
     final payload = {
       'room_id': roomId,
       'sender_id': senderId,
-      'content': text,
+      'content': content,
+      'media_url': mediaUrl,
+      'audio_url': audioUrl,
       'image_path': imageFile?.path,
       'audio_path': audioFile?.path,
       'reply_to': replyTo,
@@ -122,14 +190,16 @@ class ChatService {
   }
 
   Future<void> _sendRoomOnline(Map payload) async {
-    String? imageUrl;
-    String? audioUrl;
-    if (payload['image_path']!= null) {
+    String? imageUrl = payload['media_url'];
+    String? audioUrl = payload['audio_url'];
+
+    if (imageUrl == null && payload['image_path']!= null) {
       imageUrl = await _upload(File(payload['image_path']));
     }
-    if (payload['audio_path']!= null) {
+    if (audioUrl == null && payload['audio_path']!= null) {
       audioUrl = await _upload(File(payload['audio_path']));
     }
+
     await _supabase.from('room_messages').insert({
       'room_id': payload['room_id'],
       'sender_id': payload['sender_id'],
@@ -140,7 +210,7 @@ class ChatService {
     });
   }
 
-  // ===== مشترك =====
+  // ====== Upload ======
   Future<String> _upload(File file) async {
     final ext = p.extension(file.path);
     final name = '${DateTime.now().millisecondsSinceEpoch}$ext';
@@ -150,6 +220,11 @@ class ChatService {
     return _supabase.storage.from(_bucket).getPublicUrl(path);
   }
 
+  Future<String> uploadChatMedia(File file, String folder) async {
+    return _upload(file);
+  }
+
+  // ====== Delete - soft delete متوافق مع الـ Stream ======
   Future<void> deleteMessage(String messageId, {bool isRoom = false}) async {
     final table = isRoom? 'room_messages' : 'private_messages';
     await _supabase.from(table)
@@ -158,6 +233,7 @@ class ChatService {
        .eq('sender_id', _supabase.auth.currentUser!.id);
   }
 
+  // ====== Outbox flush ======
   Future<void> _flushOutbox(String kind) async {
     final box = kind == 'room'? _outboxRoom : _outboxChat;
     if (box == null || box.isEmpty) return;
@@ -165,6 +241,15 @@ class ChatService {
     for (final k in keys) {
       try {
         final data = Map<String, dynamic>.from(box.get(k));
+        // فحص الحظر قبل إعادة الإرسال
+        if (kind!= 'room') {
+          final sender = data['sender_id'] as String;
+          final receiver = data['receiver_id'] as String;
+          if (await isBlocked(sender, receiver)) {
+            await box.delete(k);
+            continue;
+          }
+        }
         if (kind == 'room') {
           await _sendRoomOnline(data);
         } else {
@@ -175,6 +260,65 @@ class ChatService {
         break;
       }
     }
+  }
+
+  // ====== Chats list - مع فلترة المحظورين ======
+  Future<List<Map<String, dynamic>>> getUserChats(String userId) async {
+    final response = await _supabase.from('private_messages')
+       .select('chat_id, sender_id, receiver_id, content, created_at')
+       .or('sender_id.eq.$userId,receiver_id.eq.$userId')
+       .order('created_at', ascending: false);
+
+    final Map<String, Map<String, dynamic>> chats = {};
+    for (var msg in response) {
+      final chatId = msg['chat_id'];
+      if (chats.containsKey(chatId)) continue;
+
+      final peerId = msg['sender_id'] == userId? msg['receiver_id'] : msg['sender_id'];
+
+      // فلترة المحظورين
+      if (await isBlocked(userId, peerId)) continue;
+
+      final peerData = await _supabase.from(SupabaseConfig.tUsers)
+         .select('id, username, avatar_url, is_online')
+         .eq('id', peerId)
+         .maybeSingle();
+
+      if (peerData!= null) {
+        chats[chatId] = {
+          'chat_id': chatId,
+          'id': chatId,
+          'peer_id': peerData['id'],
+          'peer': {
+            'id': peerData['id'],
+            'username': peerData['username']?? 'مستخدم',
+            'avatar_url': peerData['avatar_url'],
+            'is_online': peerData['is_online']?? false,
+          },
+          'peer_name': peerData['username']?? 'مستخدم',
+          'peer_avatar': peerData['avatar_url'],
+          'is_online': peerData['is_online']?? false,
+          'last_message': msg['content'],
+          'last_message_time': msg['created_at'],
+          'unread_count': 0,
+        };
+      }
+    }
+    return chats.values.toList();
+  }
+
+  // helpers باقية من نسختك
+  Future<int> getUnreadCount(String userId, String peerId) async {
+    final chatId = _getChatId(userId, peerId);
+    final res = await _supabase.from('private_messages').select('id')
+       .eq('chat_id', chatId).eq('receiver_id', userId).eq('is_read', false);
+    return (res as List).length;
+  }
+
+  Future<Map<String, dynamic>?> getLastPrivateMessage(String userId, String peerId) async {
+    final chatId = _getChatId(userId, peerId);
+    return await _supabase.from('private_messages').select()
+       .eq('chat_id', chatId).order('created_at', ascending: false).limit(1).maybeSingle();
   }
 
   Future<void> setUserOnlineInRoom(String userId, String roomId) async {
@@ -191,50 +335,5 @@ class ChatService {
       'is_online': false,
       'last_seen': DateTime.now().toIso8601String()
     }).eq('user_id', userId).eq('room_id', roomId);
-  }
-
-  // ===== قائمة المحادثات =====
-  Future<int> getUnreadCount(String userId, String peerId) async {
-    final chatId = _getChatId(userId, peerId);
-    final res = await _supabase.from('private_messages').select('id')
-    .eq('chat_id', chatId).eq('receiver_id', userId).eq('is_read', false);
-    return res.length;
-  }
-
-  Future<Map<String, dynamic>?> getLastPrivateMessage(String userId, String peerId) async {
-    final chatId = _getChatId(userId, peerId);
-    return await _supabase.from('private_messages').select()
-    .eq('chat_id', chatId).order('created_at', ascending: false).limit(1).maybeSingle();
-  }
-
-  Future<List<Map<String, dynamic>>> getUserChats(String userId) async {
-    final response = await _supabase.from('private_messages')
-    .select('chat_id, sender_id, receiver_id, content, created_at')
-    .or('sender_id.eq.$userId,receiver_id.eq.$userId')
-    .order('created_at', ascending: false);
-
-    final Map<String, Map<String, dynamic>> chats = {};
-    for (var msg in response) {
-      final chatId = msg['chat_id'];
-      if (!chats.containsKey(chatId)) {
-        final peerId = msg['sender_id'] == userId? msg['receiver_id'] : msg['sender_id'];
-        final peerData = await _supabase.from('profiles').select().eq('id', peerId).maybeSingle();
-        if (peerData!= null) {
-          chats[chatId] = {
-            'id': chatId,
-            'peer': {
-              'id': peerData['id'],
-              'username': peerData['username']?? 'مستخدم',
-              'avatar_url': peerData['avatar_url'],
-              'is_online': peerData['is_online']?? false,
-            },
-            'last_message': msg['content'],
-            'last_message_time': msg['created_at'],
-            'unread_count': 0,
-          };
-        }
-      }
-    }
-    return chats.values.toList();
   }
 }
