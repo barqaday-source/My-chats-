@@ -34,20 +34,10 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
 
   Future<void> _initChat() async {
     var cid = widget.chatId;
-    // إذا ما عندك chatId جاهز، أنشئ/جيب محادثة خاصة
     if (cid.isEmpty || cid == 'new') {
-      try {
-        final meId = supabase.auth.currentUser!.id;
-        // بدّل اسم الدالة حسب ChatService مالتك
-        // المتوقع: ترجع id المحادثة الخاصة بين me و peer
-        final res = await _chat.getOrCreatePrivateChat(meId, widget.peer.id);
-        cid = res is String? res : res['id'].toString();
-      } catch (_) {
-        // fallback: نفس الطريقة اللي كنت تستخدمها
-        final meId = supabase.auth.currentUser!.id;
-        final ids = [meId, widget.peer.id]..sort();
-        cid = ids.join('_');
-      }
+      final meId = supabase.auth.currentUser!.id;
+      final ids = [meId, widget.peer.id]..sort();
+      cid = ids.join('_');
     }
     if (mounted) setState(() {
       _chatId = cid;
@@ -69,28 +59,24 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
   Future<void> _send(String text, File? image, File? audio) async {
     if (text.trim().isEmpty && image == null && audio == null) return;
     try {
-      // عدّل اسم الدالة حسب ChatService مالتك
-      // إذا عندك sendMessageToRoomEx استخدمها مع roomId = _chatId
-      // هنا 3 احتمالات شائعة، خلي اللي يشتغل عندك:
-
-      // 1) دالة خاصة للخاص:
-      // await _chat.sendPrivateMessage(_chatId, text, imageFile: image, audioFile: audio);
-
-      // 2) نفس دالة الغرف:
-      await _chat.sendMessageToRoomEx(
-        roomId: _chatId,
+      await _chat.sendPrivateMessageEx(
+        chatId: _chatId,
+        peerId: widget.peer.id,
         content: text,
         imageFile: image,
         audioFile: audio,
-        replyTo: null,
       );
-
-      // 3) إذا ChatService عندك اسمه sendMessage(chatId,...)
-      // await _chat.sendMessage(_chatId, text, image, audio);
-
       _scrollToBottom();
     } catch (e) {
-      if (mounted) showAppSnack(context, 'فشل الإرسال: $e', success: false);
+      if (!mounted) return;
+      final err = e.toString();
+      if (err.contains('blocked')) {
+        showAppSnack(context, 'لا يمكن المراسلة، يوجد حظر', success: false);
+      } else if (err.contains('offline')) {
+        showAppSnack(context, 'تم حفظ الرسالة، سترسل عند عودة النت', success: true);
+      } else {
+        showAppSnack(context, 'فشل الإرسال: $e', success: false);
+      }
     }
   }
 
@@ -140,9 +126,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
         children: [
           Expanded(
             child: StreamBuilder<List<Map<String, dynamic>>>(
-              // بدّل اسم الستريم حسب ChatService مالتك
-              // إذا عندك getPrivateMessagesStream استخدمه
-              stream: _chat.getRoomMessagesStream(_chatId),
+              stream: _chat.getPrivateMessagesStream(_chatId),
               builder: (context, snap) {
                 if (snap.hasError) {
                   return Center(child: Text('خطأ: ${snap.error}', style: const TextStyle(color: AppColors.danger, fontFamily: 'Tajawal')));
