@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/constants/app_colors.dart';
+import '../../core/constants/supabase_config.dart';
 import '../../models/user_model.dart';
-import '../../services/chat_service.dart';
 import '../../widgets/user_avatar.dart';
 import '../../widgets/app_snackbar.dart';
 import 'user_profile_screen.dart';
@@ -16,7 +16,6 @@ class BlockedUsersScreen extends StatefulWidget {
 
 class _BlockedUsersScreenState extends State<BlockedUsersScreen> {
   final _supabase = Supabase.instance.client;
-  final _chat = ChatService();
   List<UserModel> _blockedUsers = [];
   bool _loading = true;
 
@@ -32,13 +31,13 @@ class _BlockedUsersScreenState extends State<BlockedUsersScreen> {
       final meId = _supabase.auth.currentUser!.id;
 
       final blockRes = await _supabase
-       .from('blocked_users')
-       .select('blocked_id')
-       .eq('blocker_id', meId);
+      .from(SupabaseConfig.tBlockedUsers)
+      .select('blocked_id')
+      .eq('blocker_id', meId);
 
       final blockedIds = (blockRes as List)
-       .map((e) => e['blocked_id'] as String)
-       .toList();
+      .map((e) => e['blocked_id'] as String)
+      .toList();
 
       if (blockedIds.isEmpty) {
         if (mounted) setState(() {
@@ -48,11 +47,10 @@ class _BlockedUsersScreenState extends State<BlockedUsersScreen> {
         return;
       }
 
-      // profiles مو users
       final usersRes = await _supabase
-       .from('profiles')
-       .select()
-       .inFilter('id', blockedIds);
+      .from(SupabaseConfig.tUsers)
+      .select()
+      .inFilter('id', blockedIds);
 
       if (mounted) {
         setState(() {
@@ -70,7 +68,11 @@ class _BlockedUsersScreenState extends State<BlockedUsersScreen> {
 
   Future<void> _unblockUser(String userId) async {
     try {
-      await _chat.unblockUser(userId);
+      await _supabase
+       .from(SupabaseConfig.tBlockedUsers)
+       .delete()
+       .eq('blocker_id', _supabase.auth.currentUser!.id)
+       .eq('blocked_id', userId);
 
       setState(() {
         _blockedUsers.removeWhere((u) => u.id == userId);
@@ -103,9 +105,9 @@ class _BlockedUsersScreenState extends State<BlockedUsersScreen> {
             color: AppColors.primary,
             onRefresh: _loadBlockedUsers,
             child: _loading
-             ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+            ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
               : _blockedUsers.isEmpty
-               ? ListView(
+              ? ListView(
                     children: const [
                       SizedBox(height: 120),
                       Center(
