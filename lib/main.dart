@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import 'package:hive_flutter/hive_flutter.dart';
 import 'core/theme/app_theme.dart';
+import 'core/constants/app_colors.dart';
 import 'core/constants/supabase_config.dart';
 import 'providers/auth_provider.dart';
 import 'screens/pages/privacy_screen.dart';
@@ -72,9 +73,9 @@ class MyChatApp extends StatelessWidget {
           builder: (context, auth, _) {
             if (!auth.initialized) {
               return const Scaffold(
-                backgroundColor: Color(0xFF0B1220),
+                backgroundColor: AppColors.bg,
                 body: Center(
-                  child: CircularProgressIndicator(color: Color(0xFF3B82F6)),
+                  child: CircularProgressIndicator(color: AppColors.primary),
                 ),
               );
             }
