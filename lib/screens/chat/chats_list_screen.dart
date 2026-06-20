@@ -6,6 +6,7 @@ import '../../models/user_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/chat_service.dart';
 import '../../widgets/user_avatar.dart';
+import '../../widgets/app_snackbar.dart';
 import 'private_chat_screen.dart';
 
 class ChatsListScreen extends StatefulWidget {
@@ -39,22 +40,16 @@ class _ChatsListScreenState extends State<ChatsListScreen> {
     try {
       final user = context.read<AuthProvider>().user!;
       final chats = await _chatService.getUserChats(user.id);
-      if (mounted) {
-        setState(() {
-          _chats = chats.map((c) => ChatModel.fromJson(c)).toList();
-          _filteredChats = _chats;
-          _loading = false;
-        });
-      }
+      if (!mounted) return;
+      setState(() {
+        _chats = chats.map((c) => ChatModel.fromJson(c)).toList();
+        _filteredChats = _chats;
+        _loading = false;
+      });
     } catch (e) {
       if (mounted) {
         setState(() => _loading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('فشل تحميل المحادثات: $e', style: const TextStyle(fontFamily: 'Tajawal')),
-            backgroundColor: AppColors.danger,
-          ),
-        );
+        showAppSnack(context, 'فشل تحميل المحادثات', success: false);
       }
     }
   }
@@ -65,14 +60,13 @@ class _ChatsListScreenState extends State<ChatsListScreen> {
         _filteredChats = _chats;
       } else {
         _filteredChats = _chats
-           .where((chat) => chat.peer.username.toLowerCase().contains(query.toLowerCase()))
-           .toList();
+          .where((chat) => chat.peer.username.toLowerCase().contains(query.toLowerCase()))
+          .toList();
       }
     });
   }
 
   void _openChat(ChatModel chat) {
-    // نهائي: نمرر chat_id والـ peer كامل
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -87,6 +81,7 @@ class _ChatsListScreenState extends State<ChatsListScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppColors.bg,
       appBar: AppBar(
         backgroundColor: AppColors.bgCard,
         title: const Text(
@@ -94,31 +89,28 @@ class _ChatsListScreenState extends State<ChatsListScreen> {
           style: TextStyle(fontFamily: 'Tajawal', color: AppColors.white),
         ),
       ),
-      body: Container(
-        decoration: BoxDecoration(gradient: AppColors.bgGrad),
-        child: Column(
-          children: [
-            _buildSearchBar(),
-            Expanded(
-              child: _loading
-            ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
-                  : _filteredChats.isEmpty
-               ? _buildEmptyState()
-                      : RefreshIndicator(
-                          onRefresh: _loadChats,
-                          color: AppColors.primary,
-                          child: ListView.builder(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                            itemCount: _filteredChats.length,
-                            itemBuilder: (context, index) {
-                              final chat = _filteredChats[index];
-                              return _buildChatTile(chat);
-                            },
-                          ),
+      body: Column(
+        children: [
+          _buildSearchBar(),
+          Expanded(
+            child: _loading
+         ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+                : _filteredChats.isEmpty
+            ? _buildEmptyState()
+                    : RefreshIndicator(
+                        onRefresh: _loadChats,
+                        color: AppColors.primary,
+                        child: ListView.builder(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          itemCount: _filteredChats.length,
+                          itemBuilder: (context, index) {
+                            final chat = _filteredChats[index];
+                            return _buildChatTile(chat);
+                          },
                         ),
-            ),
-          ],
-        ),
+                      ),
+          ),
+        ],
       ),
     );
   }
