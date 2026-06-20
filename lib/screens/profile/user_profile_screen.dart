@@ -19,57 +19,38 @@ class UserProfileScreen extends StatefulWidget {
 
 class _UserProfileScreenState extends State<UserProfileScreen> {
   final supabase = Supabase.instance.client;
-  UserModel? _user;
-  bool _loading = true;
   bool _isFollowing = false;
+  bool _followChecked = false;
 
-  @override
-  void initState() {
-    super.initState();
-    _loadUser();
+  Stream<UserModel?> getUserStream() {
+    return supabase
+        .from(SupabaseConfig.tUsers)
+        .stream(primaryKey: ['id'])
+        .eq('id', widget.userId)
+        .map((list) => list.isEmpty ? null : UserModel.fromJson(list.first));
   }
 
-  Future<void> _loadUser() async {
-    setState(() => _loading = true);
+  Future<void> _checkFollowStatus() async {
+    if (_followChecked) return;
     try {
-      final data = await supabase
-        .from(SupabaseConfig.tUsers)
-        .select()
-        .eq('id', widget.userId)
-        .maybeSingle();
-
-      if (data == null && mounted) {
-        setState(() => _loading = false);
-        return;
-      }
-
-      if (mounted) {
-        setState(() {
-          _user = UserModel.fromJson(data!);
-          _loading = false;
-        });
-      }
-
-      try {
-        final me = context.read<AuthProvider>().user!;
-        final follow = await supabase
+      final me = context.read<AuthProvider>().user;
+      if (me == null) return;
+      final follow = await supabase
           .from('follows')
           .select()
           .eq('follower_id', me.id)
           .eq('following_id', widget.userId)
           .maybeSingle();
-        if (mounted) setState(() => _isFollowing = follow != null);
-      } catch (_) {}
-    } catch (e) {
-      if (mounted) {
-        setState(() => _loading = false);
-        showAppSnack(context, 'فشل تحميل الملف', success: false);
-      }
+      if (mounted) setState(() {
+        _isFollowing = follow != null;
+        _followChecked = true;
+      });
+    } catch (_) {
+      _followChecked = true;
     }
   }
 
-  Future<void> _toggleFollow() async {
-    if (_user == null) return;
+  Future<void> _toggleFollow(String targetUserId) async {
     final meId = supabase.auth.currentUser!.id;
     final newState = !_isFollowing;
     setState(() => _isFollowing = newState);
@@ -77,12 +58,12 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       if (newState) {
         await supabase.from('follows').insert({
           'follower_id': meId,
-          'following_id': _user!.id,
+          'following_id': targetUserId,
         });
       } else {
         await supabase.from('follows').delete()
-        .eq('follower_id', meId)
-        .eq('following_id', _user!.id);
+          .eq('follower_id', meId)
+          .eq('following_id', targetUserId);
       }
     } catch (e) {
       setState(() => _isFollowing = !newState);
@@ -90,10 +71,9 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     }
   }
 
-  void _startChat() {
-    if (_user == null) return;
+  void _startChat(UserModel user) {
     final meId = supabase.auth.currentUser!.id;
-    final ids = [meId, _user!.id]..sort();
+    final ids = [meId, user.id]..sort();
     final chatId = ids.join('_');
 
     Navigator.push(
@@ -101,7 +81,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       MaterialPageRoute(
         builder: (_) => PrivateChatScreen(
           chatId: chatId,
-          peer: _user!,
+          peer: user,
         ),
       ),
     );
@@ -190,13 +170,12 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         'blocked_at': DateTime.now().toIso8601String(),
       }).eq('id', widget.userId);
       if (mounted) showAppSnack(context, 'تم الحظر النهائي', success: true);
-      _loadUser();
     } catch (e) {
       if (mounted) showAppSnack(context, 'فشل الحظر', success: false);
     }
   }
 
-  void _showUserActions() {
+  void _showUserActions(UserModel user) {
     final auth = context.read<AuthProvider>();
     final isAdmin = auth.userProfile?['role'] == 'admin';
     final isMe = supabase.auth.currentUser?.id == widget.userId;
@@ -213,7 +192,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
               leading: const Icon(Icons.message_rounded, color: AppColors.primary),
               title: const Text('مراسلة خاصة',
                   style: TextStyle(fontFamily: 'Tajawal', color: AppColors.white)),
-              onTap: () { Navigator.pop(context); _startChat(); },
+              onTap: () { Navigator.pop(context); _startChat(user); },
             ),
             ListTile(
               leading: const Icon(Icons.block_rounded, color: AppColors.danger),
@@ -248,63 +227,74 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     final meId = supabase.auth.currentUser?.id;
     final isOwnProfile = meId == widget.userId;
 
-    return Scaffold(
-      backgroundColor: AppColors.bg,
-      appBar: AppBar(
-        backgroundColor: AppColors.bgCard,
-        title: Text(
-          _user?.username ?? 'الملف الشخصي',
-          style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.white),
-        ),
-        actions: [
-          if (_user != null && !isOwnProfile)
-            IconButton(
-              icon: const Icon(Icons.more_vert_rounded, color: AppColors.white),
-              onPressed: _showUserActions,
+    if (!_followChecked && !isOwnProfile) {
+      _checkFollowStatus();
+    }
+
+    return StreamBuilder<UserModel?>(
+      stream: getUserStream(),
+      builder: (context, snap) {
+        final user = snap.data;
+        final loading = snap.connectionState == ConnectionState.waiting;
+
+        return Scaffold(
+          backgroundColor: AppColors.bg,
+          appBar: AppBar(
+            backgroundColor: AppColors.bgCard,
+            title: Text(
+              user?.username ?? 'الملف الشخصي',
+              style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.white),
             ),
-        ],
-      ),
-      body: Container(
-        decoration: BoxDecoration(gradient: AppColors.bgGrad),
-        child: _loading
-          ? const Center(
-                child: CircularProgressIndicator(color: AppColors.primary))
-            : _user == null
-              ? const Center(
-                    child: Text(
-                      'المستخدم غير موجود',
-                      style: TextStyle(
-                          fontFamily: 'Tajawal', color: AppColors.textSub),
+            actions: [
+              if (user != null && !isOwnProfile)
+                IconButton(
+                  icon: const Icon(Icons.more_vert_rounded, color: AppColors.white),
+                  onPressed: () => _showUserActions(user),
+                ),
+            ],
+          ),
+          body: Container(
+            decoration: BoxDecoration(gradient: AppColors.bgGrad),
+            child: loading
+              ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+              : user == null
+                ? const Center(
+                      child: Text(
+                        'المستخدم غير موجود',
+                        style: TextStyle(
+                            fontFamily: 'Tajawal', color: AppColors.textSub),
+                      ),
+                    )
+                  : ListView(
+                      padding: const EdgeInsets.all(16),
+                      children: [
+                        _buildHeader(user),
+                        const SizedBox(height: 24),
+                        _buildStats(user),
+                        const SizedBox(height: 24),
+                        _buildActions(user),
+                        const SizedBox(height: 24),
+                        _buildInfo(user),
+                      ],
                     ),
-                  )
-                : ListView(
-                    padding: const EdgeInsets.all(16),
-                    children: [
-                      _buildHeader(),
-                      const SizedBox(height: 24),
-                      _buildStats(),
-                      const SizedBox(height: 24),
-                      _buildActions(),
-                      const SizedBox(height: 24),
-                      _buildInfo(),
-                    ],
-                  ),
-      ),
+          ),
+        );
+      },
     );
   }
 
-  Widget _buildHeader() {
+  Widget _buildHeader(UserModel user) {
     return Column(
       children: [
         UserAvatar(
-          url: _user!.avatarUrl,
-          name: _user!.username,
-          isOnline: _user!.isOnline,
+          url: user.avatarUrl,
+          name: user.username,
+          isOnline: user.isOnline,
           size: 90,
         ),
         const SizedBox(height: 12),
         Text(
-          _user!.username,
+          user.username,
           style: const TextStyle(
             fontFamily: 'Tajawal',
             color: AppColors.white,
@@ -314,7 +304,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         ),
         const SizedBox(height: 4),
         Text(
-          _user!.bio ?? 'لا يوجد نبذة',
+          user.bio ?? 'لا يوجد نبذة',
           textAlign: TextAlign.center,
           style: const TextStyle(
             fontFamily: 'Tajawal',
@@ -326,13 +316,13 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     );
   }
 
-  Widget _buildStats() {
+  Widget _buildStats(UserModel user) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
       children: [
-        _buildStatItem('المتابعون', _user!.followersCount.toString()),
-        _buildStatItem('يتابع', _user!.followingCount.toString()),
-        _buildStatItem('المنشورات', _user!.postsCount.toString()),
+        _buildStatItem('المتابعون', user.followersCount.toString()),
+        _buildStatItem('يتابع', user.followingCount.toString()),
+        _buildStatItem('المنشورات', user.postsCount.toString()),
       ],
     );
   }
@@ -362,16 +352,16 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     );
   }
 
-  Widget _buildActions() {
+  Widget _buildActions(UserModel user) {
     final meId = supabase.auth.currentUser!.id;
-    if (meId == _user!.id) {
+    if (meId == user.id) {
       return const SizedBox.shrink();
     }
     return Row(
       children: [
         Expanded(
           child: ElevatedButton.icon(
-            onPressed: _toggleFollow,
+            onPressed: () => _toggleFollow(user.id),
             style: ElevatedButton.styleFrom(
               backgroundColor:
                   _isFollowing ? AppColors.bgCard : AppColors.primary,
@@ -399,7 +389,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         ),
         const SizedBox(width: 12),
         ElevatedButton(
-          onPressed: _startChat,
+          onPressed: () => _startChat(user),
           style: ElevatedButton.styleFrom(
             backgroundColor: AppColors.bgCard,
             padding: const EdgeInsets.all(12),
@@ -414,7 +404,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     );
   }
 
-  Widget _buildInfo() {
+  Widget _buildInfo(UserModel user) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -424,12 +414,12 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       ),
       child: Column(
         children: [
-          _buildInfoRow(Icons.email_rounded, 'البريد', _user!.email ?? 'مخفي'),
+          _buildInfoRow(Icons.email_rounded, 'البريد', user.email ?? 'مخفي'),
           const Divider(color: AppColors.glassBorder),
           _buildInfoRow(
               Icons.calendar_today_rounded,
               'تاريخ الانضمام',
-              '${_user!.createdAt.day}/${_user!.createdAt.month}/${_user!.createdAt.year}'),
+              '${user.createdAt.day}/${user.createdAt.month}/${user.createdAt.year}'),
         ],
       ),
     );
