@@ -15,6 +15,7 @@ import 'screens/admin/admin_panel_screen.dart';
 import 'screens/auth/welcome_screen.dart';
 import 'screens/home/home_screen.dart';
 import 'services/notification_service.dart';
+import 'widgets/block_guard.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -79,7 +80,7 @@ class MyChatApp extends StatelessWidget {
                 ),
               );
             }
-            return auth.isLoggedIn ? const HomeScreen() : const WelcomeScreen();
+            return auth.isLoggedIn ? const BlockGuard(child: HomeScreen()) : const WelcomeScreen();
           },
         ),
         routes: {
