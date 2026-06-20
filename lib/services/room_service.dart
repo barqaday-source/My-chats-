@@ -11,15 +11,15 @@ class RoomService {
   Future<List<RoomModel>> getRooms() async {
     try {
       final data = await _sb
-          .from(SupabaseConfig.tRooms)
-          .select()
-          .eq('is_approved', true)
-          .order('is_official', ascending: false)
-          .order('online_count', ascending: false)
-          .order('member_count', ascending: false);
+         .from(SupabaseConfig.tRooms)
+         .select()
+         .eq('is_approved', true)
+         .order('is_official', ascending: false)
+         .order('online_count', ascending: false)
+         .order('member_count', ascending: false);
       return (data as List)
-          .map((e) => RoomModel.fromJson(e as Map<String, dynamic>))
-          .toList();
+         .map((e) => RoomModel.fromJson(e as Map<String, dynamic>))
+         .toList();
     } on PostgrestException catch (e, s) {
       debugPrint('❌ Supabase Error - getRooms: ${e.message}\n$s');
       return [];
@@ -32,7 +32,7 @@ class RoomService {
   Future<RoomModel?> getRoom(String id) async {
     try {
       final data = await _sb.from(SupabaseConfig.tRooms).select().eq('id', id).maybeSingle();
-      return data != null ? RoomModel.fromJson(data) : null;
+      return data!= null? RoomModel.fromJson(data) : null;
     } catch (e) {
       debugPrint('getRoom error: $e');
       return null;
@@ -42,12 +42,16 @@ class RoomService {
   Future<RoomModel> createRoom(RoomModel room, String userId) async {
     final user = _sb.auth.currentUser;
     if (user == null) throw Exception('User not authenticated');
-    if (user.id != userId) throw Exception('userId mismatch with auth.uid()');
+    if (user.id!= userId) throw Exception('userId mismatch with auth.uid()');
 
     final data = room.toJson()
-      ..['owner_id'] = userId
-      ..['created_by'] = userId
-      ..['members'] = [userId];
+     ..removeWhere((k, v) => v == null)
+     ..remove('id')
+     ..remove('created_at')
+     ..remove('updated_at')
+     ..['owner_id'] = userId
+     ..['created_by'] = userId
+     ..['members'] = [userId];
 
     final response = await _sb.from(SupabaseConfig.tRooms).insert(data).select().single();
     final newRoom = RoomModel.fromJson(response);
@@ -56,7 +60,12 @@ class RoomService {
   }
 
   Future<void> updateRoom(RoomModel room) async {
-    await _sb.from(SupabaseConfig.tRooms).update(room.toJson()).eq('id', room.id);
+    await _sb.from(SupabaseConfig.tRooms).update({
+      'name': room.name,
+      'description': room.description,
+      'image_url': room.imageUrl?? room.avatarUrl,
+      'updated_at': DateTime.now().toIso8601String(),
+    }).eq('id', room.id);
   }
 
   Future<void> deleteRoom(String roomId) async {
@@ -85,22 +94,22 @@ class RoomService {
 
   Future<bool> isMember(String roomId, String userId) async {
     final data = await _sb.from(SupabaseConfig.tRoomMembers)
-        .select()
-        .eq('room_id', roomId)
-        .eq('user_id', userId)
-        .maybeSingle();
-    return data != null;
+       .select()
+       .eq('room_id', roomId)
+       .eq('user_id', userId)
+       .maybeSingle();
+    return data!= null;
   }
 
   Future<List<Map<String, dynamic>>> getRoomMembers(String roomId) async {
     final res = await _sb
-        .from(SupabaseConfig.tRoomMembers)
-        .select('*, users(*)')
-        .eq('room_id', roomId)
-        .order('is_online', ascending: false);
+       .from(SupabaseConfig.tRoomMembers)
+       .select('*, users(*)')
+       .eq('room_id', roomId)
+       .order('is_online', ascending: false);
     return res.map((m) => {
-      ...m['users'] as Map<String, dynamic>,
-      'is_online': m['is_online'] ?? false,
+     ...m['users'] as Map<String, dynamic>,
+      'is_online': m['is_online']?? false,
       'last_seen': m['last_seen'],
     }).toList();
   }
@@ -114,36 +123,34 @@ class RoomService {
     await _sb.from(SupabaseConfig.tRooms).update({'image_url': imageUrl}).eq('id', roomId);
   }
 
-  // --- Upload ---
+  // --- Upload - موحد مع StorageService ---
   Future<String> uploadRoomImage(File file, String roomId) async {
     final ext = file.path.split('.').last;
-    final path = 'rooms/$roomId/${DateTime.now().millisecondsSinceEpoch}.$ext';
+    final filePath = 'rooms/$roomId/${DateTime.now().millisecondsSinceEpoch}.$ext';
 
-    await _sb.storage.from('chat_media').upload(
-      path,
+    await _sb.storage.from(SupabaseConfig.bucketRooms).upload(
+      filePath,
       file,
       fileOptions: const FileOptions(upsert: true),
     );
 
-    return _sb.storage.from('chat_media').getPublicUrl(path);
+    return _sb.storage.from(SupabaseConfig.bucketRooms).getPublicUrl(filePath);
   }
 
   Future<void> approveRoom(String roomId) async {
     await _sb.from(SupabaseConfig.tRooms).update({'is_approved': true}).eq('id', roomId);
   }
 
-  // --- Messages - موحد مع PrivateChat ---
-  /// stream رسائل الغرفة، نفس شكل messages الخاصة
+  // --- Messages ---
   Stream<List<Map<String, dynamic>>> getRoomMessagesStream(String roomId) {
     return _sb
-        .from(SupabaseConfig.tRoomMessages)
-        .stream(primaryKey: ['id'])
-        .eq('room_id', roomId)
-        .order('created_at', ascending: true)
-        .map((maps) => maps);
+       .from(SupabaseConfig.tRoomMessages)
+       .stream(primaryKey: ['id'])
+       .eq('room_id', roomId)
+       .order('created_at', ascending: true)
+       .map((maps) => maps);
   }
 
-  /// إرسال رسالة غرفة – content '' بدل null
   Future<void> sendRoomMessage({
     required String roomId,
     required String senderId,
@@ -154,15 +161,13 @@ class RoomService {
     await _sb.from(SupabaseConfig.tRoomMessages).insert({
       'room_id': roomId,
       'sender_id': senderId,
-      'content': text.isEmpty ? '' : text,
+      'content': text.isEmpty? '' : text,
       'media_url': imageUrl,
       'audio_url': voiceUrl,
-      'type': voiceUrl != null ? 'audio' : imageUrl != null ? 'image' : 'text',
-      'created_at': DateTime.now().toIso8601String(),
+      'type': voiceUrl!= null? 'audio' : imageUrl!= null? 'image' : 'text',
     });
   }
 
-  /// حذف حقيقي
   Future<void> deleteRoomMessage(String messageId) async {
     await _sb.from(SupabaseConfig.tRoomMessages).delete().eq('id', messageId);
   }
