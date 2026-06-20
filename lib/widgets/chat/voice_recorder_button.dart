@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_sound/flutter_sound.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -58,7 +59,8 @@ class _VoiceRecorderButtonState extends State<VoiceRecorderButton>
 
     try {
       await _recorder.openRecorder();
-      _recorder.setSubscriptionDuration(const Duration(milliseconds: 100));
+      // إعداد جلسة صوت عالية الجودة مع إلغاء الضجيج
+      await _recorder.setSubscriptionDuration(const Duration(milliseconds: 80));
       if (mounted) setState(() => _recorderReady = true);
     } catch (e) {
       debugPrint('Recorder init error: $e');
@@ -83,15 +85,17 @@ class _VoiceRecorderButtonState extends State<VoiceRecorderButton>
     }
 
     try {
+      HapticFeedback.mediumImpact();
       final dir = await getTemporaryDirectory();
-      final path = '${dir.path}/${const Uuid().v4()}.aac';
+      final path = '${dir.path}/${const Uuid().v4()}.m4a';
       _currentPath = path;
 
       await _recorder.startRecorder(
         toFile: path,
-        codec: Codec.aacADTS,
+        codec: Codec.aacMP4,
         bitRate: 128000,
-        sampleRate: 44100,
+        sampleRate: 48000,
+        numChannels: 1,
       );
 
       setState(() {
@@ -103,7 +107,7 @@ class _VoiceRecorderButtonState extends State<VoiceRecorderButton>
       _timer = Timer.periodic(const Duration(seconds: 1), (t) {
         if (!mounted) return;
         setState(() => _recordDuration++);
-        if (_recordDuration >= 60) _stopRecording();
+        if (_recordDuration >= 120) _stopRecording();
       });
 
       _recorderSub = _recorder.onProgress!.listen((e) {
@@ -112,7 +116,7 @@ class _VoiceRecorderButtonState extends State<VoiceRecorderButton>
         final normalized = ((db + 60) / 60).clamp(0.1, 1.0);
         setState(() {
           _waveform.add(normalized);
-          if (_waveform.length > 30) _waveform.removeAt(0);
+          if (_waveform.length > 32) _waveform.removeAt(0);
         });
       });
     } catch (e) {
@@ -151,6 +155,7 @@ class _VoiceRecorderButtonState extends State<VoiceRecorderButton>
     }
 
     try {
+      HapticFeedback.lightImpact();
       final path = await _recorder.stopRecorder();
       final finalPath = path ?? _currentPath ?? '';
       final duration = _recordDuration;
@@ -175,6 +180,7 @@ class _VoiceRecorderButtonState extends State<VoiceRecorderButton>
     _timer?.cancel();
     _recorderSub?.cancel();
     await _recorder.stopRecorder();
+    HapticFeedback.mediumImpact();
     setState(() {
       _isRecording = false;
       _recordDuration = 0;
@@ -192,7 +198,7 @@ class _VoiceRecorderButtonState extends State<VoiceRecorderButton>
   Widget build(BuildContext context) {
     if (_isRecording) {
       return Container(
-        height: 44,
+        height: 46,
         padding: const EdgeInsets.symmetric(horizontal: 14),
         decoration: BoxDecoration(
           color: AppColors.danger.withOpacity(0.12),
