@@ -25,6 +25,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
 
   late String _chatId;
   bool _creatingChat = true;
+  Map<String, dynamic>? _replyingTo;
 
   @override
   void initState() {
@@ -56,7 +57,6 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
     }
   }
 
-  // التوقيع الجديد: text, image, audioPath, audioDuration
   Future<void> _send(String text, File? image, String? audioPath, int audioDuration) async {
     if (text.trim().isEmpty && image == null && audioPath == null) return;
     try {
@@ -67,7 +67,9 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
         imageFile: image,
         audioFile: audioPath!= null? File(audioPath) : null,
         audioDuration: audioDuration,
+        replyMessage: _replyingTo,
       );
+      if (mounted) setState(() => _replyingTo = null);
       _scrollToBottom();
     } catch (e) {
       if (!mounted) return;
@@ -159,13 +161,20 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
                       message: msg,
                       isMe: isMe,
                       showAvatar: false,
+                      isRoom: false,
+                      onReply: () => setState(() => _replyingTo = msg),
+                      onDelete: (_) => setState(() {}),
                     );
                   },
                 );
               },
             ),
           ),
-          ChatInputBar(onSend: _send),
+          ChatInputBar(
+            onSend: _send,
+            replyTo: _replyingTo,
+            onCancelReply: () => setState(() => _replyingTo = null),
+          ),
         ],
       ),
     );
