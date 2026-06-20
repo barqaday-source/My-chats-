@@ -138,7 +138,6 @@ class _RoomChatScreenState extends State<RoomChatScreen> {
                     message: msg,
                     isMe: isMe,
                     showAvatar: true,
-                    isRoom: true,
                     onReply: () => setState(() {
                       _replyToId = msg['id'].toString();
                       _replyText = msg['content']?? 'صورة / صوت';
