@@ -22,17 +22,20 @@ class ChatService {
     _flushOutbox('room');
   }
 
+  String _getChatId(String id1, String id2) {
+    final sorted = [id1, id2]..sort();
+    return sorted.join('_');
+  }
+
   // ===== الخاص =====
   Stream<List<Map<String, dynamic>>> getPrivateMessagesStream(String userId, String peerId) {
+    final chatId = _getChatId(userId, peerId);
     return _supabase
         .from('private_messages')
         .stream(primaryKey: ['id'])
+        .eq('chat_id', chatId)
         .order('created_at', ascending: true)
-        .map((maps) => maps.where((m) =>
-            m['deleted_at'] == null &&
-            ((m['sender_id'] == userId && m['receiver_id'] == peerId) ||
-             (m['sender_id'] == peerId && m['receiver_id'] == userId))
-        ).toList());
+        .map((maps) => maps.where((m) => m['deleted_at'] == null).toList());
   }
 
   Future<void> sendPrivateMessageEx({
@@ -43,7 +46,9 @@ class ChatService {
     String? replyTo,
   }) async {
     final userId = _supabase.auth.currentUser!.id;
+    final chatId = _getChatId(userId, peerId);
     final payload = {
+      'chat_id': chatId,
       'sender_id': userId,
       'receiver_id': peerId,
       'content': text,
@@ -71,6 +76,7 @@ class ChatService {
     }
 
     await _supabase.from('private_messages').insert({
+      'chat_id': payload['chat_id'],
       'sender_id': payload['sender_id'],
       'receiver_id': payload['receiver_id'],
       'content': payload['content'] ?? '',
@@ -171,7 +177,6 @@ class ChatService {
     }
   }
 
-  // حضور الغرفة
   Future<void> setUserOnlineInRoom(String userId, String roomId) async {
     await _supabase.from('room_members').upsert({
       'user_id': userId,
