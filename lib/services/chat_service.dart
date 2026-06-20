@@ -81,7 +81,6 @@ class ChatService {
        .map((maps) => maps.where((m) => m['deleted_at'] == null).toList());
   }
 
-  // توافق مع نسختك القديمة
   Stream<List<Map<String, dynamic>>> getPrivateMessagesStreamByUsers(String userId, String peerId) {
     final chatId = _getChatId(userId, peerId);
     return getPrivateMessagesStream(chatId);
@@ -95,13 +94,13 @@ class ChatService {
     String? audioUrl,
     File? imageFile,
     File? audioFile,
+    int audioDuration = 0,
     String? replyTo,
   }) async {
     final user = _supabase.auth.currentUser;
     if (user == null) throw Exception('not_authenticated');
     final userId = user.id;
 
-    // فحص الحظر قبل أي شيء
     if (await isBlocked(userId, peerId)) {
       throw Exception('blocked');
     }
@@ -113,6 +112,7 @@ class ChatService {
       'content': content,
       'media_url': mediaUrl,
       'audio_url': audioUrl,
+      'audio_duration': audioDuration,
       'image_path': imageFile?.path,
       'audio_path': audioFile?.path,
       'reply_to': replyTo,
@@ -144,6 +144,7 @@ class ChatService {
       'content': payload['content']?? '',
       'media_url': imageUrl,
       'audio_url': audioUrl,
+      'duration': payload['audio_duration']?? 0,
       'reply_to': payload['reply_to'],
     });
   }
@@ -165,6 +166,7 @@ class ChatService {
     String? audioUrl,
     File? imageFile,
     File? audioFile,
+    int audioDuration = 0,
     String? replyTo,
   }) async {
     final senderId = _supabase.auth.currentUser?.id;
@@ -176,6 +178,7 @@ class ChatService {
       'content': content,
       'media_url': mediaUrl,
       'audio_url': audioUrl,
+      'audio_duration': audioDuration,
       'image_path': imageFile?.path,
       'audio_path': audioFile?.path,
       'reply_to': replyTo,
@@ -206,6 +209,7 @@ class ChatService {
       'content': payload['content']?? '',
       'media_url': imageUrl,
       'audio_url': audioUrl,
+      'duration': payload['audio_duration']?? 0,
       'reply_to': payload['reply_to'],
     });
   }
@@ -224,7 +228,7 @@ class ChatService {
     return _upload(file);
   }
 
-  // ====== Delete - soft delete متوافق مع الـ Stream ======
+  // ====== Delete ======
   Future<void> deleteMessage(String messageId, {bool isRoom = false}) async {
     final table = isRoom? 'room_messages' : 'private_messages';
     await _supabase.from(table)
@@ -241,7 +245,6 @@ class ChatService {
     for (final k in keys) {
       try {
         final data = Map<String, dynamic>.from(box.get(k));
-        // فحص الحظر قبل إعادة الإرسال
         if (kind!= 'room') {
           final sender = data['sender_id'] as String;
           final receiver = data['receiver_id'] as String;
@@ -262,7 +265,7 @@ class ChatService {
     }
   }
 
-  // ====== Chats list - مع فلترة المحظورين ======
+  // ====== Chats list ======
   Future<List<Map<String, dynamic>>> getUserChats(String userId) async {
     final response = await _supabase.from('private_messages')
        .select('chat_id, sender_id, receiver_id, content, created_at')
@@ -275,8 +278,6 @@ class ChatService {
       if (chats.containsKey(chatId)) continue;
 
       final peerId = msg['sender_id'] == userId? msg['receiver_id'] : msg['sender_id'];
-
-      // فلترة المحظورين
       if (await isBlocked(userId, peerId)) continue;
 
       final peerData = await _supabase.from(SupabaseConfig.tUsers)
@@ -307,7 +308,6 @@ class ChatService {
     return chats.values.toList();
   }
 
-  // helpers باقية من نسختك
   Future<int> getUnreadCount(String userId, String peerId) async {
     final chatId = _getChatId(userId, peerId);
     final res = await _supabase.from('private_messages').select('id')
