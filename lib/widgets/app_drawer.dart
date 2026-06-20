@@ -58,10 +58,7 @@ class _AppDrawerState extends State<AppDrawer> {
     final profile = auth.userProfile;
     
     final role = profile?['role'] as String?;
-    final isModFlag = profile?['is_mod'] as bool?? false;
     final isAdmin = role == 'admin';
-    final isMod = role == 'moderator' || isModFlag;
-    final hasPrivileges = isAdmin || isMod;
 
     return Drawer(
       backgroundColor: Colors.transparent,
@@ -105,32 +102,24 @@ class _AppDrawerState extends State<AppDrawer> {
                             ),
                             overflow: TextOverflow.ellipsis,
                           ),
-                          if (hasPrivileges)...[
+                          if (isAdmin)...[
                             const SizedBox(height: 4),
                             Container(
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 8, vertical: 2),
                               decoration: BoxDecoration(
-                                color: (isAdmin
-                                        ? AppColors.primary
-                                        : AppColors.accent)
-                                   .withOpacity(0.2),
+                                color: AppColors.primary.withOpacity(0.2),
                                 borderRadius: BorderRadius.circular(8),
                                 border: Border.all(
-                                  color: (isAdmin
-                                          ? AppColors.primary
-                                          : AppColors.accent)
-                                      .withOpacity(0.4),
+                                  color: AppColors.primary.withOpacity(0.4),
                                   width: 0.5,
                                 ),
                               ),
-                              child: Text(
-                                isAdmin? '👑 مدير' : '🛡️ مشرف',
+                              child: const Text(
+                                '👑 مدير',
                                 style: TextStyle(
                                   fontFamily: 'Tajawal',
-                                  color: isAdmin
-                                      ? AppColors.primary
-                                      : AppColors.accent,
+                                  color: AppColors.primary,
                                   fontSize: 10,
                                   fontWeight: FontWeight.w600,
                                 ),
@@ -162,7 +151,7 @@ class _AppDrawerState extends State<AppDrawer> {
                       MaterialPageRoute(builder: (_) => const ContactScreen())),
                 ),
                 
-                // ===== قسم المحظورين - مع عرض مباشر =====
+                // ===== قسم المحظورين =====
                 Theme(
                   data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
                   child: ExpansionTile(
@@ -184,7 +173,7 @@ class _AppDrawerState extends State<AppDrawer> {
                       else if (_blocked.isEmpty)
                         const Padding(
                           padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
-                          child: Text('رؤيه الــ  محظورين',
+                          child: Text('رؤية المحظورين',
                             style: TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub, fontSize: 12)),
                         )
                       else
@@ -219,7 +208,6 @@ class _AppDrawerState extends State<AppDrawer> {
                             ),
                           );
                         }),
-                      // رابط لفتح الصفحة الكاملة
                       Align(
                         alignment: Alignment.centerLeft,
                         child: TextButton(
@@ -234,7 +222,7 @@ class _AppDrawerState extends State<AppDrawer> {
                 ),
                 // ===== نهاية قسم المحظورين =====
 
-                if (hasPrivileges)
+                if (isAdmin)
                   _tile(
                     context,
                     Icons.admin_panel_settings_outlined,
@@ -243,7 +231,7 @@ class _AppDrawerState extends State<AppDrawer> {
                         context,
                         MaterialPageRoute(
                             builder: (_) => const AdminPanelScreen())),
-                    color: isAdmin? AppColors.primary : AppColors.accent,
+                    color: AppColors.primary,
                   ),
                 const Spacer(),
                 Padding(
