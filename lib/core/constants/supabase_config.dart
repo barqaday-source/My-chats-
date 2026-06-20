@@ -6,7 +6,7 @@ class SupabaseConfig {
   static const anonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZvaGxsZXFjdW9tdWRvcnlpd2tjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE2MjE3NzAsImV4cCI6MjA5NzE5Nzc3MH0.VNUs7_WXzAeSz5TC_aD56FfzFQkmc_p99PY_b7hPZYU';
 
   // Tables - موحد
-  static const tUsers = 'users'; // كان profiles
+  static const tUsers = 'users';
   static const tRooms = 'rooms';
   static const tMessages = 'messages';
   static const tPrivateMessages = 'private_messages';
@@ -20,11 +20,11 @@ class SupabaseConfig {
   static const tBlocks = 'blocks';
   static const tAdmins = 'admins';
 
-  // Storage buckets - موحد
-  static const bucketAvatars = 'avatars';
-  static const bucketRooms = 'room-images';
-  static const bucketMedia = 'chat-media';
-  static const bucketAudio = 'audio-messages';
+  // Storage buckets - موحد على bucket واحد
+  static const bucketMedia = 'chat_media';
+  static const bucketRooms = 'chat_media';
+  static const bucketAvatars = 'chat_media';
+  static const bucketAudio = 'chat_media';
 
   static bool _initialized = false;
 
