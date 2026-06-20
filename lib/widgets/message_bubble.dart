@@ -1,17 +1,17 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:audioplayers/audioplayers.dart';
-import '../core/constants/app_colors.dart';
-import '../services/chat_service.dart';
-import '../screens/profile/user_profile_screen.dart';
+import '../../core/constants/app_colors.dart';
+import '../../services/chat_service.dart';
+import '../../screens/profile/user_profile_screen.dart';
+import '../app_snackbar.dart';
 
 class MessageBubble extends StatefulWidget {
   final Map<String, dynamic> message;
   final bool isMe;
   final bool showAvatar;
   final VoidCallback? onReply;
-  final bool isRoom; // جديد
+  final bool isRoom;
 
   const MessageBubble({
     super.key,
@@ -47,20 +47,16 @@ class _MessageBubbleState extends State<MessageBubble> {
         widget.message['id'].toString(),
         isRoom: widget.isRoom,
       );
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تم حذف الرسالة', style: TextStyle(fontFamily: 'Tajawal'))),
-      );
+      if (mounted) showAppSnack(context, 'تم حذف الرسالة', success: true);
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('فشل الحذف: $e', style: const TextStyle(fontFamily: 'Tajawal')), backgroundColor: AppColors.danger),
-      );
+      if (mounted) showAppSnack(context, 'فشل الحذف', success: false);
     }
   }
 
   void _showDeleteDialog() {
     showDialog(context: context, builder: (ctx) => AlertDialog(
-      backgroundColor: Colors.white,
-      title: const Text('حذف الرسالة', style: TextStyle(color: AppColors.text, fontFamily: 'Tajawal')),
+      backgroundColor: AppColors.bgCard,
+      title: const Text('حذف الرسالة', style: TextStyle(color: AppColors.white, fontFamily: 'Tajawal')),
       content: const Text('هل تريد حذف هذه الرسالة؟', style: TextStyle(color: AppColors.textSub, fontFamily: 'Tajawal')),
       actions: [
         TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إلغاء', style: TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub))),
@@ -75,19 +71,6 @@ class _MessageBubbleState extends State<MessageBubble> {
     if (userId == null || widget.isMe) return;
     Navigator.push(context, MaterialPageRoute(
       builder: (_) => UserProfileScreen(userId: userId),
-    ));
-  }
-
-  Future<String?> _askReason() async {
-    final ctrl = TextEditingController();
-    return showDialog<String>(context: context, builder: (ctx) => AlertDialog(
-      backgroundColor: Colors.white,
-      title: const Text('سبب البلاغ', style: TextStyle(fontFamily: 'Tajawal')),
-      content: TextField(controller: ctrl, decoration: const InputDecoration(hintText: 'اكتب السبب...')),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إلغاء')),
-        TextButton(onPressed: () => Navigator.pop(ctx, ctrl.text), child: const Text('إرسال')),
-      ],
     ));
   }
 
@@ -183,9 +166,9 @@ class _MessageBubbleState extends State<MessageBubble> {
                   child: CircleAvatar(
                     radius: 16, backgroundColor: AppColors.bgCard2,
                     backgroundImage: senderAvatar!= null && senderAvatar.toString().isNotEmpty
-                   ? CachedNetworkImageProvider(senderAvatar) : null,
+                  ? CachedNetworkImageProvider(senderAvatar) : null,
                     child: senderAvatar == null || senderAvatar.toString().isEmpty
-                   ? Text(senderName.isNotEmpty? senderName[0] : '?',
+                  ? Text(senderName.isNotEmpty? senderName[0] : '?',
                           style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.navy, fontWeight: FontWeight.w700))
                       : null,
                   ),
