@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/constants/app_colors.dart';
+import '../../core/constants/supabase_config.dart';
 import '../../models/user_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../widgets/user_avatar.dart';
@@ -32,7 +33,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     setState(() => _loading = true);
     try {
       final data = await supabase
-        .from('profiles')
+        .from(SupabaseConfig.tUsers)
         .select()
         .eq('id', widget.userId)
         .maybeSingle();
@@ -141,7 +142,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     if (reason == null || reason.isEmpty) return;
     try {
       final meId = supabase.auth.currentUser!.id;
-      await supabase.from('reports').insert({
+      await supabase.from(SupabaseConfig.tReports).insert({
         'reporter_id': meId,
         'reported_id': widget.userId,
         'reason': reason,
@@ -155,7 +156,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   Future<void> _blockUser() async {
     try {
       final meId = supabase.auth.currentUser!.id;
-      await supabase.from('blocked_users').insert({
+      await supabase.from(SupabaseConfig.tBlockedUsers).insert({
         'blocker_id': meId,
         'blocked_id': widget.userId,
       });
@@ -184,11 +185,11 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     );
     if (confirm != true) return;
     try {
-      await supabase.from('profiles').update({
-        'is_banned': true,
-        'banned_at': DateTime.now().toIso8601String(),
+      await supabase.from(SupabaseConfig.tUsers).update({
+        'is_blocked': true,
+        'blocked_at': DateTime.now().toIso8601String(),
       }).eq('id', widget.userId);
-      if (mounted) showAppSnack(context, 'تم الحظر النهائي', success: false);
+      if (mounted) showAppSnack(context, 'تم الحظر النهائي', success: true);
       _loadUser();
     } catch (e) {
       if (mounted) showAppSnack(context, 'فشل الحظر', success: false);
