@@ -7,7 +7,7 @@ import '../../models/room_model.dart';
 import '../../services/chat_service.dart';
 import '../../services/room_service.dart';
 import '../../widgets/chat/chat_input_bar.dart';
-import '../../widgets/message_bubble.dart';
+import '../../widgets/chat/message_bubble.dart';
 import '../../widgets/app_snackbar.dart';
 
 class RoomChatScreen extends StatefulWidget {
@@ -61,7 +61,7 @@ class _RoomChatScreenState extends State<RoomChatScreen> {
     try {
       await _chat.sendMessageToRoomEx(
         roomId: widget.room.id,
-        text: text,
+        content: text,
         imageFile: imageFile,
         audioFile: audioFile,
         replyTo: _replyToId,
