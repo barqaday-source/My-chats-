@@ -12,6 +12,7 @@ class MessageBubble extends StatefulWidget {
   final bool showAvatar;
   final VoidCallback? onReply;
   final bool isRoom;
+  final void Function(String messageId)? onDelete; // NEW: اختياري
 
   const MessageBubble({
     super.key,
@@ -20,6 +21,7 @@ class MessageBubble extends StatefulWidget {
     this.showAvatar = true,
     this.onReply,
     this.isRoom = true,
+    this.onDelete,
   });
 
   @override
@@ -43,11 +45,19 @@ class _MessageBubbleState extends State<MessageBubble> {
 
   Future<void> _deleteMessage() async {
     try {
+      // UPDATED: نمرر روابط الملفات حتى تنمسح من Storage
+      final msg = widget.message;
+      final imageUrl = msg['image_url']?? msg['media_url'];
+      final audioUrl = msg['audio_url'];
+
       await ChatService().deleteMessage(
-        widget.message['id'].toString(),
+        msg['id'].toString(),
         isRoom: widget.isRoom,
+        imageUrl: imageUrl,
+        audioUrl: audioUrl,
       );
       if (mounted) showAppSnack(context, 'تم حذف الرسالة', success: true);
+      widget.onDelete?.call(msg['id'].toString());
     } catch (e) {
       if (mounted) showAppSnack(context, 'فشل الحذف', success: false);
     }
@@ -79,13 +89,22 @@ class _MessageBubbleState extends State<MessageBubble> {
 
   @override
   Widget build(BuildContext context) {
-    final imageUrl = widget.message['media_url'];
+    final imageUrl = widget.message['media_url']?? widget.message['image_url'];
     final audioUrl = widget.message['audio_url'];
     final content = widget.message['content']?.toString()?? '';
     final senderName = widget.message['profile_username']?? widget.message['sender_name']?? widget.message['username']?? 'مستخدم';
     final senderAvatar = widget.message['profile_avatar']?? widget.message['sender_avatar'];
     final timeStr = _formatTime(widget.message['created_at']);
-    final replyContent = widget.message['reply_content'];
+
+    // UPDATED: معاينة الرد - تدعم الحقول الجديدة مع fallback للقديمة
+    final replyText = widget.message['reply_to_text']?? widget.message['reply_content'];
+    final replyType = widget.message['reply_to_type']?? 'text';
+    String? replyContent;
+    if (replyText!= null) {
+      replyContent = replyText;
+      if (replyType == 'image') replyContent = '📷 صورة';
+      if (replyType == 'audio') replyContent = '🎤 رسالة صوتية';
+    }
 
     final bubbleColor = widget.isMe? const Color(0xFFE6F7F3) : Colors.white;
     final borderColor = widget.isMe? AppColors.primary.withOpacity(0.3) : AppColors.glassBorder;
@@ -166,9 +185,9 @@ class _MessageBubbleState extends State<MessageBubble> {
                   child: CircleAvatar(
                     radius: 16, backgroundColor: AppColors.bgCard2,
                     backgroundImage: senderAvatar!= null && senderAvatar.toString().isNotEmpty
-                  ? CachedNetworkImageProvider(senderAvatar) : null,
+                 ? CachedNetworkImageProvider(senderAvatar) : null,
                     child: senderAvatar == null || senderAvatar.toString().isEmpty
-                  ? Text(senderName.isNotEmpty? senderName[0] : '?',
+                 ? Text(senderName.isNotEmpty? senderName[0] : '?',
                           style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.navy, fontWeight: FontWeight.w700))
                       : null,
                   ),
