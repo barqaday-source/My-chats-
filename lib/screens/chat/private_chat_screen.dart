@@ -45,6 +45,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
     if (text.trim().isEmpty && imageFile == null && audioFile == null) return;
     try {
       await _chat.sendPrivateMessageEx(
+        chatId: widget.chatId,
         peerId: widget.peer.id,
         content: text,
         imageFile: imageFile,
