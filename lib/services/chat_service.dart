@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
@@ -95,7 +96,7 @@ class ChatService {
     File? imageFile,
     File? audioFile,
     int audioDuration = 0,
-    String? replyTo,
+    Map<String, dynamic>? replyMessage,
   }) async {
     final user = _supabase.auth.currentUser;
     if (user == null) throw Exception('not_authenticated');
@@ -115,7 +116,7 @@ class ChatService {
       'audio_duration': audioDuration,
       'image_path': imageFile?.path,
       'audio_path': audioFile?.path,
-      'reply_to': replyTo,
+      'reply_message': replyMessage,
     };
 
     final conn = await Connectivity().checkConnectivity();
@@ -137,16 +138,34 @@ class ChatService {
       audioUrl = await _upload(File(payload['audio_path']));
     }
 
-    await _supabase.from('private_messages').insert({
+    final Map<String, dynamic>? reply = payload['reply_message'] as Map<String, dynamic>?;
+    final replyId = reply?['id'];
+    String? replyText = reply?['content'] as String?;
+    final replyType = reply?['type']?? (reply?['audio_url']!= null? 'audio' : reply?['image_url']!= null || reply?['media_url']!= null? 'image' : 'text');
+    if (replyType == 'image' && (replyText == null || replyText.isEmpty)) replyText = '📷 صورة';
+    if (replyType == 'audio' && (replyText == null || replyText.isEmpty)) replyText = '🎤 رسالة صوتية';
+    final replySenderName = reply?['sender_name']?? reply?['senderName'];
+
+    final insertData = {
       'chat_id': payload['chat_id'],
       'sender_id': payload['sender_id'],
       'receiver_id': payload['receiver_id'],
       'content': payload['content']?? '',
+      // اكتب للعمودين القديم والجديد حتى ما ينكسر شي
+      'image_url': imageUrl,
       'media_url': imageUrl,
       'audio_url': audioUrl,
+      'audio_duration': payload['audio_duration']?? 0,
       'duration': payload['audio_duration']?? 0,
-      'reply_to': payload['reply_to'],
-    });
+      // الرد
+      'reply_to_message_id': replyId,
+      'reply_to': replyId,
+      'reply_to_text': replyText,
+      'reply_to_type': replyType,
+      'reply_to_sender_name': replySenderName,
+    };
+
+    await _supabase.from('private_messages').insert(insertData);
   }
 
   // ====== Room messages ======
@@ -167,7 +186,7 @@ class ChatService {
     File? imageFile,
     File? audioFile,
     int audioDuration = 0,
-    String? replyTo,
+    Map<String, dynamic>? replyMessage,
   }) async {
     final senderId = _supabase.auth.currentUser?.id;
     if (senderId == null) throw Exception('not_authenticated');
@@ -181,7 +200,7 @@ class ChatService {
       'audio_duration': audioDuration,
       'image_path': imageFile?.path,
       'audio_path': audioFile?.path,
-      'reply_to': replyTo,
+      'reply_message': replyMessage,
     };
 
     final conn = await Connectivity().checkConnectivity();
@@ -203,15 +222,31 @@ class ChatService {
       audioUrl = await _upload(File(payload['audio_path']));
     }
 
-    await _supabase.from('room_messages').insert({
+    final Map<String, dynamic>? reply = payload['reply_message'] as Map<String, dynamic>?;
+    final replyId = reply?['id'];
+    String? replyText = reply?['content'] as String?;
+    final replyType = reply?['type']?? (reply?['audio_url']!= null? 'audio' : reply?['image_url']!= null || reply?['media_url']!= null? 'image' : 'text');
+    if (replyType == 'image' && (replyText == null || replyText.isEmpty)) replyText = '📷 صورة';
+    if (replyType == 'audio' && (replyText == null || replyText.isEmpty)) replyText = '🎤 رسالة صوتية';
+    final replySenderName = reply?['sender_name']?? reply?['senderName'];
+
+    final insertData = {
       'room_id': payload['room_id'],
       'sender_id': payload['sender_id'],
       'content': payload['content']?? '',
+      'image_url': imageUrl,
       'media_url': imageUrl,
       'audio_url': audioUrl,
+      'audio_duration': payload['audio_duration']?? 0,
       'duration': payload['audio_duration']?? 0,
-      'reply_to': payload['reply_to'],
-    });
+      'reply_to_message_id': replyId,
+      'reply_to': replyId,
+      'reply_to_text': replyText,
+      'reply_to_type': replyType,
+      'reply_to_sender_name': replySenderName,
+    };
+
+    await _supabase.from('room_messages').insert(insertData);
   }
 
   // ====== Upload ======
@@ -228,13 +263,36 @@ class ChatService {
     return _upload(file);
   }
 
-  // ====== Delete ======
-  Future<void> deleteMessage(String messageId, {bool isRoom = false}) async {
+  // ====== Delete - موحدة للصوت والصورة والنص ======
+  Future<void> deleteMessage(String messageId, {
+    bool isRoom = false,
+    String? imageUrl,
+    String? audioUrl,
+  }) async {
+    final user = _supabase.auth.currentUser;
+    if (user == null) throw Exception('not_authenticated');
+
+    // 1. احذف الملفات من Storage
+    final urls = [imageUrl, audioUrl].where((u) => u!= null && u!.isNotEmpty);
+    for (final url in urls) {
+      try {
+        final uri = Uri.parse(url!);
+        final idx = uri.pathSegments.indexOf(_bucket);
+        if (idx!= -1 && idx + 1 < uri.pathSegments.length) {
+          final filePath = uri.pathSegments.sublist(idx + 1).join('/');
+          await _supabase.storage.from(_bucket).remove([filePath]);
+        }
+      } catch (e) {
+        debugPrint('storage delete skip: $e');
+      }
+    }
+
+    // 2. soft delete في DB - حتى الـ stream يفلترها
     final table = isRoom? 'room_messages' : 'private_messages';
     await _supabase.from(table)
        .update({'deleted_at': DateTime.now().toIso8601String()})
        .eq('id', messageId)
-       .eq('sender_id', _supabase.auth.currentUser!.id);
+       .eq('sender_id', user.id);
   }
 
   // ====== Outbox flush ======
