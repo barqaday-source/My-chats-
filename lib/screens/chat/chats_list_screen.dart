@@ -59,6 +59,39 @@ class _ChatsListScreenState extends State<ChatsListScreen> {
     ).then((_) => _loadChats());
   }
 
+  // NEW: حذف دردشة - لي فقط
+  Future<void> _deleteChat(ChatModel chat) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.bgCard,
+        title: const Text('هل تريد حذف دردشة واحدة؟', 
+          textAlign: TextAlign.center,
+          style: TextStyle(color: AppColors.white, fontFamily: 'Tajawal', fontSize: 16)),
+        actionsAlignment: MainAxisAlignment.spaceEvenly,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('إلغاء', style: TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub))),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('حذف الدردشة', style: TextStyle(fontFamily: 'Tajawal', color: AppColors.primary))),
+        ],
+      ),
+    );
+
+    if (ok != true) return;
+
+    try {
+      await _chatService.clearChat(chat.id, isRoom: false);
+      if (!mounted) return;
+      setState(() => _chats.removeWhere((c) => c.id == chat.id));
+      showAppSnack(context, 'تم حذف الدردشة', success: true);
+    } catch (e) {
+      if (mounted) showAppSnack(context, 'فشل الحذف: $e', success: false);
+    }
+  }
+
   void _openUsersSearch() {
     Navigator.push(
       context,
@@ -168,6 +201,7 @@ class _ChatsListScreenState extends State<ChatsListScreen> {
   Widget _buildChatTile(ChatModel chat) {
     return InkWell(
       onTap: () => _openChat(chat),
+      onLongPress: () => _deleteChat(chat), // NEW
       child: Container(
         margin: const EdgeInsets.only(bottom: 8),
         padding: const EdgeInsets.all(12),
