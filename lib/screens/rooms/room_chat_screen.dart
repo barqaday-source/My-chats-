@@ -8,6 +8,7 @@ import '../../services/chat_service.dart';
 import '../../services/room_service.dart';
 import '../../widgets/chat/chat_input_bar.dart';
 import '../../widgets/message_bubble.dart';
+import '../../widgets/app_snackbar.dart';
 
 class RoomChatScreen extends StatefulWidget {
   final RoomModel room;
@@ -28,6 +29,20 @@ class _RoomChatScreenState extends State<RoomChatScreen> {
   void initState() {
     super.initState();
     timeago.setLocaleMessages('ar', timeago.ArMessages());
+    final uid = supabase.auth.currentUser?.id;
+    if (uid!= null) {
+      _chat.setUserOnlineInRoom(uid, widget.room.id);
+    }
+  }
+
+  @override
+  void dispose() {
+    final uid = supabase.auth.currentUser?.id;
+    if (uid!= null) {
+      _chat.setUserOfflineInRoom(uid, widget.room.id);
+    }
+    _scrollController.dispose();
+    super.dispose();
   }
 
   void _scrollToBottom() {
@@ -51,13 +66,17 @@ class _RoomChatScreenState extends State<RoomChatScreen> {
         audioFile: audioFile,
         replyTo: _replyToId,
       );
+      if (mounted) showAppSnack(context, 'تم الإرسال', success: true);
       setState(() { _replyToId = null; _replyText = null; });
       _scrollToBottom();
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تم حفظ الرسالة، سترسل تلقائيا عند عودة النت', style: TextStyle(fontFamily: 'Tajawal')),
-          backgroundColor: AppColors.warning),
-      );
+      final isOffline = e.toString().contains('offline');
+      if (mounted) {
+        showAppSnack(context,
+          isOffline? 'تم الحفظ، سترسل تلقائيا عند عودة النت' : 'فشل الإرسال',
+          success: isOffline,
+        );
+      }
       setState(() { _replyToId = null; _replyText = null; });
     }
   }
@@ -68,23 +87,27 @@ class _RoomChatScreenState extends State<RoomChatScreen> {
     return Scaffold(
       backgroundColor: AppColors.bg,
       appBar: AppBar(
-        backgroundColor: Colors.white, elevation: 0.5,
-        iconTheme: const IconThemeData(color: AppColors.text),
+        backgroundColor: AppColors.bgCard,
+        elevation: 0.5,
+        iconTheme: const IconThemeData(color: AppColors.white),
         title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(widget.room.name, style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.text, fontWeight: FontWeight.w700, fontSize: 16), overflow: TextOverflow.ellipsis),
+          Text(widget.room.name, style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.white, fontWeight: FontWeight.w700, fontSize: 16), overflow: TextOverflow.ellipsis),
           Text(widget.room.onlineCount > 0? '${widget.room.onlineCount} متصل' : 'غرفة عامة',
             style: const TextStyle(fontFamily: 'Tajawal', fontSize: 12, color: AppColors.textSub)),
         ]),
         actions: [
-          IconButton(icon: const Icon(Icons.people_alt_outlined, color: AppColors.navy),
+          IconButton(icon: const Icon(Icons.people_alt_outlined, color: AppColors.white),
             onPressed: () async {
               final members = await _roomSvc.getRoomMembers(widget.room.id);
               if (!context.mounted) return;
-              showModalBottomSheet(context: context, builder: (_) => ListView(
+              showModalBottomSheet(context: context, backgroundColor: AppColors.bgCard,
+                builder: (_) => ListView(
+                padding: const EdgeInsets.all(12),
                 children: members.map((m) => ListTile(
-                  leading: CircleAvatar(backgroundImage: m['avatar_url']!= null? NetworkImage(m['avatar_url']) : null),
-                  title: Text(m['username']?? 'مستخدم', style: const TextStyle(fontFamily: 'Tajawal')),
-                  subtitle: Text(m['is_online']? 'متصل' : 'غير متصل', style: const TextStyle(fontFamily: 'Tajawal', fontSize: 12)),
+                  leading: CircleAvatar(backgroundImage: m['avatar_url']!= null? NetworkImage(m['avatar_url']) : null,
+                    child: m['avatar_url'] == null? Text((m['username']?? 'U')[0].toUpperCase()) : null),
+                  title: Text(m['username']?? 'مستخدم', style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.white)),
+                  subtitle: Text(m['is_online'] == true? 'متصل' : 'غير متصل', style: const TextStyle(fontFamily: 'Tajawal', fontSize: 12, color: AppColors.textSub)),
                 )).toList(),
               ));
             }),
@@ -99,7 +122,7 @@ class _RoomChatScreenState extends State<RoomChatScreen> {
               if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator(color: AppColors.primary));
               final messages = snapshot.data?? [];
               if (messages.isEmpty) return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                Icon(Icons.forum_outlined, size: 56, color: AppColors.navy.withOpacity(0.5)),
+                Icon(Icons.forum_outlined, size: 56, color: AppColors.textSub.withOpacity(0.5)),
                 const SizedBox(height: 12),
                 const Text('لا توجد رسائل بعد', style: TextStyle(color: AppColors.textSub, fontFamily: 'Tajawal', fontSize: 15)),
               ]));
@@ -132,7 +155,7 @@ class _RoomChatScreenState extends State<RoomChatScreen> {
           child: Row(children: [
             Expanded(child: Text('رد على: $_replyText', maxLines: 1, overflow: TextOverflow.ellipsis,
               style: const TextStyle(fontFamily: 'Tajawal', fontSize: 12, color: AppColors.textSub))),
-            IconButton(icon: const Icon(Icons.close, size: 18), onPressed: () => setState(() { _replyToId = null; _replyText = null; }))
+            IconButton(icon: const Icon(Icons.close, size: 18, color: AppColors.textSub), onPressed: () => setState(() { _replyToId = null; _replyText = null; }))
           ]),
         ),
         ChatInputBar(
@@ -141,7 +164,4 @@ class _RoomChatScreenState extends State<RoomChatScreen> {
       ]),
     );
   }
-
-  @override
-  void dispose() { _scrollController.dispose(); super.dispose(); }
 }
