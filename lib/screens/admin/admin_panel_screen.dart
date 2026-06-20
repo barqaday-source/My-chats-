@@ -56,10 +56,10 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     }
     try {
       final userData = await _sb.from(SupabaseConfig.tUsers)
-       .select('role')
-       .eq('id', user.id)
-       .single();
-      final role = userData['role'] as String?? 'user';
+         .select('role')
+         .eq('id', user.id)
+         .single();
+      final role = userData['role'] as String??? 'user';
       if (role == 'admin') {
         _isAdmin = true;
         await _load();
@@ -82,14 +82,14 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
       _users = rawUsers.map((json) => UserModel.fromMap(json)).toList();
 
       final rep = await _sb.from(SupabaseConfig.tReports)
-       .select('*, reporter:reporter_id(username, avatar_url), reported:reported_id(username, avatar_url)')
-       .order('created_at', ascending: false);
+         .select('*, reporter:reporter_id(username, avatar_url), reported:reported_id(username, avatar_url)')
+         .order('created_at', ascending: false);
       _reports = List<Map<String, dynamic>>.from(rep);
 
       final roomsData = await _sb.from(SupabaseConfig.tRooms)
-       .select()
-       .eq('is_approved', false)
-       .order('created_at', ascending: false);
+         .select()
+         .eq('is_approved', false)
+         .order('created_at', ascending: false);
       _pendingRooms = List<Map<String, dynamic>>.from(roomsData);
 
       final contactData = await _sb.from('app_contact').select().eq('id', 1).maybeSingle();
@@ -105,19 +105,17 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     if (mounted) setState(() => _loading = false);
   }
 
-  // ترقية المدير ملغية نهائيا
-
   Future<void> _blockUser(String uid, String username) async {
     if (_busy) return;
     _busy = true;
     try {
       final res = await _sb.from(SupabaseConfig.tUsers)
-       .update({
-          'is_blocked': true,
-          'blocked_at': DateTime.now().toIso8601String(),
-        })
-       .eq('id', uid)
-       .select();
+         .update({
+            'is_blocked': true,
+            'blocked_at': DateTime.now().toIso8601String(),
+          })
+         .eq('id', uid)
+         .select();
       if (res.isEmpty) throw Exception('فشل الحظر - تحقق من RLS');
       await _notifSvc.sendNotification(NotificationModel(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
@@ -141,9 +139,9 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     _busy = true;
     try {
       final res = await _sb.from(SupabaseConfig.tUsers)
-       .update({'is_blocked': false, 'blocked_at': null})
-       .eq('id', uid)
-       .select();
+         .update({'is_blocked': false, 'blocked_at': null})
+         .eq('id', uid)
+         .select();
       if (res.isEmpty) throw Exception('فشل إلغاء الحظر');
       await _notifSvc.sendNotification(NotificationModel(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
@@ -165,8 +163,8 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
   Future<void> _replyReport(String reportId, String userId, String reply) async {
     try {
       await _sb.from(SupabaseConfig.tReports)
-       .update({'reply': reply, 'status': 'replied', 'updated_at': DateTime.now().toIso8601String()})
-       .eq('id', reportId);
+         .update({'reply': reply, 'status': 'replied', 'updated_at': DateTime.now().toIso8601String()})
+         .eq('id', reportId);
       await _notifSvc.sendNotification(NotificationModel(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         userId: userId, title: 'رد على بلاغك', body: reply,
@@ -182,8 +180,8 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
   Future<void> _approveRoom(String roomId, String ownerId) async {
     try {
       await _sb.from(SupabaseConfig.tRooms)
-       .update({'is_approved': true})
-       .eq('id', roomId);
+         .update({'is_approved': true})
+         .eq('id', roomId);
       if (mounted) showAppSnack(context, 'تمت الموافقة على الغرفة', success: true);
       await _load();
     } catch (e) {
@@ -220,20 +218,20 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
             ),
             Expanded(
               child: _loading
-               ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
-                : TabBarView(controller: _tabs, children: [
-                    _UsersTab(
-                      users: _users,
-                      myId: Supabase.instance.client.auth.currentUser?.id?? '',
-                      onBlock: _blockUser,
-                      onUnblock: _unblockUser),
-                    _ReportsTab(reports: _reports, onReply: _replyReport),
-                    _PendingRoomsTab(rooms: _pendingRooms, onApprove: _approveRoom),
-                    _ContactTab(phone: adminPhone, email: adminEmail, message: adminMessage, onEdit: () async {
-                      await Navigator.push(context, MaterialPageRoute(builder: (_) => const EditContactScreen()));
-                      _load();
-                    }),
-                  ]),
+                 ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+                  : TabBarView(controller: _tabs, children: [
+                      _UsersTab(
+                        users: _users,
+                        myId: Supabase.instance.client.auth.currentUser?.id?? '',
+                        onBlock: _blockUser,
+                        onUnblock: _unblockUser),
+                      _ReportsTab(reports: _reports, onReply: _replyReport),
+                      _PendingRoomsTab(rooms: _pendingRooms, onApprove: _approveRoom),
+                      _ContactTab(phone: adminPhone, email: adminEmail, message: adminMessage, onEdit: () async {
+                        await Navigator.push(context, MaterialPageRoute(builder: (_) => const EditContactScreen()));
+                        _load();
+                      }),
+                    ]),
             ),
           ]),
         ),
@@ -242,7 +240,6 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
   }
 }
 
-// ====== تبويب المستخدمين ======
 class _UsersTab extends StatelessWidget {
   final List<UserModel> users;
   final String myId;
@@ -334,7 +331,6 @@ class _UsersTab extends StatelessWidget {
   }
 }
 
-// ====== باقي التابات بدون تغيير منطقي، فقط السناك ======
 class ReportCard extends StatelessWidget {
   final Map<String, dynamic> report;
   final Function(String, String, String) onReply;
