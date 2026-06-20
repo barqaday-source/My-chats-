@@ -1,4 +1,3 @@
-// lib/features/chat/widgets/audio_message_widget.dart
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:audioplayers/audioplayers.dart';
@@ -38,6 +37,21 @@ class _AudioMessageWidgetState extends State<AudioMessageWidget> {
     super.initState();
     _player = AudioPlayer();
     _player.setReleaseMode(ReleaseMode.stop);
+    _player.setVolume(1.0); // أعلى صوت ممكن
+    _player.setAudioContext(AudioContext(
+      android: const AudioContextAndroid(
+        isSpeakerphoneOn: true,
+        stayAwake: true,
+        contentType: AndroidContentType.speech,
+        usageType: AndroidUsageType.voiceCommunication,
+        audioFocus: AndroidAudioFocus.gain,
+      ),
+      iOS: AudioContextIOS(
+        category: AVAudioSessionCategory.playback,
+        options: {AVAudioSessionOptions.defaultToSpeaker},
+      ),
+    ));
+
     _total = Duration(seconds: widget.duration);
 
     _player.onPlayerStateChanged.listen((state) {
@@ -88,6 +102,7 @@ class _AudioMessageWidgetState extends State<AudioMessageWidget> {
         await _player.pause();
       } else {
         setState(() => _isLoading = true);
+        await _player.setVolume(1.0);
         await _player.play(UrlSource(widget.audioUrl));
       }
     } catch (e) {
@@ -134,8 +149,7 @@ class _AudioMessageWidgetState extends State<AudioMessageWidget> {
               GestureDetector(
                 onTap: _isLoading ||!_hasAudio? null : _togglePlay,
                 child: Container(
-                  width: 44,
-                  height: 44,
+                  width: 44, height: 44,
                   decoration: BoxDecoration(
                     color: widget.isMe? AppColors.white.withOpacity(0.2) : AppColors.primary.withOpacity(0.15),
                     shape: BoxShape.circle,
@@ -158,8 +172,7 @@ class _AudioMessageWidgetState extends State<AudioMessageWidget> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     SizedBox(
-                      height: 28,
-                      width: double.infinity,
+                      height: 28, width: double.infinity,
                       child: CustomPaint(
                         painter: _WaveformPainter(
                           progress: progress,
@@ -239,15 +252,10 @@ class _WaveformPainter extends CustomPainter {
   final double progress;
   final Color trackColor;
   final Color fillColor;
-
   static const _bars = [4,8,12,7,16,11,5,9,14,8,13,6,15,10,7,12,5,9,8,14,6,11,14,7,10,16,9,13,7,12,5,10];
-
   const _WaveformPainter({required this.progress, required this.trackColor, required this.fillColor});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    const count = 32;
-    const barW = 2.0;
+  @override void paint(Canvas canvas, Size size) {
+    const count = 32; const barW = 2.0;
     final spacing = size.width > count * barW? (size.width - count * barW) / (count - 1) : 1.0;
     final filled = (count * progress).round();
     for (int i = 0; i < count; i++) {
@@ -260,7 +268,5 @@ class _WaveformPainter extends CustomPainter {
       );
     }
   }
-
-  @override
-  bool shouldRepaint(_WaveformPainter old) => old.progress!= progress || old.trackColor!= trackColor || old.fillColor!= fillColor;
+  @override bool shouldRepaint(_WaveformPainter old) => old.progress!= progress || old.trackColor!= trackColor || old.fillColor!= fillColor;
 }
