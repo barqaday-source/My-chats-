@@ -2,7 +2,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/constants/app_colors.dart';
 import '../../models/room_model.dart';
 import '../../providers/auth_provider.dart';
@@ -19,7 +18,6 @@ class RoomSettingsScreen extends StatefulWidget {
 
 class _RoomSettingsScreenState extends State<RoomSettingsScreen> {
   final _roomService = RoomService();
-  final _supabase = Supabase.instance.client;
   final _nameController = TextEditingController();
   final _descController = TextEditingController();
   bool _loading = false;
@@ -52,16 +50,11 @@ class _RoomSettingsScreenState extends State<RoomSettingsScreen> {
     setState(() => _pickedImage = File(xfile.path));
   }
 
+  // الرفع صار عبر RoomService - bucket موحد chat_media
   Future<String?> _uploadAvatar() async {
     if (_pickedImage == null) return _avatarUrl;
     try {
-      final bytes = await _pickedImage!.readAsBytes();
-      final path = 'rooms/${widget.room.id}/${DateTime.now().millisecondsSinceEpoch}.jpg';
-      await _supabase.storage.from('room_avatars').uploadBinary(
-        path, bytes,
-        fileOptions: const FileOptions(upsert: true, contentType: 'image/jpeg'),
-      );
-      return _supabase.storage.from('room_avatars').getPublicUrl(path);
+      return await _roomService.uploadRoomImage(_pickedImage!, widget.room.id);
     } catch (e) {
       if (mounted) showAppSnack(context, 'فشل رفع الصورة: $e', success: false);
       return _avatarUrl;
@@ -172,11 +165,12 @@ class _RoomSettingsScreenState extends State<RoomSettingsScreen> {
                         children: [
                           CircleAvatar(
                             radius: 48,
+                            backgroundColor: AppColors.bgCard2,
                             backgroundImage: _pickedImage != null
                               ? FileImage(_pickedImage!)
                               : (_avatarUrl != null ? NetworkImage(_avatarUrl!) : null) as ImageProvider?,
                             child: _pickedImage == null && _avatarUrl == null
-                              ? const Icon(Icons.camera_alt_rounded, size: 32)
+                              ? const Icon(Icons.camera_alt_rounded, size: 32, color: AppColors.textSub)
                               : null,
                           ),
                           Positioned(
