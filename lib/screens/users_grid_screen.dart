@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../core/constants/app_colors.dart';
 import '../core/constants/supabase_config.dart';
+import 'user_profile_screen.dart';
 
 class UsersGridScreen extends StatefulWidget {
   const UsersGridScreen({super.key});
@@ -18,7 +20,7 @@ class _UsersGridScreenState extends State<UsersGridScreen> {
      .select('id, username, avatar_url, bio, is_online')
      .eq('is_blocked', false);
 
-    if (myId!= null) {
+    if (myId != null) {
       q = q.neq('id', myId);
     }
     if (_query.isNotEmpty) {
@@ -29,84 +31,21 @@ class _UsersGridScreenState extends State<UsersGridScreen> {
   }
 
   void _openProfile(Map<String, dynamic> user) {
-    // بدّل ProfileScreen باسم شاشة البروفايل الحقيقية عندك
-    // Navigator.push(context, MaterialPageRoute(
-    // builder: (_) => ProfileScreen(userId: user['id'])
-    // ));
-
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20))
-      ),
-      builder: (_) => Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Stack(
-              children: [
-                CircleAvatar(
-                  radius: 45,
-                  backgroundImage: user['avatar_url']!= null
-                   ? NetworkImage(user['avatar_url']) : null,
-                  child: user['avatar_url'] == null? const Icon(Icons.person, size: 40) : null,
-                ),
-                if (user['is_online'] == true)
-                  Positioned(
-                    bottom: 2, right: 2,
-                    child: Container(width: 14, height: 14,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF00C49A),
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 2)
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Text(user['username']?? 'مستخدم',
-              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-            if (user['bio']!= null && user['bio'].toString().isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Text(user['bio'], textAlign: TextAlign.center),
-              ),
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                icon: const Icon(Icons.chat_bubble_outline),
-                label: const Text('مراسلة'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF00C49A),
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                ),
-                onPressed: () {
-                  Navigator.pop(context);
-                  // TODO: PrivateChatScreen(userId: user['id'])
-                },
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+    Navigator.push(context, MaterialPageRoute(
+      builder: (_) => UserProfileScreen(userId: user['id'])
+    ));
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F9F9),
+      backgroundColor: AppColors.bg,
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        title: const Text('المستخدمون', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+        backgroundColor: AppColors.bgCard,
+        elevation: 0.5,
+        title: const Text('المستخدمون', style: TextStyle(fontFamily: 'Tajawal', color: AppColors.white, fontWeight: FontWeight.bold)),
         centerTitle: true,
-        iconTheme: const IconThemeData(color: Colors.black),
+        iconTheme: const IconThemeData(color: AppColors.white),
       ),
       body: Column(
         children: [
@@ -114,15 +53,20 @@ class _UsersGridScreenState extends State<UsersGridScreen> {
             padding: const EdgeInsets.all(16),
             child: TextField(
               textDirection: TextDirection.rtl,
+              style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.white),
               decoration: InputDecoration(
                 hintText: 'ابحث عن مستخدم...',
-                hintTextDirection: TextDirection.rtl,
-                prefixIcon: const Icon(Icons.search),
+                hintStyle: const TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub),
+                prefixIcon: const Icon(Icons.search, color: AppColors.textSub),
                 filled: true,
-                fillColor: Colors.white,
+                fillColor: AppColors.bgCard,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(14),
-                  borderSide: BorderSide.none,
+                  borderSide: const BorderSide(color: AppColors.glassBorder),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: const BorderSide(color: AppColors.glassBorder),
                 ),
               ),
               onChanged: (v) => setState(() => _query = v),
@@ -133,10 +77,12 @@ class _UsersGridScreenState extends State<UsersGridScreen> {
               future: _loadUsers(),
               builder: (context, snap) {
                 if (!snap.hasData) {
-                  return const Center(child: CircularProgressIndicator(color: Color(0xFF00C49A)));
+                  return const Center(child: CircularProgressIndicator(color: AppColors.primary));
                 }
                 final users = snap.data!;
-                if (users.isEmpty) return const Center(child: Text('لا يوجد مستخدمين'));
+                if (users.isEmpty) {
+                  return const Center(child: Text('لا يوجد مستخدمين', style: TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub)));
+                }
                 return GridView.builder(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -157,12 +103,12 @@ class _UsersGridScreenState extends State<UsersGridScreen> {
                             children: [
                               CircleAvatar(
                                 radius: 42,
-                                backgroundColor: const Color(0xFFE0F5F0),
-                                backgroundImage: u['avatar_url']!= null
+                                backgroundColor: AppColors.bgCard,
+                                backgroundImage: u['avatar_url'] != null
                                  ? NetworkImage(u['avatar_url']) : null,
                                 child: u['avatar_url'] == null
-                                 ? Text((u['username']?? '؟')[0],
-                                      style: const TextStyle(fontSize: 22, color: Color(0xFF00C49A)))
+                                 ? Text((u['username'] ?? '؟')[0],
+                                      style: const TextStyle(fontSize: 22, color: AppColors.primary))
                                   : null,
                               ),
                               if (online)
@@ -170,9 +116,9 @@ class _UsersGridScreenState extends State<UsersGridScreen> {
                                   bottom: 2, right: 2,
                                   child: Container(width: 12, height: 12,
                                     decoration: BoxDecoration(
-                                      color: const Color(0xFF00C49A),
+                                      color: AppColors.primary,
                                       shape: BoxShape.circle,
-                                      border: Border.all(color: Colors.white, width: 2)
+                                      border: Border.all(color: AppColors.bg, width: 2)
                                     ),
                                   ),
                                 ),
@@ -180,10 +126,10 @@ class _UsersGridScreenState extends State<UsersGridScreen> {
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            u['username']?? 'مستخدم',
+                            u['username'] ?? 'مستخدم',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 13),
+                            style: const TextStyle(fontFamily: 'Tajawal', fontSize: 13, color: AppColors.white),
                             textAlign: TextAlign.center,
                           ),
                         ],
