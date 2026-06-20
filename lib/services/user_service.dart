@@ -5,20 +5,20 @@ class UserService {
 
   Future<Map<String, dynamic>> getUserById(String userId) async {
     final response = await _supabase
-  .from('profiles')
-  .select()
-  .eq('id', userId)
-  .single();
+       .from('profiles')
+       .select()
+       .eq('id', userId)
+       .single();
     return response;
   }
 
   Future<bool> isFollowing(String followerId, String followingId) async {
     final response = await _supabase
-  .from('follows')
-  .select()
-  .eq('follower_id', followerId)
-  .eq('following_id', followingId)
-  .maybeSingle();
+       .from('follows')
+       .select()
+       .eq('follower_id', followerId)
+       .eq('following_id', followingId)
+       .maybeSingle();
     return response!= null;
   }
 
@@ -31,9 +31,9 @@ class UserService {
 
   Future<void> unfollowUser(String followerId, String followingId) async {
     await _supabase
-  .from('follows')
-  .delete()
-  .eq('follower_id', followerId)
-  .eq('following_id', followingId);
+       .from('follows')
+       .delete()
+       .eq('follower_id', followerId)
+       .eq('following_id', followingId);
   }
 }
