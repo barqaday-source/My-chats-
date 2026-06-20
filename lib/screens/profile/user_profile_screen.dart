@@ -4,8 +4,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/constants/app_colors.dart';
 import '../../models/user_model.dart';
 import '../../providers/auth_provider.dart';
-import '../../services/chat_service.dart';
 import '../../widgets/user_avatar.dart';
+import '../../widgets/app_snackbar.dart';
 import '../chat/private_chat_screen.dart';
 
 class UserProfileScreen extends StatefulWidget {
@@ -18,7 +18,6 @@ class UserProfileScreen extends StatefulWidget {
 
 class _UserProfileScreenState extends State<UserProfileScreen> {
   final supabase = Supabase.instance.client;
-  final _chat = ChatService();
   UserModel? _user;
   bool _loading = true;
   bool _isFollowing = false;
@@ -58,17 +57,12 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
           .eq('follower_id', me.id)
           .eq('following_id', widget.userId)
           .maybeSingle();
-        if (mounted) setState(() => _isFollowing = follow!= null);
+        if (mounted) setState(() => _isFollowing = follow != null);
       } catch (_) {}
     } catch (e) {
       if (mounted) {
         setState(() => _loading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('فشل تحميل الملف: $e', style: const TextStyle(fontFamily: 'Tajawal')),
-            backgroundColor: AppColors.danger,
-          ),
-        );
+        showAppSnack(context, 'فشل تحميل الملف', success: false);
       }
     }
   }
@@ -76,7 +70,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   Future<void> _toggleFollow() async {
     if (_user == null) return;
     final meId = supabase.auth.currentUser!.id;
-    final newState =!_isFollowing;
+    final newState = !_isFollowing;
     setState(() => _isFollowing = newState);
     try {
       if (newState) {
@@ -90,15 +84,8 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         .eq('following_id', _user!.id);
       }
     } catch (e) {
-      setState(() => _isFollowing =!newState);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('فشل: $e', style: const TextStyle(fontFamily: 'Tajawal')),
-            backgroundColor: AppColors.danger,
-          ),
-        );
-      }
+      setState(() => _isFollowing = !newState);
+      if (mounted) showAppSnack(context, 'فشل العملية', success: false);
     }
   }
 
@@ -119,7 +106,6 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     );
   }
 
-  // ====== إجراءات المستخدم / الإدارة ======
   Future<String?> _askReason() async {
     final ctrl = TextEditingController();
     return showDialog<String>(
@@ -154,19 +140,15 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     final reason = await _askReason();
     if (reason == null || reason.isEmpty) return;
     try {
-      await _chat.reportUser(widget.userId, reason);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('تم إرسال البلاغ للإدارة',
-                style: TextStyle(fontFamily: 'Tajawal'))));
-      }
+      final meId = supabase.auth.currentUser!.id;
+      await supabase.from('reports').insert({
+        'reporter_id': meId,
+        'reported_id': widget.userId,
+        'reason': reason,
+      });
+      if (mounted) showAppSnack(context, 'تم إرسال البلاغ للإدارة', success: true);
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text('فشل البلاغ: $e',
-                style: const TextStyle(fontFamily: 'Tajawal')),
-            backgroundColor: AppColors.danger));
-      }
+      if (mounted) showAppSnack(context, 'فشل البلاغ', success: false);
     }
   }
 
@@ -177,37 +159,9 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         'blocker_id': meId,
         'blocked_id': widget.userId,
       });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('تم حظر المستخدم',
-                style: TextStyle(fontFamily: 'Tajawal'))));
-      }
+      if (mounted) showAppSnack(context, 'تم حظر المستخدم', success: true);
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text('فشل الحظر: $e',
-                style: const TextStyle(fontFamily: 'Tajawal')),
-            backgroundColor: AppColors.danger));
-      }
-    }
-  }
-
-  Future<void> _changeRole(String role) async {
-    try {
-      await supabase.from('profiles').update({'role': role}).eq('id', widget.userId);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(role == 'admin'? 'تم ترقية المستخدم لمدير' : 'تم إزالة الإدارة',
-                style: const TextStyle(fontFamily: 'Tajawal'))));
-      }
-      _loadUser();
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text('فشل تغيير الصلاحية: $e',
-                style: const TextStyle(fontFamily: 'Tajawal')),
-            backgroundColor: AppColors.danger));
-      }
+      if (mounted) showAppSnack(context, 'فشل الحظر', success: false);
     }
   }
 
@@ -218,7 +172,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         backgroundColor: AppColors.bgCard,
         title: const Text('حظر نهائي',
             style: TextStyle(fontFamily: 'Tajawal', color: AppColors.white)),
-        content: const Text('هل أنت متأكد من حظر هذا الحساب نهائيا بالإيميل؟',
+        content: const Text('هل أنت متأكد من حظر هذا الحساب نهائيا؟',
             style: TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub)),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false),
@@ -228,33 +182,22 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         ],
       ),
     );
-    if (confirm!= true) return;
+    if (confirm != true) return;
     try {
       await supabase.from('profiles').update({
-        'is_blocked': true,
-        'blocked_at': DateTime.now().toIso8601String(),
-        'role': 'user'
+        'is_banned': true,
+        'banned_at': DateTime.now().toIso8601String(),
       }).eq('id', widget.userId);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('تم الحظر النهائي',
-                style: TextStyle(fontFamily: 'Tajawal')),
-            backgroundColor: AppColors.danger));
-      }
+      if (mounted) showAppSnack(context, 'تم الحظر النهائي', success: false);
       _loadUser();
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text('فشل الحظر: $e',
-                style: const TextStyle(fontFamily: 'Tajawal')),
-            backgroundColor: AppColors.danger));
-      }
+      if (mounted) showAppSnack(context, 'فشل الحظر', success: false);
     }
   }
 
   void _showUserActions() {
     final auth = context.read<AuthProvider>();
-    final isAdmin = auth.user?.role == 'admin';
+    final isAdmin = auth.userProfile?['role'] == 'admin';
     final isMe = supabase.auth.currentUser?.id == widget.userId;
 
     showModalBottomSheet(
@@ -284,23 +227,11 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
               onTap: () { Navigator.pop(context); _reportUser(); },
             ),
           ],
-          if (isAdmin &&!isMe)...[
+          if (isAdmin && !isMe)...[
             const Divider(color: AppColors.glassBorder, height: 1),
             ListTile(
-              leading: const Icon(Icons.verified_user_rounded, color: AppColors.primary),
-              title: const Text('ترقية لمدير',
-                  style: TextStyle(fontFamily: 'Tajawal', color: AppColors.white)),
-              onTap: () { Navigator.pop(context); _changeRole('admin'); },
-            ),
-            ListTile(
-              leading: const Icon(Icons.person_off_rounded, color: AppColors.textSub),
-              title: const Text('إزالة الإدارة',
-                  style: TextStyle(fontFamily: 'Tajawal', color: AppColors.white)),
-              onTap: () { Navigator.pop(context); _changeRole('user'); },
-            ),
-            ListTile(
               leading: const Icon(Icons.gpp_bad_rounded, color: AppColors.danger),
-              title: const Text('حظر نهائي بالإيميل',
+              title: const Text('حظر نهائي',
                   style: TextStyle(fontFamily: 'Tajawal', color: AppColors.danger)),
               onTap: () { Navigator.pop(context); _banEmail(); },
             ),
@@ -317,14 +248,15 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     final isOwnProfile = meId == widget.userId;
 
     return Scaffold(
+      backgroundColor: AppColors.bg,
       appBar: AppBar(
         backgroundColor: AppColors.bgCard,
         title: Text(
-          _user?.username?? 'الملف الشخصي',
+          _user?.username ?? 'الملف الشخصي',
           style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.white),
         ),
         actions: [
-          if (_user!= null &&!isOwnProfile)
+          if (_user != null && !isOwnProfile)
             IconButton(
               icon: const Icon(Icons.more_vert_rounded, color: AppColors.white),
               onPressed: _showUserActions,
@@ -381,7 +313,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         ),
         const SizedBox(height: 4),
         Text(
-          _user!.bio?? 'لا يوجد نبذة',
+          _user!.bio ?? 'لا يوجد نبذة',
           textAlign: TextAlign.center,
           style: const TextStyle(
             fontFamily: 'Tajawal',
@@ -441,7 +373,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
             onPressed: _toggleFollow,
             style: ElevatedButton.styleFrom(
               backgroundColor:
-                  _isFollowing? AppColors.bgCard : AppColors.primary,
+                  _isFollowing ? AppColors.bgCard : AppColors.primary,
               padding: const EdgeInsets.symmetric(vertical: 12),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
@@ -452,13 +384,13 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
               _isFollowing
                 ? Icons.person_remove_rounded
                   : Icons.person_add_rounded,
-              color: _isFollowing? AppColors.primary : Colors.white,
+              color: _isFollowing ? AppColors.primary : Colors.white,
             ),
             label: Text(
-              _isFollowing? 'إلغاء المتابعة' : 'متابعة',
+              _isFollowing ? 'إلغاء المتابعة' : 'متابعة',
               style: TextStyle(
                 fontFamily: 'Tajawal',
-                color: _isFollowing? AppColors.primary : Colors.white,
+                color: _isFollowing ? AppColors.primary : Colors.white,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -491,7 +423,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       ),
       child: Column(
         children: [
-          _buildInfoRow(Icons.email_rounded, 'البريد', _user!.email?? 'مخفي'),
+          _buildInfoRow(Icons.email_rounded, 'البريد', _user!.email ?? 'مخفي'),
           const Divider(color: AppColors.glassBorder),
           _buildInfoRow(
               Icons.calendar_today_rounded,
