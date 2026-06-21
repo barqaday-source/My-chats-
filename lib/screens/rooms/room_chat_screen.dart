@@ -23,6 +23,7 @@ class _RoomChatScreenState extends State<RoomChatScreen> {
   final ScrollController _scrollController = ScrollController();
 
   Map<String, dynamic>? _replyingTo;
+  bool _isSending = false;
 
   @override
   void initState() {
@@ -55,10 +56,11 @@ class _RoomChatScreenState extends State<RoomChatScreen> {
     }
   }
 
-  // كان: Future<void> _sendMessage(String text, File? imageFile, String? audioPath, int audioDuration)
-  // صار: File? audioFile بدل String? audioPath
   Future<void> _sendMessage(String text, File? imageFile, File? audioFile, int audioDuration) async {
+    if (_isSending) return;
     if (text.trim().isEmpty && imageFile == null && audioFile == null) return;
+
+    setState(() => _isSending = true);
     try {
       await _chat.sendMessageToRoomEx(
         roomId: widget.room.id,
@@ -68,10 +70,7 @@ class _RoomChatScreenState extends State<RoomChatScreen> {
         audioDuration: audioDuration,
         replyMessage: _replyingTo,
       );
-      if (mounted) {
-        showAppSnack(context, 'تم الإرسال', success: true);
-        setState(() => _replyingTo = null);
-      }
+      if (mounted) setState(() => _replyingTo = null);
       _scrollToBottom();
     } catch (e) {
       final isOffline = e.toString().contains('offline');
@@ -82,6 +81,8 @@ class _RoomChatScreenState extends State<RoomChatScreen> {
         );
         setState(() => _replyingTo = null);
       }
+    } finally {
+      if (mounted) setState(() => _isSending = false);
     }
   }
 
@@ -124,7 +125,11 @@ class _RoomChatScreenState extends State<RoomChatScreen> {
             builder: (context, snapshot) {
               if (snapshot.hasError) return Center(child: Text('خطأ: ${snapshot.error}', style: const TextStyle(color: AppColors.danger, fontFamily: 'Tajawal')));
               if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator(color: AppColors.primary));
-              final messages = snapshot.data?? [];
+
+              final raw = snapshot.data?? [];
+              final seen = <String>{};
+              final messages = raw.where((m) => seen.add(m['id'].toString())).toList();
+
               if (messages.isEmpty) return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
                 Icon(Icons.forum_outlined, size: 56, color: AppColors.textSub.withOpacity(0.5)),
                 const SizedBox(height: 12),
@@ -139,6 +144,7 @@ class _RoomChatScreenState extends State<RoomChatScreen> {
                   final msg = messages[index];
                   final isMe = msg['sender_id'] == currentUserId;
                   return MessageBubble(
+                    key: ValueKey(msg['id']),
                     message: msg,
                     isMe: isMe,
                     showAvatar: true,
@@ -152,7 +158,7 @@ class _RoomChatScreenState extends State<RoomChatScreen> {
           ),
         ),
         ChatInputBar(
-          onSend: _sendMessage,
+          onSend: _isSending? (_,__,___,____) async {} : _sendMessage,
           replyTo: _replyingTo,
           onCancelReply: () => setState(() => _replyingTo = null),
         ),
