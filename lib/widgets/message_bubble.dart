@@ -1,480 +1,210 @@
-import 'dart:io';
-import 'package:flutter/foundation.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:hive_flutter/hive_flutter.dart';
-import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:path/path.dart' as p;
-import '../core/constants/supabase_config.dart';
+import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:audioplayers/audioplayers.dart';
+import '../../core/constants/app_colors.dart';
+import '../../services/chat_service.dart';
+import '../../screens/profile/user_profile_screen.dart';
+import 'app_snackbar.dart';
 
-class ChatService {
-  final SupabaseClient _supabase = SupabaseConfig.client;
-  static const String _bucket = 'chat_media';
+class MessageBubble extends StatefulWidget {
+  final Map<String, dynamic> message;
+  final bool isMe;
+  final bool showAvatar;
+  final VoidCallback? onReply;
+  final bool isRoom;
+  final void Function(String messageId)? onDelete;
 
-  Box? get _outboxChat => Hive.isBoxOpen('outbox_chat')? Hive.box('outbox_chat') : null;
-  Box? get _outboxRoom => Hive.isBoxOpen('outbox_room')? Hive.box('outbox_room') : null;
+  const MessageBubble({
+    super.key,
+    required this.message,
+    required this.isMe,
+    this.showAvatar = true,
+    this.onReply,
+    this.isRoom = true,
+    this.onDelete,
+  });
 
-  ChatService() {
-    Connectivity().onConnectivityChanged.listen((r) {
-      if (r!= ConnectivityResult.none) {
-        _flushOutbox('private');
-        _flushOutbox('room');
-      }
-    });
-    _flushOutbox('private');
-    _flushOutbox('room');
+  @override
+  State<MessageBubble> createState() => _MessageBubbleState();
+}
+
+class _MessageBubbleState extends State<MessageBubble> {
+  final _player = AudioPlayer();
+  bool _isPlaying = false;
+  Duration _position = Duration.zero;
+  Duration _duration = Duration.zero;
+
+  @override
+  void initState() {
+    super.initState();
+    _player.onPlayerStateChanged.listen((s) { if (mounted) setState(() => _isPlaying = s == PlayerState.playing); });
+    _player.onPositionChanged.listen((p) { if (mounted) setState(() => _position = p); });
+    _player.onDurationChanged.listen((d) { if (mounted) setState(() => _duration = d); });
+    _player.onPlayerComplete.listen((_) { if (mounted) setState(() { _isPlaying = false; _position = Duration.zero; }); });
   }
 
-  String _getChatId(String id1, String id2) {
-    final sorted = [id1, id2]..sort();
-    return sorted.join('_');
-  }
-
-  String? get _uid => _supabase.auth.currentUser?.id;
-
-  bool _isDeletedForMe(Map<String, dynamic> m) {
-    final uid = _uid;
-    if (uid == null) return false;
-    final deletedFor = (m['deleted_for'] as List?)?.cast<String>()?? const [];
-    return deletedFor.contains(uid);
-  }
-
-  // ====== Block system ======
-  Future<bool> isBlocked(String userId, String peerId) async {
+  Future<void> _deleteMessage() async {
     try {
-      final res = await _supabase
-         .from('blocked_users')
-         .select('blocker_id')
-         .or('and(blocker_id.eq.$userId,blocked_id.eq.$peerId),and(blocker_id.eq.$peerId,blocked_id.eq.$userId)')
-         .limit(1)
-         .maybeSingle();
-      return res!= null;
-    } catch (_) {
-      return false;
-    }
-  }
+      final msg = widget.message;
+      final imageUrl = msg['image_url']?? msg['media_url'];
+      final audioUrl = msg['audio_url'];
 
-  Future<void> blockUser(String peerId) async {
-    final user = _supabase.auth.currentUser;
-    if (user == null) throw Exception('not_authenticated');
-    await _supabase.from('blocked_users').upsert({
-      'blocker_id': user.id,
-      'blocked_id': peerId,
-    }, onConflict: 'blocker_id,blocked_id');
-  }
+      final ok = await ChatService().deleteMessage(
+        msg['id'].toString(),
+        isRoom: widget.isRoom,
+        imageUrl: imageUrl,
+        audioUrl: audioUrl,
+      );
 
-  Future<void> unblockUser(String peerId) async {
-    final user = _supabase.auth.currentUser;
-    if (user == null) throw Exception('not_authenticated');
-    await _supabase.from('blocked_users')
-       .delete()
-       .eq('blocker_id', user.id)
-       .eq('blocked_id', peerId);
-  }
-
-  Future<void> reportUser(String peerId, String reason) async {
-    final user = _supabase.auth.currentUser;
-    if (user == null) throw Exception('not_authenticated');
-    await _supabase.from('reports').insert({
-      'reporter_id': user.id,
-      'reported_id': peerId,
-      'reason': reason,
-    });
-  }
-
-  // ====== Read receipts ======
-  Future<void> markPrivateMessagesRead(String chatId) async {
-    final uid = _uid;
-    if (uid == null) return;
-    try {
-      await _supabase.from('private_messages')
-         .update({'read_at': DateTime.now().toIso8601String()})
-         .eq('chat_id', chatId)
-         .neq('sender_id', uid)
-         .isFilter('read_at', null);
-    } catch (_) {}
-  }
-
-  // ====== Private messages ======
-  Stream<List<Map<String, dynamic>>> getPrivateMessagesStream(String chatId) {
-    return _supabase
-       .from('private_messages')
-       .stream(primaryKey: ['id'])
-       .eq('chat_id', chatId)
-       .order('created_at', ascending: true)
-       .map((maps) {
-      final seen = <String>{};
-      return maps.where((m) =>
-          m['deleted_at'] == null &&
-         !_isDeletedForMe(m) &&
-          seen.add(m['id'].toString())
-      ).toList();
-    });
-  }
-
-  Stream<List<Map<String, dynamic>>> getPrivateMessagesStreamByUsers(String userId, String peerId) {
-    final chatId = _getChatId(userId, peerId);
-    return getPrivateMessagesStream(chatId);
-  }
-
-  Future<void> sendPrivateMessageEx({
-    required String chatId,
-    required String peerId,
-    String content = '',
-    String? mediaUrl,
-    String? audioUrl,
-    File? imageFile,
-    File? audioFile,
-    int audioDuration = 0,
-    Map<String, dynamic>? replyMessage,
-  }) async {
-    final user = _supabase.auth.currentUser;
-    if (user == null) throw Exception('not_authenticated');
-    final userId = user.id;
-
-    if (await isBlocked(userId, peerId)) {
-      throw Exception('blocked');
-    }
-
-    final payload = {
-      'chat_id': chatId,
-      'sender_id': userId,
-      'receiver_id': peerId,
-      'content': content,
-      'media_url': mediaUrl,
-      'audio_url': audioUrl,
-      'audio_duration': audioDuration,
-      'image_path': imageFile?.path,
-      'audio_path': audioFile?.path,
-      'reply_message': replyMessage,
-    };
-
-    final conn = await Connectivity().checkConnectivity();
-    if (conn.contains(ConnectivityResult.none)) {
-      await _outboxChat?.add(payload);
-      throw Exception('offline');
-    }
-    await _sendPrivateOnline(payload);
-  }
-
-  Future<void> _sendPrivateOnline(Map payload) async {
-    String? imageUrl = payload['media_url'];
-    String? audioUrl = payload['audio_url'];
-
-    if (imageUrl == null && payload['image_path']!= null) {
-      imageUrl = await _upload(File(payload['image_path']));
-    }
-    if (audioUrl == null && payload['audio_path']!= null) {
-      audioUrl = await _upload(File(payload['audio_path']));
-    }
-
-    final Map<String, dynamic>? reply = payload['reply_message'] as Map<String, dynamic>?;
-    final replyId = reply?['id'];
-    String? replyContent = reply?['content'] as String?;
-    String replyType = reply?['type']?? (reply?['audio_url']!= null? 'audio' : reply?['image_url']!= null || reply?['media_url']!= null? 'image' : 'text');
-    if (replyType == 'image' && (replyContent == null || replyContent.isEmpty)) replyContent = '📷 صورة';
-    if ((replyType == 'audio' || replyType == 'voice') && (replyContent == null || replyContent.isEmpty)) replyContent = '🎤 رسالة صوتية';
-    final replySenderName = reply?['sender_name']?? reply?['senderName'];
-
-    final insertData = {
-      'chat_id': payload['chat_id'],
-      'sender_id': payload['sender_id'],
-      'receiver_id': payload['receiver_id'],
-      'content': payload['content']?? '',
-      'type': audioUrl!= null? 'voice' : imageUrl!= null? 'image' : 'text',
-      'image_url': imageUrl,
-      'media_url': imageUrl,
-      'audio_url': audioUrl,
-      'audio_duration': payload['audio_duration']?? 0,
-      'duration': payload['audio_duration']?? 0,
-      'reply_to': replyId,
-      'reply_sender_name': replySenderName,
-      'reply_content': replyContent,
-      'reply_type': replyType,
-      'delivered_at': DateTime.now().toIso8601String(),
-    }..removeWhere((k, v) => v == null);
-
-    await _supabase.from('private_messages').insert(insertData);
-  }
-
-  // ====== Room messages ======
-  Stream<List<Map<String, dynamic>>> getRoomMessagesStream(String roomId) {
-    return _supabase
-       .from('room_messages')
-       .stream(primaryKey: ['id'])
-       .eq('room_id', roomId)
-       .order('created_at', ascending: true)
-       .map((maps) {
-      final seen = <String>{};
-      return maps.where((m) =>
-          m['deleted_at'] == null &&
-         !_isDeletedForMe(m) &&
-          seen.add(m['id'].toString())
-      ).toList();
-    });
-  }
-
-  Future<void> sendMessageToRoomEx({
-    required String roomId,
-    String content = '',
-    String? mediaUrl,
-    String? audioUrl,
-    File? imageFile,
-    File? audioFile,
-    int audioDuration = 0,
-    Map<String, dynamic>? replyMessage,
-  }) async {
-    final senderId = _supabase.auth.currentUser?.id;
-    if (senderId == null) throw Exception('not_authenticated');
-
-    final payload = {
-      'room_id': roomId,
-      'sender_id': senderId,
-      'content': content,
-      'media_url': mediaUrl,
-      'audio_url': audioUrl,
-      'audio_duration': audioDuration,
-      'image_path': imageFile?.path,
-      'audio_path': audioFile?.path,
-      'reply_message': replyMessage,
-    };
-
-    final conn = await Connectivity().checkConnectivity();
-    if (conn.contains(ConnectivityResult.none)) {
-      await _outboxRoom?.add(payload);
-      throw Exception('offline');
-    }
-    await _sendRoomOnline(payload);
-  }
-
-  Future<void> _sendRoomOnline(Map payload) async {
-    String? imageUrl = payload['media_url'];
-    String? audioUrl = payload['audio_url'];
-
-    if (imageUrl == null && payload['image_path']!= null) {
-      imageUrl = await _upload(File(payload['image_path']));
-    }
-    if (audioUrl == null && payload['audio_path']!= null) {
-      audioUrl = await _upload(File(payload['audio_path']));
-    }
-
-    final Map<String, dynamic>? reply = payload['reply_message'] as Map<String, dynamic>?;
-    final replyId = reply?['id'];
-    String? replyContent = reply?['content'] as String?;
-    String replyType = reply?['type']?? (reply?['audio_url']!= null? 'audio' : reply?['image_url']!= null || reply?['media_url']!= null? 'image' : 'text');
-    if (replyType == 'image' && (replyContent == null || replyContent.isEmpty)) replyContent = '📷 صورة';
-    if ((replyType == 'audio' || replyType == 'voice') && (replyContent == null || replyContent.isEmpty)) replyContent = '🎤 رسالة صوتية';
-    final replySenderName = reply?['sender_name']?? reply?['senderName'];
-
-    final insertData = {
-      'room_id': payload['room_id'],
-      'sender_id': payload['sender_id'],
-      'content': payload['content']?? '',
-      'type': audioUrl!= null? 'voice' : imageUrl!= null? 'image' : 'text',
-      'image_url': imageUrl,
-      'media_url': imageUrl,
-      'audio_url': audioUrl,
-      'audio_duration': payload['audio_duration']?? 0,
-      'duration': payload['audio_duration']?? 0,
-      'reply_to_id': replyId,
-      'reply_sender_name': replySenderName,
-      'reply_content': replyContent,
-      'reply_type': replyType,
-    }..removeWhere((k, v) => v == null);
-
-    await _supabase.from('room_messages').insert(insertData);
-  }
-
-  // ====== Upload ======
-  Future<String> _upload(File file) async {
-    final ext = p.extension(file.path);
-    final name = '${DateTime.now().millisecondsSinceEpoch}$ext';
-    final path = '${_supabase.auth.currentUser!.id}/$name';
-    await _supabase.storage.from(_bucket).upload(path, file,
-        fileOptions: const FileOptions(upsert: false));
-    return _supabase.storage.from(_bucket).getPublicUrl(path);
-  }
-
-  Future<String> uploadChatMedia(File file, String folder) async {
-    return _upload(file);
-  }
-
-  // ====== Delete message - غرف + خاص ======
-  Future<bool> deleteMessage(String messageId, {
-    bool isRoom = false,
-    String? imageUrl,
-    String? audioUrl,
-  }) async {
-    final user = _supabase.auth.currentUser;
-    if (user == null) return false;
-
-    final urls = [imageUrl, audioUrl].where((u) => u!= null && u!.isNotEmpty);
-    for (final url in urls) {
-      try {
-        final uri = Uri.parse(url!);
-        final idx = uri.pathSegments.indexOf(_bucket);
-        if (idx!= -1 && idx + 1 < uri.pathSegments.length) {
-          final filePath = uri.pathSegments.sublist(idx + 1).join('/');
-          await _supabase.storage.from(_bucket).remove([filePath]);
-        }
-      } catch (e) {
-        debugPrint('storage delete skip: $e');
+      if (!mounted) return;
+      if (ok) {
+        showAppSnack(context, 'تم حذف الرسالة', success: true);
+        widget.onDelete?.call(msg['id'].toString());
+      } else {
+        showAppSnack(context, 'فشل الحذف - تحقق من الصلاحيات', success: false);
       }
-    }
-
-    final table = isRoom? 'room_messages' : 'private_messages';
-    final res = await _supabase.from(table)
-       .update({'deleted_at': DateTime.now().toIso8601String()})
-       .eq('id', messageId)
-       .eq('sender_id', user.id)
-       .select();
-
-    return res.isNotEmpty;
-  }
-
-  // ====== Clear chat / Delete chat ======
-  Future<void> clearChat(String chatId, {bool isRoom = false}) async {
-    final userId = _uid;
-    if (userId == null) throw Exception('not_authenticated');
-
-    final table = isRoom? 'room_messages' : 'private_messages';
-    final col = isRoom? 'room_id' : 'chat_id';
-
-    final msgs = await _supabase
-       .from(table)
-       .select('id, deleted_for')
-       .eq(col, chatId)
-       .isFilter('deleted_at', null);
-
-    for (final m in msgs as List) {
-      final id = m['id'];
-      final deletedFor = (m['deleted_for'] as List?)?.cast<String>()?? [];
-      if (deletedFor.contains(userId)) continue;
-
-      final newDeletedFor = [...deletedFor, userId];
-      await _supabase
-         .from(table)
-         .update({'deleted_for': newDeletedFor})
-         .eq('id', id);
+    } catch (e) {
+      if (mounted) showAppSnack(context, 'فشل الحذف', success: false);
     }
   }
 
-  // حذف دردشة خاصة كاملة من القائمة
-  Future<bool> deletePrivateChat(String chatId) async {
-    final uid = _uid;
-    if (uid == null) return false;
-
-    // علّم كل الرسائل محذوفة لهذا المستخدم
-    await clearChat(chatId, isRoom: false);
-
-    // إذا عندك جدول private_chats احذفه هم
-    try {
-      await _supabase.from('private_chats').delete().eq('id', chatId);
-    } catch (_) {}
-
-    return true;
+  void _showDeleteDialog() {
+    showDialog(context: context, builder: (ctx) => AlertDialog(
+      backgroundColor: AppColors.bgCard,
+      title: const Text('حذف الرسالة', style: TextStyle(color: AppColors.white, fontFamily: 'Tajawal')),
+      content: const Text('هل تريد حذف هذه الرسالة؟', style: TextStyle(color: AppColors.textSub, fontFamily: 'Tajawal')),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إلغاء', style: TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub))),
+        TextButton(onPressed: () { Navigator.pop(ctx); _deleteMessage(); },
+          child: const Text('حذف', style: TextStyle(color: AppColors.danger, fontFamily: 'Tajawal'))),
+      ],
+    ));
   }
 
-  // ====== Outbox flush ======
-  Future<void> _flushOutbox(String kind) async {
-    final box = kind == 'room'? _outboxRoom : _outboxChat;
-    if (box == null || box.isEmpty) return;
-    final keys = box.keys.toList();
-    for (final k in keys) {
-      try {
-        final data = Map<String, dynamic>.from(box.get(k));
-        if (kind!= 'room') {
-          final sender = data['sender_id'] as String;
-          final receiver = data['receiver_id'] as String;
-          if (await isBlocked(sender, receiver)) {
-            await box.delete(k);
-            continue;
-          }
-        }
-        if (kind == 'room') {
-          await _sendRoomOnline(data);
-        } else {
-          await _sendPrivateOnline(data);
-        }
-        await box.delete(k);
-      } catch (_) {
-        break;
-      }
+  void _openProfile() {
+    final userId = widget.message['sender_id'];
+    if (userId == null || widget.isMe) return;
+    Navigator.push(context, MaterialPageRoute(
+      builder: (_) => UserProfileScreen(userId: userId),
+    ));
+  }
+
+  String _formatDuration(Duration d) { final m = d.inMinutes.remainder(60).toString().padLeft(2, '0'); final s = d.inSeconds.remainder(60).toString().padLeft(2, '0'); return '$m:$s'; }
+  String _formatTime(dynamic ts) { try { final dt = DateTime.parse(ts.toString()).toLocal(); final h = dt.hour % 12 == 0? 12 : dt.hour % 12; final m = dt.minute.toString().padLeft(2, '0'); final am = dt.hour < 12? 'ص' : 'م'; return '$h:$m $am'; } catch (_) { return ''; } }
+
+  @override
+  Widget build(BuildContext context) {
+    final imageUrl = widget.message['media_url']?? widget.message['image_url'];
+    final audioUrl = widget.message['audio_url'];
+    final content = widget.message['content']?.toString()?? '';
+    final senderName = widget.message['profile_username']?? widget.message['sender_name']?? widget.message['username']?? 'مستخدم';
+    final senderAvatar = widget.message['profile_avatar']?? widget.message['sender_avatar'];
+    final timeStr = _formatTime(widget.message['created_at']);
+
+    final replyText = widget.message['reply_to_text']?? widget.message['reply_content'];
+    final replyType = widget.message['reply_to_type']?? 'text';
+    String? replyContent;
+    if (replyText!= null) {
+      replyContent = replyText;
+      if (replyType == 'image') replyContent = '📷 صورة';
+      if (replyType == 'audio') replyContent = '🎤 رسالة صوتية';
     }
+
+    final bubbleColor = widget.isMe? const Color(0xFFE6F7F3) : Colors.white;
+    final borderColor = widget.isMe? AppColors.primary.withOpacity(0.3) : AppColors.glassBorder;
+
+    Widget bubbleContent = Column(
+      crossAxisAlignment: widget.isMe? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (!widget.isMe && widget.showAvatar)
+          Padding(padding: const EdgeInsets.only(bottom: 4),
+            child: Text(senderName, style: const TextStyle(fontFamily: 'Tajawal', fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.navy))),
+        if (replyContent!= null) Container(
+          margin: const EdgeInsets.only(bottom: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(color: Colors.black.withOpacity(0.06), borderRadius: BorderRadius.circular(8),
+            border: const Border(right: BorderSide(color: AppColors.primary, width: 3))),
+          child: Text(replyContent, maxLines: 1, overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontFamily: 'Tajawal', fontSize: 12, color: AppColors.textSub))),
+        if (imageUrl!= null && imageUrl.toString().isNotEmpty)
+          ClipRRect(borderRadius: BorderRadius.circular(12),
+            child: CachedNetworkImage(imageUrl: imageUrl, width: 220, fit: BoxFit.cover,
+              placeholder: (c, u) => Container(width: 220, height: 140, color: AppColors.bgCard2,
+                child: const Center(child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary))),
+              errorWidget: (c, u, e) => Container(width: 220, height: 140, color: AppColors.bgCard2,
+                child: const Icon(Icons.broken_image_rounded, color: AppColors.textSub)))),
+        if (audioUrl!= null && audioUrl.toString().isNotEmpty)
+          Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(color: AppColors.bgCard2, borderRadius: BorderRadius.circular(10)),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              IconButton(onPressed: () async { if (_isPlaying) { await _player.pause(); } else { await _player.play(UrlSource(audioUrl)); } },
+                icon: Icon(_isPlaying? Icons.pause_circle : Icons.play_arrow_rounded, color: AppColors.navy, size: 28),
+                padding: EdgeInsets.zero, constraints: const BoxConstraints()),
+              const SizedBox(width: 6),
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Text('رسالة صوتية', style: TextStyle(fontFamily: 'Tajawal', fontSize: 13, color: AppColors.text)),
+                if (_duration.inSeconds > 0)
+                  Text('${_formatDuration(_position)} / ${_formatDuration(_duration)}',
+                    style: const TextStyle(fontFamily: 'Tajawal', fontSize: 11, color: AppColors.textSub)),
+              ]),
+            ])),
+        if (content.isNotEmpty)
+          Padding(padding: EdgeInsets.only(top: (imageUrl!= null || audioUrl!= null)? 6 : 0),
+            child: Text(content, style: const TextStyle(fontFamily: 'Tajawal', fontSize: 15, color: AppColors.text, height: 1.4))),
+        const SizedBox(height: 4),
+        Text(timeStr, style: const TextStyle(fontFamily: 'Tajawal', fontSize: 11, color: AppColors.textSub)),
+      ],
+    );
+
+    final bubble = Container(
+      constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.72),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: bubbleColor,
+        borderRadius: BorderRadius.only(
+          topLeft: const Radius.circular(18), topRight: const Radius.circular(18),
+          bottomLeft: Radius.circular(widget.isMe? 18 : 4),
+          bottomRight: Radius.circular(widget.isMe? 4 : 18)),
+        border: Border.all(color: borderColor),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 6, offset: const Offset(0, 2))],
+      ),
+      child: bubbleContent,
+    );
+
+    return GestureDetector(
+      onLongPress: widget.isMe? _showDeleteDialog : null,
+      onHorizontalDragEnd: (_) => widget.onReply?.call(),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+        child: Row(
+          mainAxisAlignment: widget.isMe? MainAxisAlignment.end : MainAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            if (!widget.isMe && widget.showAvatar)
+              GestureDetector(
+                onTap: _openProfile,
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: CircleAvatar(
+                    radius: 16, backgroundColor: AppColors.bgCard2,
+                    backgroundImage: senderAvatar!= null && senderAvatar.toString().isNotEmpty
+                ? CachedNetworkImageProvider(senderAvatar) : null,
+                    child: senderAvatar == null || senderAvatar.toString().isEmpty
+                ? Text(senderName.isNotEmpty? senderName[0] : '?',
+                          style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.navy, fontWeight: FontWeight.w700))
+                      : null,
+                  ),
+                ),
+              ),
+            if (!widget.isMe &&!widget.showAvatar) const SizedBox(width: 38),
+            Flexible(child: bubble),
+          ],
+        ),
+      ),
+    );
   }
 
-  // ====== Chats list ======
-  Future<List<Map<String, dynamic>>> getUserChats(String userId) async {
-    final response = await _supabase.from('private_messages')
-       .select('chat_id, sender_id, receiver_id, content, created_at, deleted_at, deleted_for')
-       .or('sender_id.eq.$userId,receiver_id.eq.$userId')
-       .isFilter('deleted_at', null)
-       .order('created_at', ascending: false);
-
-    final Map<String, Map<String, dynamic>> chats = {};
-    for (var msg in response) {
-      final deletedFor = (msg['deleted_for'] as List?)?.cast<String>()?? [];
-      if (deletedFor.contains(userId)) continue;
-
-      final chatId = msg['chat_id'];
-      if (chats.containsKey(chatId)) continue;
-
-      final peerId = msg['sender_id'] == userId? msg['receiver_id'] : msg['sender_id'];
-      if (await isBlocked(userId, peerId)) continue;
-
-      final peerData = await _supabase.from(SupabaseConfig.tUsers)
-         .select('id, username, avatar_url, is_online')
-         .eq('id', peerId)
-         .maybeSingle();
-
-      if (peerData!= null) {
-        chats[chatId] = {
-          'chat_id': chatId,
-          'id': chatId,
-          'peer_id': peerData['id'],
-          'peer': {
-            'id': peerData['id'],
-            'username': peerData['username']?? 'مستخدم',
-            'avatar_url': peerData['avatar_url'],
-            'is_online': peerData['is_online']?? false,
-          },
-          'peer_name': peerData['username']?? 'مستخدم',
-          'peer_avatar': peerData['avatar_url'],
-          'is_online': peerData['is_online']?? false,
-          'last_message': msg['content'],
-          'last_message_time': msg['created_at'],
-          'unread_count': 0,
-        };
-      }
-    }
-    return chats.values.toList();
-  }
-
-  Future<int> getUnreadCount(String userId, String peerId) async {
-    final chatId = _getChatId(userId, peerId);
-    final res = await _supabase.from('private_messages').select('id')
-       .eq('chat_id', chatId).eq('receiver_id', userId).isFilter('read_at', null);
-    return (res as List).length;
-  }
-
-  Future<Map<String, dynamic>?> getLastPrivateMessage(String userId, String peerId) async {
-    final chatId = _getChatId(userId, peerId);
-    return await _supabase.from('private_messages').select()
-       .eq('chat_id', chatId).order('created_at', ascending: false).limit(1).maybeSingle();
-  }
-
-  Future<void> setUserOnlineInRoom(String userId, String roomId) async {
-    await _supabase.from('room_members').upsert({
-      'user_id': userId,
-      'room_id': roomId,
-      'is_online': true,
-      'last_seen': DateTime.now().toIso8601String()
-    }, onConflict: 'user_id,room_id');
-  }
-
-  Future<void> setUserOfflineInRoom(String userId, String roomId) async {
-    await _supabase.from('room_members').update({
-      'is_online': false,
-      'last_seen': DateTime.now().toIso8601String()
-    }).eq('user_id', userId).eq('room_id', roomId);
-  }
+  @override
+  void dispose() { _player.dispose(); super.dispose(); }
 }
