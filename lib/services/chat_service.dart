@@ -42,11 +42,11 @@ class ChatService {
   Future<bool> isBlocked(String userId, String peerId) async {
     try {
       final res = await _supabase
-     .from('blocked_users')
-     .select('blocker_id')
-     .or('and(blocker_id.eq.$userId,blocked_id.eq.$peerId),and(blocker_id.eq.$peerId,blocked_id.eq.$userId)')
-     .limit(1)
-     .maybeSingle();
+         .from('blocked_users')
+         .select('blocker_id')
+         .or('and(blocker_id.eq.$userId,blocked_id.eq.$peerId),and(blocker_id.eq.$peerId,blocked_id.eq.$userId)')
+         .limit(1)
+         .maybeSingle();
       return res!= null;
     } catch (_) {
       return false;
@@ -66,9 +66,9 @@ class ChatService {
     final user = _supabase.auth.currentUser;
     if (user == null) throw Exception('not_authenticated');
     await _supabase.from('blocked_users')
-   .delete()
-   .eq('blocker_id', user.id)
-   .eq('blocked_id', peerId);
+       .delete()
+       .eq('blocker_id', user.id)
+       .eq('blocked_id', peerId);
   }
 
   Future<void> reportUser(String peerId, String reason) async {
@@ -87,26 +87,26 @@ class ChatService {
     if (uid == null) return;
     try {
       await _supabase.from('private_messages')
-       .update({'read_at': DateTime.now().toIso8601String()})
-       .eq('chat_id', chatId)
-       .neq('sender_id', uid)
-       .isFilter('read_at', null);
+         .update({'read_at': DateTime.now().toIso8601String()})
+         .eq('chat_id', chatId)
+         .neq('sender_id', uid)
+         .isFilter('read_at', null);
     } catch (_) {}
   }
 
   // ====== Private messages ======
   Stream<List<Map<String, dynamic>>> getPrivateMessagesStream(String chatId) {
     return _supabase
-   .from('private_messages')
-   .stream(primaryKey: ['id'])
-   .eq('chat_id', chatId)
-   .order('created_at', ascending: true)
-   .map((maps) {
+       .from('private_messages')
+       .stream(primaryKey: ['id'])
+       .eq('chat_id', chatId)
+       .order('created_at', ascending: true)
+       .map((maps) {
       final seen = <String>{};
       return maps.where((m) =>
-        m['deleted_at'] == null &&
-       !_isDeletedForMe(m) &&
-        seen.add(m['id'].toString())
+          m['deleted_at'] == null &&
+         !_isDeletedForMe(m) &&
+          seen.add(m['id'].toString())
       ).toList();
     });
   }
@@ -199,16 +199,16 @@ class ChatService {
   // ====== Room messages ======
   Stream<List<Map<String, dynamic>>> getRoomMessagesStream(String roomId) {
     return _supabase
-   .from('room_messages')
-   .stream(primaryKey: ['id'])
-   .eq('room_id', roomId)
-   .order('created_at', ascending: true)
-   .map((maps) {
+       .from('room_messages')
+       .stream(primaryKey: ['id'])
+       .eq('room_id', roomId)
+       .order('created_at', ascending: true)
+       .map((maps) {
       final seen = <String>{};
       return maps.where((m) =>
-        m['deleted_at'] == null &&
-       !_isDeletedForMe(m) &&
-        seen.add(m['id'].toString())
+          m['deleted_at'] == null &&
+         !_isDeletedForMe(m) &&
+          seen.add(m['id'].toString())
       ).toList();
     });
   }
@@ -298,14 +298,14 @@ class ChatService {
     return _upload(file);
   }
 
-  // ====== Delete message ======
-  Future<void> deleteMessage(String messageId, {
+  // ====== Delete message - غرف + خاص ======
+  Future<bool> deleteMessage(String messageId, {
     bool isRoom = false,
     String? imageUrl,
     String? audioUrl,
   }) async {
     final user = _supabase.auth.currentUser;
-    if (user == null) throw Exception('not_authenticated');
+    if (user == null) return false;
 
     final urls = [imageUrl, audioUrl].where((u) => u!= null && u!.isNotEmpty);
     for (final url in urls) {
@@ -322,13 +322,16 @@ class ChatService {
     }
 
     final table = isRoom? 'room_messages' : 'private_messages';
-    await _supabase.from(table)
-   .update({'deleted_at': DateTime.now().toIso8601String()})
-   .eq('id', messageId)
-   .eq('sender_id', user.id);
+    final res = await _supabase.from(table)
+       .update({'deleted_at': DateTime.now().toIso8601String()})
+       .eq('id', messageId)
+       .eq('sender_id', user.id)
+       .select();
+
+    return res.isNotEmpty;
   }
 
-  // ====== Clear chat ======
+  // ====== Clear chat / Delete chat ======
   Future<void> clearChat(String chatId, {bool isRoom = false}) async {
     final userId = _uid;
     if (userId == null) throw Exception('not_authenticated');
@@ -337,10 +340,10 @@ class ChatService {
     final col = isRoom? 'room_id' : 'chat_id';
 
     final msgs = await _supabase
-   .from(table)
-   .select('id, deleted_for')
-   .eq(col, chatId)
-   .isFilter('deleted_at', null);
+       .from(table)
+       .select('id, deleted_for')
+       .eq(col, chatId)
+       .isFilter('deleted_at', null);
 
     for (final m in msgs as List) {
       final id = m['id'];
@@ -349,10 +352,26 @@ class ChatService {
 
       final newDeletedFor = [...deletedFor, userId];
       await _supabase
-     .from(table)
-     .update({'deleted_for': newDeletedFor})
-     .eq('id', id);
+         .from(table)
+         .update({'deleted_for': newDeletedFor})
+         .eq('id', id);
     }
+  }
+
+  // حذف دردشة خاصة كاملة من القائمة
+  Future<bool> deletePrivateChat(String chatId) async {
+    final uid = _uid;
+    if (uid == null) return false;
+
+    // علّم كل الرسائل محذوفة لهذا المستخدم
+    await clearChat(chatId, isRoom: false);
+
+    // إذا عندك جدول private_chats احذفه هم
+    try {
+      await _supabase.from('private_chats').delete().eq('id', chatId);
+    } catch (_) {}
+
+    return true;
   }
 
   // ====== Outbox flush ======
@@ -386,12 +405,16 @@ class ChatService {
   // ====== Chats list ======
   Future<List<Map<String, dynamic>>> getUserChats(String userId) async {
     final response = await _supabase.from('private_messages')
-   .select('chat_id, sender_id, receiver_id, content, created_at')
-   .or('sender_id.eq.$userId,receiver_id.eq.$userId')
-   .order('created_at', ascending: false);
+       .select('chat_id, sender_id, receiver_id, content, created_at, deleted_at, deleted_for')
+       .or('sender_id.eq.$userId,receiver_id.eq.$userId')
+       .isFilter('deleted_at', null)
+       .order('created_at', ascending: false);
 
     final Map<String, Map<String, dynamic>> chats = {};
     for (var msg in response) {
+      final deletedFor = (msg['deleted_for'] as List?)?.cast<String>()?? [];
+      if (deletedFor.contains(userId)) continue;
+
       final chatId = msg['chat_id'];
       if (chats.containsKey(chatId)) continue;
 
@@ -399,9 +422,9 @@ class ChatService {
       if (await isBlocked(userId, peerId)) continue;
 
       final peerData = await _supabase.from(SupabaseConfig.tUsers)
-     .select('id, username, avatar_url, is_online')
-     .eq('id', peerId)
-     .maybeSingle();
+         .select('id, username, avatar_url, is_online')
+         .eq('id', peerId)
+         .maybeSingle();
 
       if (peerData!= null) {
         chats[chatId] = {
@@ -429,14 +452,14 @@ class ChatService {
   Future<int> getUnreadCount(String userId, String peerId) async {
     final chatId = _getChatId(userId, peerId);
     final res = await _supabase.from('private_messages').select('id')
-   .eq('chat_id', chatId).eq('receiver_id', userId).isFilter('read_at', null);
+       .eq('chat_id', chatId).eq('receiver_id', userId).isFilter('read_at', null);
     return (res as List).length;
   }
 
   Future<Map<String, dynamic>?> getLastPrivateMessage(String userId, String peerId) async {
     final chatId = _getChatId(userId, peerId);
     return await _supabase.from('private_messages').select()
-   .eq('chat_id', chatId).order('created_at', ascending: false).limit(1).maybeSingle();
+       .eq('chat_id', chatId).order('created_at', ascending: false).limit(1).maybeSingle();
   }
 
   Future<void> setUserOnlineInRoom(String userId, String roomId) async {
