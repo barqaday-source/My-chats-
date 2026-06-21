@@ -42,11 +42,11 @@ class ChatService {
   Future<bool> isBlocked(String userId, String peerId) async {
     try {
       final res = await _supabase
-       .from('blocked_users')
-       .select('blocker_id')
-       .or('and(blocker_id.eq.$userId,blocked_id.eq.$peerId),and(blocker_id.eq.$peerId,blocked_id.eq.$userId)')
-       .limit(1)
-       .maybeSingle();
+      .from('blocked_users')
+      .select('blocker_id')
+      .or('and(blocker_id.eq.$userId,blocked_id.eq.$peerId),and(blocker_id.eq.$peerId,blocked_id.eq.$userId)')
+      .limit(1)
+      .maybeSingle();
       return res!= null;
     } catch (_) {
       return false;
@@ -66,9 +66,9 @@ class ChatService {
     final user = _supabase.auth.currentUser;
     if (user == null) throw Exception('not_authenticated');
     await _supabase.from('blocked_users')
-     .delete()
-     .eq('blocker_id', user.id)
-     .eq('blocked_id', peerId);
+    .delete()
+    .eq('blocker_id', user.id)
+    .eq('blocked_id', peerId);
   }
 
   Future<void> reportUser(String peerId, String reason) async {
@@ -84,11 +84,11 @@ class ChatService {
   // ====== Private messages ======
   Stream<List<Map<String, dynamic>>> getPrivateMessagesStream(String chatId) {
     return _supabase
-     .from('private_messages')
-     .stream(primaryKey: ['id'])
-     .eq('chat_id', chatId)
-     .order('created_at', ascending: true)
-     .map((maps) => maps.where((m) =>
+    .from('private_messages')
+    .stream(primaryKey: ['id'])
+    .eq('chat_id', chatId)
+    .order('created_at', ascending: true)
+    .map((maps) => maps.where((m) =>
           m['deleted_at'] == null &&!_isDeletedForMe(m)
         ).toList());
   }
@@ -138,6 +138,7 @@ class ChatService {
     await _sendPrivateOnline(payload);
   }
 
+  // PATCHED - يطابق قاعدة البيانات
   Future<void> _sendPrivateOnline(Map payload) async {
     String? imageUrl = payload['media_url'];
     String? audioUrl = payload['audio_url'];
@@ -151,10 +152,10 @@ class ChatService {
 
     final Map<String, dynamic>? reply = payload['reply_message'] as Map<String, dynamic>?;
     final replyId = reply?['id'];
-    String? replyText = reply?['content'] as String?;
-    final replyType = reply?['type']?? (reply?['audio_url']!= null? 'audio' : reply?['image_url']!= null || reply?['media_url']!= null? 'image' : 'text');
-    if (replyType == 'image' && (replyText == null || replyText.isEmpty)) replyText = '📷 صورة';
-    if (replyType == 'audio' && (replyText == null || replyText.isEmpty)) replyText = '🎤 رسالة صوتية';
+    String? replyContent = reply?['content'] as String?;
+    String replyType = reply?['type']?? (reply?['audio_url']!= null? 'audio' : reply?['image_url']!= null || reply?['media_url']!= null? 'image' : 'text');
+    if (replyType == 'image' && (replyContent == null || replyContent.isEmpty)) replyContent = '📷 صورة';
+    if ((replyType == 'audio' || replyType == 'voice') && (replyContent == null || replyContent.isEmpty)) replyContent = '🎤 رسالة صوتية';
     final replySenderName = reply?['sender_name']?? reply?['senderName'];
 
     final insertData = {
@@ -162,17 +163,18 @@ class ChatService {
       'sender_id': payload['sender_id'],
       'receiver_id': payload['receiver_id'],
       'content': payload['content']?? '',
+      'type': audioUrl!= null? 'voice' : imageUrl!= null? 'image' : 'text',
       'image_url': imageUrl,
       'media_url': imageUrl,
       'audio_url': audioUrl,
       'audio_duration': payload['audio_duration']?? 0,
       'duration': payload['audio_duration']?? 0,
-      'reply_to_message_id': replyId,
+      // أعمدة الرد الصحيحة
       'reply_to': replyId,
-      'reply_to_text': replyText,
-      'reply_to_type': replyType,
-      'reply_to_sender_name': replySenderName,
-    };
+      'reply_sender_name': replySenderName,
+      'reply_content': replyContent,
+      'reply_type': replyType,
+    }..removeWhere((k, v) => v == null);
 
     await _supabase.from('private_messages').insert(insertData);
   }
@@ -180,11 +182,11 @@ class ChatService {
   // ====== Room messages ======
   Stream<List<Map<String, dynamic>>> getRoomMessagesStream(String roomId) {
     return _supabase
-     .from('room_messages')
-     .stream(primaryKey: ['id'])
-     .eq('room_id', roomId)
-     .order('created_at', ascending: true)
-     .map((maps) => maps.where((m) =>
+    .from('room_messages')
+    .stream(primaryKey: ['id'])
+    .eq('room_id', roomId)
+    .order('created_at', ascending: true)
+    .map((maps) => maps.where((m) =>
           m['deleted_at'] == null &&!_isDeletedForMe(m)
         ).toList());
   }
@@ -222,6 +224,7 @@ class ChatService {
     await _sendRoomOnline(payload);
   }
 
+  // PATCHED - يطابق قاعدة البيانات
   Future<void> _sendRoomOnline(Map payload) async {
     String? imageUrl = payload['media_url'];
     String? audioUrl = payload['audio_url'];
@@ -235,27 +238,28 @@ class ChatService {
 
     final Map<String, dynamic>? reply = payload['reply_message'] as Map<String, dynamic>?;
     final replyId = reply?['id'];
-    String? replyText = reply?['content'] as String?;
-    final replyType = reply?['type']?? (reply?['audio_url']!= null? 'audio' : reply?['image_url']!= null || reply?['media_url']!= null? 'image' : 'text');
-    if (replyType == 'image' && (replyText == null || replyText.isEmpty)) replyText = '📷 صورة';
-    if (replyType == 'audio' && (replyText == null || replyText.isEmpty)) replyText = '🎤 رسالة صوتية';
+    String? replyContent = reply?['content'] as String?;
+    String replyType = reply?['type']?? (reply?['audio_url']!= null? 'audio' : reply?['image_url']!= null || reply?['media_url']!= null? 'image' : 'text');
+    if (replyType == 'image' && (replyContent == null || replyContent.isEmpty)) replyContent = '📷 صورة';
+    if ((replyType == 'audio' || replyType == 'voice') && (replyContent == null || replyContent.isEmpty)) replyContent = '🎤 رسالة صوتية';
     final replySenderName = reply?['sender_name']?? reply?['senderName'];
 
     final insertData = {
       'room_id': payload['room_id'],
       'sender_id': payload['sender_id'],
       'content': payload['content']?? '',
+      'type': audioUrl!= null? 'voice' : imageUrl!= null? 'image' : 'text',
       'image_url': imageUrl,
       'media_url': imageUrl,
       'audio_url': audioUrl,
       'audio_duration': payload['audio_duration']?? 0,
       'duration': payload['audio_duration']?? 0,
-      'reply_to_message_id': replyId,
-      'reply_to': replyId,
-      'reply_to_text': replyText,
-      'reply_to_type': replyType,
-      'reply_to_sender_name': replySenderName,
-    };
+      // للغرف: reply_to_id
+      'reply_to_id': replyId,
+      'reply_sender_name': replySenderName,
+      'reply_content': replyContent,
+      'reply_type': replyType,
+    }..removeWhere((k, v) => v == null);
 
     await _supabase.from('room_messages').insert(insertData);
   }
@@ -299,9 +303,9 @@ class ChatService {
 
     final table = isRoom? 'room_messages' : 'private_messages';
     await _supabase.from(table)
-     .update({'deleted_at': DateTime.now().toIso8601String()})
-     .eq('id', messageId)
-     .eq('sender_id', user.id);
+    .update({'deleted_at': DateTime.now().toIso8601String()})
+    .eq('id', messageId)
+    .eq('sender_id', user.id);
   }
 
   // ====== Clear chat - لي فقط ======
@@ -313,10 +317,10 @@ class ChatService {
     final col = isRoom? 'room_id' : 'chat_id';
 
     final msgs = await _supabase
-     .from(table)
-     .select('id, deleted_for')
-     .eq(col, chatId)
-     .isFilter('deleted_at', null);
+    .from(table)
+    .select('id, deleted_for')
+    .eq(col, chatId)
+    .isFilter('deleted_at', null);
 
     for (final m in msgs as List) {
       final id = m['id'];
@@ -325,9 +329,9 @@ class ChatService {
 
       final newDeletedFor = [...deletedFor, userId];
       await _supabase
-       .from(table)
-       .update({'deleted_for': newDeletedFor})
-       .eq('id', id);
+      .from(table)
+      .update({'deleted_for': newDeletedFor})
+      .eq('id', id);
     }
   }
 
@@ -362,9 +366,9 @@ class ChatService {
   // ====== Chats list ======
   Future<List<Map<String, dynamic>>> getUserChats(String userId) async {
     final response = await _supabase.from('private_messages')
-     .select('chat_id, sender_id, receiver_id, content, created_at')
-     .or('sender_id.eq.$userId,receiver_id.eq.$userId')
-     .order('created_at', ascending: false);
+    .select('chat_id, sender_id, receiver_id, content, created_at')
+    .or('sender_id.eq.$userId,receiver_id.eq.$userId')
+    .order('created_at', ascending: false);
 
     final Map<String, Map<String, dynamic>> chats = {};
     for (var msg in response) {
@@ -375,9 +379,9 @@ class ChatService {
       if (await isBlocked(userId, peerId)) continue;
 
       final peerData = await _supabase.from(SupabaseConfig.tUsers)
-       .select('id, username, avatar_url, is_online')
-       .eq('id', peerId)
-       .maybeSingle();
+      .select('id, username, avatar_url, is_online')
+      .eq('id', peerId)
+      .maybeSingle();
 
       if (peerData!= null) {
         chats[chatId] = {
@@ -405,14 +409,14 @@ class ChatService {
   Future<int> getUnreadCount(String userId, String peerId) async {
     final chatId = _getChatId(userId, peerId);
     final res = await _supabase.from('private_messages').select('id')
-     .eq('chat_id', chatId).eq('receiver_id', userId).eq('is_read', false);
+    .eq('chat_id', chatId).eq('receiver_id', userId).eq('is_read', false);
     return (res as List).length;
   }
 
   Future<Map<String, dynamic>?> getLastPrivateMessage(String userId, String peerId) async {
     final chatId = _getChatId(userId, peerId);
     return await _supabase.from('private_messages').select()
-     .eq('chat_id', chatId).order('created_at', ascending: false).limit(1).maybeSingle();
+    .eq('chat_id', chatId).order('created_at', ascending: false).limit(1).maybeSingle();
   }
 
   Future<void> setUserOnlineInRoom(String userId, String roomId) async {
