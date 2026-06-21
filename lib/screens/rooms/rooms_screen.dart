@@ -21,7 +21,7 @@ class _RoomsScreenState extends State<RoomsScreen> {
   bool _loading = true;
   String _search = '';
   int _tab = 0;
-  final _tabs = ['الكل', 'النشطة', 'الرسمية', 'المغلقة'];
+  final _tabs = ['الكل', 'النشطة'];
 
   @override
   void initState() { super.initState(); _load(); }
@@ -42,12 +42,11 @@ class _RoomsScreenState extends State<RoomsScreen> {
       final q = _search.toLowerCase();
       list = list.where((r) => r.name.toLowerCase().contains(q)).toList();
     }
-    switch (_tab) {
-      case 1: return list.where((r) => r.onlineCount > 0).toList();
-      case 2: return list.where((r) => r.isOfficial).toList();
-      case 3: return list.where((r) => r.isLocked).toList();
-      default: return list;
+    // 0 = الكل، 1 = النشطة
+    if (_tab == 1) {
+      return list.where((r) => r.onlineCount > 0).toList();
     }
+    return list;
   }
 
   Future<void> _openRoom(RoomModel room) async {
@@ -76,7 +75,7 @@ class _RoomsScreenState extends State<RoomsScreen> {
           child: SafeArea(
             top: false,
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
+              padding: const EdgeInsets.fromLTRB(20, 20, 20),
               child: Column(mainAxisSize: MainAxisSize.min, children: [
                 Container(width: 40, height: 4, margin: const EdgeInsets.only(bottom: 16), decoration: BoxDecoration(color: AppColors.divider, borderRadius: BorderRadius.circular(2))),
                 const Text('إنشاء غرفة جديدة', style: TextStyle(fontFamily: 'Tajawal', color: AppColors.text, fontSize: 18, fontWeight: FontWeight.w700)),
@@ -95,9 +94,8 @@ class _RoomsScreenState extends State<RoomsScreen> {
                         return;
                       }
                       final auth = ctx.read<AuthProvider>();
-                      // لا ترسل id يدوي – خلي Supabase يولده
                       final room = RoomModel(
-                        id: '', // سيتجاهله toJson في RoomService
+                        id: '',
                         name: nameCtrl.text.trim(),
                         description: descCtrl.text.trim().isEmpty? null : descCtrl.text.trim(),
                         ownerId: auth.user!.id,
@@ -177,7 +175,7 @@ class _RoomsScreenState extends State<RoomsScreen> {
         const SizedBox(height: 12),
         Expanded(
           child: _loading
-      ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+     ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
               : RefreshIndicator(
                   onRefresh: _load, color: AppColors.primary,
                   child: Builder(builder: (_) {
@@ -219,7 +217,7 @@ class _RoomCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 14),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(20), color: AppColors.bgCard,
-        border: Border.all(color: room.isOfficial? AppColors.primary : AppColors.glassBorder, width: room.isOfficial? 1.2 : 0.8),
+        border: Border.all(color: AppColors.glassBorder, width: 0.8),
         boxShadow: [BoxShadow(color: AppColors.text.withOpacity(0.04), blurRadius: 8, offset: const Offset(0, 2))],
       ),
       child: ClipRRect(
@@ -234,8 +232,6 @@ class _RoomCard extends StatelessWidget {
                 CircleAvatar(radius: 14, backgroundColor: AppColors.glass, backgroundImage: room.ownerAvatar!= null? CachedNetworkImageProvider(room.ownerAvatar!) : null, child: room.ownerAvatar == null? Text(room.ownerName.isNotEmpty? room.ownerName[0].toUpperCase() : 'U', style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.primaryDark, fontSize: 10, fontWeight: FontWeight.bold)) : null),
                 const SizedBox(width: 8),
                 Expanded(child: Text(room.ownerName, style: TextStyle(fontFamily: 'Tajawal', color: room.imageUrl!= null? Colors.white.withOpacity(0.85) : AppColors.textSub, fontSize: 12), overflow: TextOverflow.ellipsis)),
-                if (room.isOfficial) _badge('رسمي', AppColors.navy),
-                if (room.isLocked)...[const SizedBox(width: 6), _badge('مغلق', AppColors.navy, icon: Icons.lock_outline_rounded)],
                 if (isOwner)...[
                   const SizedBox(width: 4),
                   Material(
@@ -278,17 +274,17 @@ class _RoomCard extends StatelessWidget {
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                       decoration: BoxDecoration(
-                        color: room.isLocked? AppColors.bgCard2 : AppColors.primary,
+                        color: AppColors.primary,
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      child: Row(mainAxisSize: MainAxisSize.min, children: [
-                        Icon(room.isLocked? Icons.lock_outline_rounded : Icons.login_rounded, color: room.isLocked? AppColors.textSub : Colors.white, size: 16),
-                        const SizedBox(width: 6),
+                      child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                        Icon(Icons.login_rounded, color: Colors.white, size: 16),
+                        SizedBox(width: 6),
                         Text(
-                          room.isLocked? 'طلب دخول' : 'دخول الغرفة',
+                          'دخول الغرفة',
                           style: TextStyle(
                             fontFamily: 'Tajawal',
-                            color: room.isLocked? AppColors.textSub : Colors.white,
+                            color: Colors.white,
                             fontSize: 13, fontWeight: FontWeight.w700),
                         ),
                       ]),
@@ -302,13 +298,4 @@ class _RoomCard extends StatelessWidget {
       ),
     );
   }
-
-  Widget _badge(String label, Color color, {IconData? icon}) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-    decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(8), border: Border.all(color: color.withOpacity(0.25))),
-    child: Row(mainAxisSize: MainAxisSize.min, children: [
-      if (icon!= null)...[Icon(icon, color: color, size: 10), const SizedBox(width: 3)],
-      Text(label, style: TextStyle(fontFamily: 'Tajawal', color: color, fontSize: 10, fontWeight: FontWeight.w700)),
-    ]),
-  );
 }
