@@ -11,7 +11,7 @@ class WelcomeScreen extends StatelessWidget {
   Widget build(BuildContext context) => Scaffold(
     backgroundColor: AppColors.bg,
     body: Container(
-      decoration: BoxDecoration(gradient: AppColors.bgGrad), // تدرج مريح من الأبيض للرمادي الخفيف جداً
+      decoration: BoxDecoration(gradient: AppColors.bgGrad),
       child: SafeArea(
         child: Column(children: [
           const Spacer(flex: 2),
@@ -24,9 +24,8 @@ class WelcomeScreen extends StatelessWidget {
               child: Transform.translate(offset: Offset(0, 30 * (1 - v)), child: child),
             ),
             child: Column(children: [
-              // الأيقونة النعناعية الفخمة مع اسم التطبيق بالإنجليزية بداخلها
               Container(
-                width: 140, height: 110, // تم توسيع العرض قليلاً بشكل متناسق ليتسع للاسم بالكامل
+                width: 140, height: 110,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(30),
                   gradient: AppColors.primaryGrad,
@@ -34,18 +33,17 @@ class WelcomeScreen extends StatelessWidget {
                 ),
                 child: const Center(
                   child: Text(
-                    'SeaChat', // 👈 تم استبدال حرف C باسم التطبيق بالإنجليزية داخل المربع بنجاح
+                    'دردشاتي',
                     style: TextStyle(
                       fontFamily: 'Tajawal', 
                       color: AppColors.white, 
-                      fontSize: 26, // حجم خط متناسق ومناسب جداً لمحيط المربع الزجاجي
+                      fontSize: 26,
                       fontWeight: FontWeight.w900,
                       letterSpacing: 0.5,
                     ),
                   ),
                 ),
               ),
-              // 💡 تم حذف النصوص البيضاء المكسورة التي كانت هنا بالكامل لجعل الواجهة نظيفة ومريحة للعين
             ]),
           ),
           const Spacer(flex: 2),
@@ -93,7 +91,7 @@ class WelcomeScreen extends StatelessWidget {
                         width: double.infinity,
                         child: ElevatedButton(
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.primaryDark, // النعناعي العميق للأزرار النشطة
+                            backgroundColor: AppColors.primaryDark,
                             foregroundColor: AppColors.white,
                             padding: const EdgeInsets.symmetric(vertical: 14),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
