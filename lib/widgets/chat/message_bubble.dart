@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:audioplayers/audioplayers.dart';
 import '../../core/constants/app_colors.dart';
 import '../../services/chat_service.dart';
 import '../../screens/profile/user_profile_screen.dart';
 import '../app_snackbar.dart';
+import 'audio_message_widget.dart';
 
 class MessageBubble extends StatefulWidget {
   final Map<String, dynamic> message;
@@ -29,19 +29,6 @@ class MessageBubble extends StatefulWidget {
 }
 
 class _MessageBubbleState extends State<MessageBubble> {
-  final _player = AudioPlayer();
-  bool _isPlaying = false;
-  Duration _position = Duration.zero;
-  Duration _duration = Duration.zero;
-
-  @override
-  void initState() {
-    super.initState();
-    _player.onPlayerStateChanged.listen((s) { if (mounted) setState(() => _isPlaying = s == PlayerState.playing); });
-    _player.onPositionChanged.listen((p) { if (mounted) setState(() => _position = p); });
-    _player.onDurationChanged.listen((d) { if (mounted) setState(() => _duration = d); });
-    _player.onPlayerComplete.listen((_) { if (mounted) setState(() { _isPlaying = false; _position = Duration.zero; }); });
-  }
 
   Future<void> _deleteMessage() async {
     try {
@@ -49,14 +36,20 @@ class _MessageBubbleState extends State<MessageBubble> {
       final imageUrl = msg['image_url']?? msg['media_url'];
       final audioUrl = msg['audio_url'];
 
-      await ChatService().deleteMessage(
+      final ok = await ChatService().deleteMessage(
         msg['id'].toString(),
         isRoom: widget.isRoom,
         imageUrl: imageUrl,
         audioUrl: audioUrl,
       );
-      if (mounted) showAppSnack(context, 'تم حذف الرسالة', success: true);
-      widget.onDelete?.call(msg['id'].toString());
+
+      if (!mounted) return;
+      if (ok) {
+        showAppSnack(context, 'تم حذف الرسالة', success: true);
+        widget.onDelete?.call(msg['id'].toString());
+      } else {
+        showAppSnack(context, 'فشل الحذف - تحقق من الصلاحيات', success: false);
+      }
     } catch (e) {
       if (mounted) showAppSnack(context, 'فشل الحذف', success: false);
     }
@@ -83,7 +76,6 @@ class _MessageBubbleState extends State<MessageBubble> {
     ));
   }
 
-  String _formatDuration(Duration d) { final m = d.inMinutes.remainder(60).toString().padLeft(2, '0'); final s = d.inSeconds.remainder(60).toString().padLeft(2, '0'); return '$m:$s'; }
   String _formatTime(dynamic ts) { try { final dt = DateTime.parse(ts.toString()).toLocal(); final h = dt.hour % 12 == 0? 12 : dt.hour % 12; final m = dt.minute.toString().padLeft(2, '0'); final am = dt.hour < 12? 'ص' : 'م'; return '$h:$m $am'; } catch (_) { return ''; } }
 
   // --- الصحين ---
@@ -96,7 +88,7 @@ class _MessageBubbleState extends State<MessageBubble> {
     Color color;
     if (readAt!= null) {
       icon = Icons.done_all;
-      color = const Color(0xFF00BFFF); // أزرق مقروء
+      color = const Color(0xFF00BFFF);
     } else if (deliveredAt!= null) {
       icon = Icons.done_all;
       color = AppColors.textSub;
@@ -153,20 +145,11 @@ class _MessageBubbleState extends State<MessageBubble> {
               errorWidget: (c, u, e) => Container(width: 220, height: 140, color: AppColors.bgCard2,
                 child: const Icon(Icons.broken_image_rounded, color: AppColors.textSub)))),
         if (audioUrl!= null && audioUrl.toString().isNotEmpty)
-          Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-            decoration: BoxDecoration(color: AppColors.bgCard2, borderRadius: BorderRadius.circular(10)),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              IconButton(onPressed: () async { if (_isPlaying) { await _player.pause(); } else { await _player.play(UrlSource(audioUrl)); } },
-                icon: Icon(_isPlaying? Icons.pause_circle : Icons.play_arrow_rounded, color: AppColors.navy, size: 28),
-                padding: EdgeInsets.zero, constraints: const BoxConstraints()),
-              const SizedBox(width: 6),
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const Text('رسالة صوتية', style: TextStyle(fontFamily: 'Tajawal', fontSize: 13, color: AppColors.text)),
-                if (_duration.inSeconds > 0)
-                  Text('${_formatDuration(_position)} / ${_formatDuration(_duration)}',
-                    style: const TextStyle(fontFamily: 'Tajawal', fontSize: 11, color: AppColors.textSub)),
-              ]),
-            ])),
+          AudioMessageWidget(
+            audioUrl: audioUrl,
+            duration: widget.message['audio_duration']?? widget.message['duration']?? 0,
+            isMe: widget.isMe,
+          ),
         if (content.isNotEmpty)
           Padding(padding: EdgeInsets.only(top: (imageUrl!= null || audioUrl!= null)? 6 : 0),
             child: Text(content, style: const TextStyle(fontFamily: 'Tajawal', fontSize: 15, color: AppColors.text, height: 1.4))),
@@ -213,9 +196,9 @@ class _MessageBubbleState extends State<MessageBubble> {
                   child: CircleAvatar(
                     radius: 16, backgroundColor: AppColors.bgCard2,
                     backgroundImage: senderAvatar!= null && senderAvatar.toString().isNotEmpty
-                ? CachedNetworkImageProvider(senderAvatar) : null,
+               ? CachedNetworkImageProvider(senderAvatar) : null,
                     child: senderAvatar == null || senderAvatar.toString().isEmpty
-                ? Text(senderName.isNotEmpty? senderName[0] : '?',
+               ? Text(senderName.isNotEmpty? senderName[0] : '?',
                           style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.navy, fontWeight: FontWeight.w700))
                       : null,
                   ),
@@ -228,7 +211,4 @@ class _MessageBubbleState extends State<MessageBubble> {
       ),
     );
   }
-
-  @override
-  void dispose() { _player.dispose(); super.dispose(); }
 }
