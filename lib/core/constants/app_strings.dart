@@ -1,8 +1,8 @@
 class AppStrings {
   static const appName = 'C Chat';
-  static const appNameAr = 'سي شات';
+  static const appNameAr = 'دردشاتي';
   static const welcome = 'مرحباً بك';
-  static const welcomeSub = 'انضم إلى مجتمع سي شات وابدأ المحادثة';
+  static const welcomeSub = 'انضم إلى مجتمع دردشاتي وابدأ المحادثة';
   static const login = 'تسجيل الدخول';
   static const register = 'إنشاء حساب';
   static const email = 'البريد الإلكتروني';
@@ -38,7 +38,7 @@ class AppStrings {
   static const offline = 'غير متصل';
   static const privacyText = '''سياسة الخصوصية لتطبيق سي شات
 
-نحن في سي شات نحترم خصوصيتك ونلتزم بحماية بياناتك الشخصية.
+نحن في دردشاتي  نحترم خصوصيتك ونلتزم بحماية بياناتك الشخصية.
 
 1. البيانات التي نجمعها
 - معلومات الحساب (الاسم، البريد الإلكتروني، الصورة)
@@ -56,6 +56,6 @@ class AppStrings {
 4. الأمان
 نستخدم تشفير قوي لحماية محادثاتك.
 
-للتواصل: support@cchat.app
+للتواصل: barqaday@gmail.com
 ''';
 }
