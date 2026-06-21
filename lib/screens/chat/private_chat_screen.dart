@@ -45,6 +45,8 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
       _chatId = cid;
       _creatingChat = false;
     });
+    // علّم الرسائل كمقروءة أول ما تفتح
+    _chat.markPrivateMessagesRead(cid);
   }
 
   void _scrollToBottom() {
@@ -106,30 +108,46 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
       appBar: AppBar(
         backgroundColor: AppColors.bgCard,
         iconTheme: const IconThemeData(color: AppColors.white),
-        title: Row(
-          children: [
-            UserAvatar(
-              url: widget.peer.avatarUrl,
-              name: widget.peer.username,
-              isOnline: widget.peer.isOnline,
-              size: 36,
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(widget.peer.username,
-                    style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.white, fontSize: 16, fontWeight: FontWeight.w600),
-                    overflow: TextOverflow.ellipsis,
+        // --- AppBar live ---
+        title: StreamBuilder<List<Map<String, dynamic>>>(
+          stream: supabase
+           .from('users')
+           .stream(primaryKey: ['id'])
+           .eq('id', widget.peer.id)
+           .map((rows) => rows),
+          initialData: const [],
+          builder: (context, snap) {
+            final data = snap.data?.isNotEmpty == true? snap.data!.first : null;
+            final isOnline = data?['is_online']?? widget.peer.isOnline;
+            final avatarUrl = data?['avatar_url']?? widget.peer.avatarUrl;
+            final username = data?['username']?? widget.peer.username;
+
+            return Row(
+              children: [
+                UserAvatar(
+                  url: avatarUrl,
+                  name: username,
+                  isOnline: isOnline,
+                  size: 36,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(username,
+                        style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.white, fontSize: 16, fontWeight: FontWeight.w600),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      Text(isOnline? 'متصل' : 'غير متصل',
+                        style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub, fontSize: 12),
+                      ),
+                    ],
                   ),
-                  Text(widget.peer.isOnline? 'متصل' : 'غير متصل',
-                    style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub, fontSize: 12),
-                  ),
-                ],
-              ),
-            ),
-          ],
+                ),
+              ],
+            );
+          },
         ),
       ),
       body: Column(
@@ -148,6 +166,11 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
                 final raw = snap.data!;
                 final seen = <String>{};
                 final messages = raw.where((m) => seen.add(m['id'].toString())).toList();
+
+                // علّم كمقروء كل ما توصل رسائل جديدة
+                if (messages.isNotEmpty) {
+                  _chat.markPrivateMessagesRead(_chatId);
+                }
 
                 if (messages.isEmpty) {
                   return Center(
