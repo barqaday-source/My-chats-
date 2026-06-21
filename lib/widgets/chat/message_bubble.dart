@@ -24,7 +24,7 @@ class MessageBubble extends StatelessWidget {
 
   Future<void> _handleDelete(BuildContext context) async {
     final id = message['id'].toString();
-    final imageUrl = message['image_url']?? message['media_url'];
+    final imageUrl = message['image_url'] ?? message['media_url'];
     final audioUrl = message['audio_url'];
 
     final ok = await showDialog<bool>(
@@ -39,7 +39,7 @@ class MessageBubble extends StatelessWidget {
         ],
       ),
     );
-    if (ok!= true) return;
+    if (ok != true) return;
 
     await ChatService().deleteMessage(
       id,
@@ -47,7 +47,7 @@ class MessageBubble extends StatelessWidget {
       imageUrl: imageUrl,
       audioUrl: audioUrl,
     );
-    if (onDelete!= null) onDelete!(id);
+    if (onDelete != null) onDelete!(id);
   }
 
   void _showActions(BuildContext context) {
@@ -75,56 +75,51 @@ class MessageBubble extends StatelessWidget {
   }
 
   Widget _buildReplyPreview() {
-    final replyText = message['reply_to_text'] as String?;
-    final replyType = message['reply_to_type'] as String?? 'text';
-    final replySender = message['reply_to_sender_name'] as String?;
-    if (replyText == null || replyText.isEmpty) return const SizedBox.shrink();
-
-    String display = replyText;
-    if (replyType == 'image') display = '📷 صورة';
-    if (replyType == 'audio') display = '🎤 رسالة صوتية';
+    // قاعدتك: private_messages.reply_to uuid | room_messages.reply_to_id text
+    final replyId = message['reply_to'] ?? message['reply_to_id'];
+    if (replyId == null) return const SizedBox.shrink();
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: isMe? Colors.white.withOpacity(0.15) : AppColors.bgCard2,
+        color: isMe ? Colors.white.withOpacity(0.15) : AppColors.bgCard2,
         borderRadius: BorderRadius.circular(8),
-        border: Border(right: BorderSide(color: isMe? Colors.white.withOpacity(0.7) : AppColors.primary, width: 3)),
+        border: Border(right: BorderSide(color: isMe ? Colors.white.withOpacity(0.7) : AppColors.primary, width: 3)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (replySender!= null)
-            Text(replySender, style: TextStyle(fontFamily: 'Tajawal', fontSize: 11, fontWeight: FontWeight.w700, color: isMe? Colors.white.withOpacity(0.9) : AppColors.primary)),
-          Text(display, maxLines: 1, overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontFamily: 'Tajawal', fontSize: 12, color: isMe? Colors.white.withOpacity(0.8) : AppColors.textSub)),
-        ],
+      child: const Text(
+        '↩ رد على رسالة',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(fontFamily: 'Tajawal', fontSize: 12, color: AppColors.textSub),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final content = message['content']?? '';
-    final imageUrl = message['image_url']?? message['media_url'];
+    final content = message['content'] ?? '';
+    final type = message['type'] as String? ?? 'text';
+    final imageUrl = message['image_url'] ?? message['media_url'];
     final audioUrl = message['audio_url'] as String?;
-    final createdAt = DateTime.tryParse(message['created_at']?? '')?? DateTime.now();
+    final createdAt = DateTime.tryParse(message['created_at'] ?? '') ?? DateTime.now();
     final timeStr = timeago.format(createdAt, locale: 'ar');
-    final isDeleted = message['deleted_at']!= null;
+    final isDeleted = message['deleted_at'] != null;
 
-    if (audioUrl!= null && audioUrl.isNotEmpty &&!isDeleted) {
-      final duration = (message['audio_duration'] as num?)?.toInt()?? (message['duration'] as num?)?.toInt()?? 0;
+    final isAudio = type == 'voice' || type == 'audio' || (audioUrl != null && audioUrl.isNotEmpty);
+
+    if (isAudio && !isDeleted) {
+      final duration = (message['audio_duration'] as num?)?.toInt() ?? (message['duration'] as num?)?.toInt() ?? 0;
       return GestureDetector(
         onLongPress: () => _showActions(context),
-        onHorizontalDragEnd: (d) { if (d.primaryVelocity!= null && d.primaryVelocity! > 200) onReply?.call(); },
+        onHorizontalDragEnd: (d) { if (d.primaryVelocity != null && d.primaryVelocity! > 200) onReply?.call(); },
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 3, horizontal: 8),
           child: Column(
-            crossAxisAlignment: isMe? CrossAxisAlignment.end : CrossAxisAlignment.start,
+            crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
             children: [
-              if (message['reply_to_text']!= null) SizedBox(width: 280, child: _buildReplyPreview()),
-              AudioMessageWidget(audioUrl: audioUrl, duration: duration, isMe: isMe),
+              SizedBox(width: 280, child: _buildReplyPreview()),
+              AudioMessageWidget(audioUrl: audioUrl!, duration: duration, isMe: isMe),
               const SizedBox(height: 3),
               Padding(padding: const EdgeInsets.symmetric(horizontal: 4),
                 child: Text(timeStr, style: const TextStyle(fontFamily: 'Tajawal', fontSize: 10, color: AppColors.textSub))),
@@ -136,24 +131,24 @@ class MessageBubble extends StatelessWidget {
 
     return GestureDetector(
       onLongPress: () => _showActions(context),
-      onHorizontalDragEnd: (d) { if (d.primaryVelocity!= null && d.primaryVelocity! > 200) onReply?.call(); },
+      onHorizontalDragEnd: (d) { if (d.primaryVelocity != null && d.primaryVelocity! > 200) onReply?.call(); },
       child: Align(
-        alignment: isMe? Alignment.centerRight : Alignment.centerLeft,
+        alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 3, horizontal: 8),
           child: Column(
-            crossAxisAlignment: isMe? CrossAxisAlignment.end : CrossAxisAlignment.start,
+            crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
             children: [
               Container(
                 constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: isMe? AppColors.primary : Colors.white,
+                  color: isMe ? AppColors.primary : Colors.white,
                   borderRadius: BorderRadius.only(
                     topLeft: const Radius.circular(18),
                     topRight: const Radius.circular(18),
-                    bottomLeft: Radius.circular(isMe? 18 : 4),
-                    bottomRight: Radius.circular(isMe? 4 : 18),
+                    bottomLeft: Radius.circular(isMe ? 18 : 4),
+                    bottomRight: Radius.circular(isMe ? 4 : 18),
                   ),
                   boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 4, offset: const Offset(0, 1))],
                 ),
@@ -161,17 +156,17 @@ class MessageBubble extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _buildReplyPreview(),
-                    if (imageUrl!= null &&!isDeleted)
+                    if (imageUrl != null && !isDeleted)
                       Padding(
-                        padding: EdgeInsets.only(bottom: content.isNotEmpty? 8 : 0),
+                        padding: EdgeInsets.only(bottom: content.isNotEmpty ? 8 : 0),
                         child: ClipRRect(borderRadius: BorderRadius.circular(10), child: Image.network(imageUrl, fit: BoxFit.cover)),
                       ),
                     if (content.isNotEmpty)
-                      Text(isDeleted? 'تم حذف هذه الرسالة' : content,
+                      Text(isDeleted ? 'تم حذف هذه الرسالة' : content,
                         style: TextStyle(
                           fontFamily: 'Tajawal',
-                          color: isDeleted? AppColors.textSub : (isMe? Colors.white : AppColors.text),
-                          fontStyle: isDeleted? FontStyle.italic : FontStyle.normal,
+                          color: isDeleted ? AppColors.textSub : (isMe ? Colors.white : AppColors.text),
+                          fontStyle: isDeleted ? FontStyle.italic : FontStyle.normal,
                           fontSize: 15, height: 1.4,
                         )),
                   ],
