@@ -55,14 +55,16 @@ class _RoomChatScreenState extends State<RoomChatScreen> {
     }
   }
 
-  Future<void> _sendMessage(String text, File? imageFile, String? audioPath, int audioDuration) async {
-    if (text.trim().isEmpty && imageFile == null && audioPath == null) return;
+  // كان: Future<void> _sendMessage(String text, File? imageFile, String? audioPath, int audioDuration)
+  // صار: File? audioFile بدل String? audioPath
+  Future<void> _sendMessage(String text, File? imageFile, File? audioFile, int audioDuration) async {
+    if (text.trim().isEmpty && imageFile == null && audioFile == null) return;
     try {
       await _chat.sendMessageToRoomEx(
         roomId: widget.room.id,
         content: text,
         imageFile: imageFile,
-        audioFile: audioPath!= null? File(audioPath) : null,
+        audioFile: audioFile,
         audioDuration: audioDuration,
         replyMessage: _replyingTo,
       );
