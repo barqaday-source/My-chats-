@@ -57,15 +57,17 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
     }
   }
 
-  Future<void> _send(String text, File? image, String? audioPath, int audioDuration) async {
-    if (text.trim().isEmpty && image == null && audioPath == null) return;
+  // كان: Future<void> _send(String text, File? image, String? audioPath, int audioDuration)
+  // صار: File? audioFile
+  Future<void> _send(String text, File? image, File? audioFile, int audioDuration) async {
+    if (text.trim().isEmpty && image == null && audioFile == null) return;
     try {
       await _chat.sendPrivateMessageEx(
         chatId: _chatId,
         peerId: widget.peer.id,
         content: text,
         imageFile: image,
-        audioFile: audioPath!= null? File(audioPath) : null,
+        audioFile: audioFile,
         audioDuration: audioDuration,
         replyMessage: _replyingTo,
       );
