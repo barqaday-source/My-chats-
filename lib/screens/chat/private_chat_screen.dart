@@ -26,6 +26,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
   late String _chatId;
   bool _creatingChat = true;
   Map<String, dynamic>? _replyingTo;
+  bool _isSending = false;
 
   @override
   void initState() {
@@ -57,10 +58,11 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
     }
   }
 
-  // كان: Future<void> _send(String text, File? image, String? audioPath, int audioDuration)
-  // صار: File? audioFile
   Future<void> _send(String text, File? image, File? audioFile, int audioDuration) async {
+    if (_isSending) return;
     if (text.trim().isEmpty && image == null && audioFile == null) return;
+
+    setState(() => _isSending = true);
     try {
       await _chat.sendPrivateMessageEx(
         chatId: _chatId,
@@ -83,6 +85,8 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
       } else {
         showAppSnack(context, 'فشل الإرسال: $e', success: false);
       }
+    } finally {
+      if (mounted) setState(() => _isSending = false);
     }
   }
 
@@ -140,7 +144,11 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
                 if (!snap.hasData) {
                   return const Center(child: CircularProgressIndicator(color: AppColors.primary));
                 }
-                final messages = snap.data!;
+                // فلترة التكرار
+                final raw = snap.data!;
+                final seen = <String>{};
+                final messages = raw.where((m) => seen.add(m['id'].toString())).toList();
+
                 if (messages.isEmpty) {
                   return Center(
                     child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
@@ -160,6 +168,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
                     final msg = messages[i];
                     final isMe = msg['sender_id'] == currentUserId;
                     return MessageBubble(
+                      key: ValueKey(msg['id']),
                       message: msg,
                       isMe: isMe,
                       showAvatar: false,
@@ -173,7 +182,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
             ),
           ),
           ChatInputBar(
-            onSend: _send,
+            onSend: _isSending? (_,__,___,____) async {} : _send,
             replyTo: _replyingTo,
             onCancelReply: () => setState(() => _replyingTo = null),
           ),
