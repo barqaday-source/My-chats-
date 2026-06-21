@@ -2,6 +2,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/constants/app_colors.dart';
 import '../../models/room_model.dart';
 import '../../providers/auth_provider.dart';
@@ -17,6 +18,7 @@ class RoomsScreen extends StatefulWidget {
 
 class _RoomsScreenState extends State<RoomsScreen> {
   final _svc = RoomService();
+  final supabase = Supabase.instance.client;
   List<RoomModel> _rooms = [];
   bool _loading = true;
   String _search = '';
@@ -24,7 +26,10 @@ class _RoomsScreenState extends State<RoomsScreen> {
   final _tabs = ['الكل', 'النشطة'];
 
   @override
-  void initState() { super.initState(); _load(); }
+  void initState() {
+    super.initState();
+    _load();
+  }
 
   Future<void> _load() async {
     setState(() => _loading = true);
@@ -42,7 +47,6 @@ class _RoomsScreenState extends State<RoomsScreen> {
       final q = _search.toLowerCase();
       list = list.where((r) => r.name.toLowerCase().contains(q)).toList();
     }
-    // 0 = الكل، 1 = النشطة
     if (_tab == 1) {
       return list.where((r) => r.onlineCount > 0).toList();
     }
@@ -75,7 +79,7 @@ class _RoomsScreenState extends State<RoomsScreen> {
           child: SafeArea(
             top: false,
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 20, 20),
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
               child: Column(mainAxisSize: MainAxisSize.min, children: [
                 Container(width: 40, height: 4, margin: const EdgeInsets.only(bottom: 16), decoration: BoxDecoration(color: AppColors.divider, borderRadius: BorderRadius.circular(2))),
                 const Text('إنشاء غرفة جديدة', style: TextStyle(fontFamily: 'Tajawal', color: AppColors.text, fontSize: 18, fontWeight: FontWeight.w700)),
@@ -175,7 +179,7 @@ class _RoomsScreenState extends State<RoomsScreen> {
         const SizedBox(height: 12),
         Expanded(
           child: _loading
-     ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+    ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
               : RefreshIndicator(
                   onRefresh: _load, color: AppColors.primary,
                   child: Builder(builder: (_) {
@@ -213,6 +217,8 @@ class _RoomCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isOwner = room.ownerId == context.read<AuthProvider>().user!.id;
+    final supabase = Supabase.instance.client;
+
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
       decoration: BoxDecoration(
@@ -255,16 +261,34 @@ class _RoomCard extends StatelessWidget {
               ],
               const SizedBox(height: 12),
               Row(children: [
-                Container(width: 6, height: 6, decoration: BoxDecoration(color: room.onlineCount > 0? AppColors.success : AppColors.offline, shape: BoxShape.circle)),
-                const SizedBox(width: 4),
-                Text(
-                  room.onlineCount > 0? '${room.onlineCount} متصل' : 'لا أحد متصل',
-                  style: TextStyle(
-                    fontFamily: 'Tajawal',
-                    color: room.onlineCount > 0? AppColors.success : (room.imageUrl!= null? Colors.white.withOpacity(0.7) : AppColors.textSub),
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                  ),
+                // --- عداد النشاط Live ---
+                StreamBuilder<List<Map<String, dynamic>>>(
+                  stream: supabase
+                   .from('room_members')
+                   .stream(primaryKey: ['id'])
+                   .eq('room_id', room.id)
+                   .map((rows) => rows.where((m) => m['is_online'] == true).toList()),
+                  initialData: const [],
+                  builder: (context, snap) {
+                    final onlineCount = snap.data?.length?? room.onlineCount;
+                    final online = onlineCount > 0;
+                    return Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(width: 6, height: 6, decoration: BoxDecoration(color: online? AppColors.success : AppColors.offline, shape: BoxShape.circle)),
+                        const SizedBox(width: 4),
+                        Text(
+                          online? '$onlineCount متصل' : 'لا أحد متصل',
+                          style: TextStyle(
+                            fontFamily: 'Tajawal',
+                            color: online? AppColors.success : (room.imageUrl!= null? Colors.white.withOpacity(0.7) : AppColors.textSub),
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    );
+                  },
                 ),
                 const Spacer(),
                 Material(
