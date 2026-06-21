@@ -75,9 +75,22 @@ class MessageBubble extends StatelessWidget {
   }
 
   Widget _buildReplyPreview() {
-    // قاعدتك: private_messages.reply_to uuid | room_messages.reply_to_id text
+    final replySender = message['reply_sender_name'] as String?;
+    final replyContent = message['reply_content'] as String?;
+    final replyType = message['reply_type'] as String? ?? 'text';
+    
+    // fallback للرسائل القديمة
     final replyId = message['reply_to'] ?? message['reply_to_id'];
-    if (replyId == null) return const SizedBox.shrink();
+    if ((replySender == null || replySender.isEmpty) && 
+        (replyContent == null || replyContent.isEmpty) && 
+        replyId == null) {
+      return const SizedBox.shrink();
+    }
+
+    String display = replyContent ?? 'رسالة';
+    if (replyType == 'image') display = '📷 صورة';
+    if (replyType == 'voice' || replyType == 'audio') display = '🎤 رسالة صوتية';
+    if (display.isEmpty) display = 'رسالة';
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
@@ -87,11 +100,14 @@ class MessageBubble extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
         border: Border(right: BorderSide(color: isMe ? Colors.white.withOpacity(0.7) : AppColors.primary, width: 3)),
       ),
-      child: const Text(
-        '↩ رد على رسالة',
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(fontFamily: 'Tajawal', fontSize: 12, color: AppColors.textSub),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if ((replySender ?? '').isNotEmpty)
+            Text(replySender!, style: TextStyle(fontFamily: 'Tajawal', fontSize: 11, fontWeight: FontWeight.w700, color: isMe ? Colors.white.withOpacity(0.9) : AppColors.primary)),
+          Text(display, maxLines: 1, overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontFamily: 'Tajawal', fontSize: 12, color: isMe ? Colors.white.withOpacity(0.8) : AppColors.textSub)),
+        ],
       ),
     );
   }
