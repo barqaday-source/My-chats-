@@ -8,7 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import '../../core/constants/app_colors.dart';
 
 class ChatInputBar extends StatefulWidget {
-  final Future<void> Function(String text, File? imageFile, String? audioPath, int audioDuration) onSend;
+  final Future<void> Function(String text, File? imageFile, File? audioFile, int audioDuration) onSend;
   final Map<String, dynamic>? replyTo;
   final VoidCallback? onCancelReply;
 
@@ -19,15 +19,13 @@ class ChatInputBar extends StatefulWidget {
     this.onCancelReply,
   });
 
-  @override
-  State<ChatInputBar> createState() => _ChatInputBarState();
+  @override State<ChatInputBar> createState() => _ChatInputBarState();
 }
 
 class _ChatInputBarState extends State<ChatInputBar> {
   final _ctrl = TextEditingController();
   bool _sending = false;
 
-  // flutter_sound
   final FlutterSoundRecorder _recorder = FlutterSoundRecorder();
   bool _recorderReady = false;
   bool _isRecording = false;
@@ -35,8 +33,11 @@ class _ChatInputBarState extends State<ChatInputBar> {
   Duration _recordDuration = Duration.zero;
   String? _recordPath;
 
-  @override
-  void initState() {
+  // معاينة الصوت بعد التسجيل
+  File? _pendingAudio;
+  int _pendingDuration = 0;
+
+  @override void initState() {
     super.initState();
     _initRecorder();
   }
@@ -59,7 +60,6 @@ class _ChatInputBarState extends State<ChatInputBar> {
     try {
       await widget.onSend(t, null, null, 0);
       _ctrl.clear();
-      setState(() {});
     } finally {
       if (mounted) setState(() => _sending = false);
     }
@@ -79,7 +79,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
   }
 
   Future<void> _startRecord() async {
-    if (!_recorderReady || _sending || _isRecording) return;
+    if (!_recorderReady || _sending || _isRecording || _pendingAudio != null) return;
     final mic = await Permission.microphone.request();
     if (!mic.isGranted) return;
 
@@ -123,26 +123,49 @@ class _ChatInputBarState extends State<ChatInputBar> {
       return;
     }
 
+    // لا ترسل تلقائي، خليه معاينة
+    setState(() {
+      _pendingAudio = File(path);
+      _pendingDuration = duration;
+    });
+  }
+
+  Future<void> _sendPendingAudio() async {
+    if (_pendingAudio == null) return;
     setState(() => _sending = true);
     try {
-      await widget.onSend('', null, path, duration);
+      await widget.onSend('', null, _pendingAudio, _pendingDuration);
+      await _pendingAudio!.delete().catchError((_){});
+      setState(() {
+        _pendingAudio = null;
+        _pendingDuration = 0;
+      });
     } finally {
       if (mounted) setState(() => _sending = false);
     }
   }
 
-  @override
-  void dispose() {
+  void _cancelPendingAudio() async {
+    if (_pendingAudio != null) {
+      await _pendingAudio!.delete().catchError((_){});
+    }
+    setState(() {
+      _pendingAudio = null;
+      _pendingDuration = 0;
+    });
+  }
+
+  @override void dispose() {
     _timer?.cancel();
     _recorder.closeRecorder();
     _ctrl.dispose();
     super.dispose();
   }
 
-  @override
-  Widget build(BuildContext context) {
+  @override Widget build(BuildContext context) {
     final hasText = _ctrl.text.trim().isNotEmpty;
     final reply = widget.replyTo;
+    final hasPendingAudio = _pendingAudio != null;
 
     return Container(
       decoration: const BoxDecoration(
@@ -163,45 +186,44 @@ class _ChatInputBarState extends State<ChatInputBar> {
                 ),
                 child: Row(
                   children: [
-                    Container(
-                      width: 3,
-                      height: 36,
-                      decoration: BoxDecoration(
-                        color: AppColors.primary,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
+                    Container(width: 3, height: 36, decoration: BoxDecoration(color: AppColors.primary, borderRadius: BorderRadius.circular(2))),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          Text(reply['sender_name'] ?? 'رد', style: const TextStyle(fontFamily: 'Tajawal', fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.primary)),
                           Text(
-                            reply['sender_name'] ?? 'رد',
-                            style: const TextStyle(
-                              fontFamily: 'Tajawal',
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.primary,
-                            ),
-                          ),
-                          Text(
-                            reply['content'] ??
-                                (reply['image_url'] != null ? '📷 صورة' : '🎤 رسالة صوتية'),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontFamily: 'Tajawal',
-                              fontSize: 12,
-                              color: AppColors.textSub,
-                            ),
+                            reply['content'] ?? (reply['image_url'] != null ? '📷 صورة' : '🎤 رسالة صوتية'),
+                            maxLines: 1, overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontFamily: 'Tajawal', fontSize: 12, color: AppColors.textSub),
                           ),
                         ],
                       ),
                     ),
-                    IconButton(
-                      icon: const Icon(Icons.close_rounded, size: 18, color: AppColors.textSub),
-                      onPressed: widget.onCancelReply,
+                    IconButton(icon: const Icon(Icons.close_rounded, size: 18, color: AppColors.textSub), onPressed: widget.onCancelReply),
+                  ],
+                ),
+              ),
+
+            // معاينة الصوت قبل الإرسال
+            if (hasPendingAudio)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: const BoxDecoration(color: AppColors.bgCard, border: Border(bottom: BorderSide(color: AppColors.glassBorder))),
+                child: Row(
+                  children: [
+                    IconButton(onPressed: _cancelPendingAudio, icon: const Icon(Icons.delete_outline, color: AppColors.danger)),
+                    const SizedBox(width: 8),
+                    const Icon(Icons.mic_rounded, color: AppColors.primary, size: 20),
+                    const SizedBox(width: 8),
+                    Text('${_pendingDuration}s', style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.white)),
+                    const Spacer(),
+                    FilledButton.icon(
+                      onPressed: _sending ? null : _sendPendingAudio,
+                      icon: const Icon(Icons.send_rounded, size: 18),
+                      label: const Text('إرسال', style: TextStyle(fontFamily: 'Tajawal')),
+                      style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
                     ),
                   ],
                 ),
@@ -212,36 +234,29 @@ class _ChatInputBarState extends State<ChatInputBar> {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  // زر الإرسال / المايك
+                  // زر إرسال / مايك
                   GestureDetector(
-                    onLongPressStart: hasText || _sending ? null : (_) => _startRecord(),
+                    onLongPressStart: hasText || _sending || hasPendingAudio ? null : (_) => _startRecord(),
                     onLongPressEnd: hasText || _sending ? null : (_) => _stopRecord(),
                     onLongPressCancel: () => _stopRecord(cancel: true),
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 180),
-                      width: 52,
-                      height: 52,
+                      width: 52, height: 52,
                       decoration: BoxDecoration(
-                        color: hasText || _isRecording ? AppColors.primary : AppColors.bgCard,
+                        color: hasText ? AppColors.primary : AppColors.bgCard,
                         shape: BoxShape.circle,
-                        border: Border.all(
-                          color: hasText || _isRecording ? AppColors.primary : AppColors.glassBorder,
-                          width: 1.2,
-                        ),
+                        border: Border.all(color: hasText ? AppColors.primary : AppColors.glassBorder, width: 1.2),
                       ),
                       child: IconButton(
                         onPressed: hasText && !_sending ? _sendText : null,
-                        icon: Icon(
-                          hasText ? Icons.send_rounded : Icons.mic_rounded,
-                          color: hasText || _isRecording ? Colors.white : AppColors.textSub,
-                          size: 24,
-                        ),
+                        icon: Icon(hasText ? Icons.send_rounded : Icons.mic_rounded,
+                          color: hasText ? Colors.white : AppColors.textSub, size: 24),
                       ),
                     ),
                   ),
                   const SizedBox(width: 8),
 
-                  // الحقل الموحد
+                  // الحقل
                   Expanded(
                     child: Container(
                       constraints: const BoxConstraints(minHeight: 52),
@@ -257,45 +272,14 @@ class _ChatInputBarState extends State<ChatInputBar> {
                                 children: [
                                   InkWell(
                                     onTap: () => _stopRecord(cancel: true),
-                                    borderRadius: BorderRadius.circular(20),
-                                    child: Container(
-                                      padding: const EdgeInsets.all(5),
-                                      decoration: BoxDecoration(
-                                        shape: BoxShape.circle,
-                                        border: Border.all(color: AppColors.danger.withOpacity(0.5)),
-                                      ),
-                                      child: const Icon(Icons.close_rounded,
-                                          color: AppColors.danger, size: 16),
-                                    ),
+                                    child: const Icon(Icons.close_rounded, color: AppColors.danger, size: 18),
                                   ),
                                   const SizedBox(width: 10),
-                                  Container(
-                                    width: 8,
-                                    height: 8,
-                                    decoration: const BoxDecoration(
-                                      color: AppColors.danger,
-                                      shape: BoxShape.circle,
-                                    ),
-                                  ),
+                                  Container(width: 8, height: 8, decoration: const BoxDecoration(color: AppColors.danger, shape: BoxShape.circle)),
                                   const SizedBox(width: 8),
-                                  Text(
-                                    _format(_recordDuration),
-                                    style: const TextStyle(
-                                      fontFamily: 'Tajawal',
-                                      color: AppColors.danger,
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
+                                  Text(_format(_recordDuration), style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.danger, fontSize: 14, fontWeight: FontWeight.w700)),
                                   const Spacer(),
-                                  const Text(
-                                    'جار التسجيل...',
-                                    style: TextStyle(
-                                      fontFamily: 'Tajawal',
-                                      color: AppColors.textSub,
-                                      fontSize: 13,
-                                    ),
-                                  ),
+                                  const Text('جار التسجيل...', style: TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub, fontSize: 13)),
                                 ],
                               ),
                             )
@@ -303,28 +287,19 @@ class _ChatInputBarState extends State<ChatInputBar> {
                               crossAxisAlignment: CrossAxisAlignment.end,
                               children: [
                                 IconButton(
-                                  onPressed: _sending ? null : _pickImage,
-                                  icon: const Icon(Icons.image_outlined,
-                                      color: AppColors.textSub, size: 24),
+                                  onPressed: _sending || hasPendingAudio ? null : _pickImage,
+                                  icon: const Icon(Icons.image_outlined, color: AppColors.textSub, size: 24),
                                 ),
                                 Expanded(
                                   child: TextField(
                                     controller: _ctrl,
                                     onChanged: (_) => setState(() {}),
-                                    maxLines: 5,
-                                    minLines: 1,
+                                    maxLines: 5, minLines: 1,
                                     textAlign: TextAlign.right,
-                                    style: const TextStyle(
-                                      fontFamily: 'Tajawal',
-                                      color: AppColors.white,
-                                      fontSize: 15,
-                                    ),
+                                    style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.white, fontSize: 15),
                                     decoration: const InputDecoration(
                                       hintText: 'اكتب رسالة...',
-                                      hintStyle: TextStyle(
-                                        fontFamily: 'Tajawal',
-                                        color: AppColors.textSub,
-                                      ),
+                                      hintStyle: TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub),
                                       border: InputBorder.none,
                                       contentPadding: EdgeInsets.symmetric(vertical: 14),
                                     ),
