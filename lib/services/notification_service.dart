@@ -32,7 +32,7 @@ class NotificationService {
       final response = await _supabase
           .from('notifications')
           .select()
-          .eq('user_id', uid)
+          .or('user_id.eq.$uid,user_id.is.null')
           .eq('is_read', false);
       return response.length;
     } catch (e) {
@@ -46,11 +46,14 @@ class NotificationService {
 
   Future<void> markAllRead(String uid) async {
     try {
+      // اشعاراتك الخاصة
       await _supabase
           .from('notifications')
           .update({'is_read': true})
           .eq('user_id', uid)
           .eq('is_read', false);
+      // اشعارات الادمن العامة ما نقدر نعلمها مقروءة للكل، 
+      // إذا تريدها per-user لازم جدول notifications_read منفصل
     } catch (e) {
       print('markAllRead error: $e');
     }
@@ -60,13 +63,19 @@ class NotificationService {
     await _supabase.from('notifications').delete().eq('id', notificationId);
   }
 
+  // هنا كان السبب
   Stream<List<NotificationModel>> userNotifications(String uid) {
     return _supabase
         .from('notifications')
         .stream(primaryKey: ['id'])
-        .eq('user_id', uid)
         .order('created_at', ascending: false)
-        .map((maps) => maps.map((map) => NotificationModel.fromJson(map)).toList());
+        .map((maps) {
+          // فلترة محلية: لي أو للكل
+          final filtered = maps.where((m) => 
+            m['user_id'] == null || m['user_id'] == uid
+          ).toList();
+          return filtered.map((map) => NotificationModel.fromJson(map)).toList();
+        });
   }
 
   Future<void> sendNotification(NotificationModel notification) async {
