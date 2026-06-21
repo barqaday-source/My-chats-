@@ -15,6 +15,7 @@ import 'screens/admin/admin_panel_screen.dart';
 import 'screens/auth/welcome_screen.dart';
 import 'screens/home/home_screen.dart';
 import 'services/notification_service.dart';
+import 'services/presence_service.dart';
 import 'widgets/block_guard.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
@@ -42,6 +43,9 @@ void main() async {
   
   // تهيئة الإشعارات
   await NotificationService.init();
+
+  // --- النشاط live ---
+  PresenceService().init();
   
   // تهيئة timeago للعربي
   timeago.setLocaleMessages('ar', timeago.ArMessages());
