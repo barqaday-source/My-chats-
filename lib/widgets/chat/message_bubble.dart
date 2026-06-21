@@ -76,7 +76,7 @@ class MessageBubble extends StatelessWidget {
 
   Widget _buildReplyPreview() {
     final replyText = message['reply_to_text'] as String?;
-    final replyType = message['reply_to_type'] as String??? 'text';
+    final replyType = message['reply_to_type'] as String?? 'text';
     final replySender = message['reply_to_sender_name'] as String?;
     if (replyText == null || replyText.isEmpty) return const SizedBox.shrink();
 
