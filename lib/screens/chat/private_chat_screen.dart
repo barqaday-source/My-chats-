@@ -27,6 +27,10 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
   bool _creatingChat = true;
   Map<String, dynamic>? _replyingTo;
 
+  // الحظر
+  bool _isBlocked = false;
+  bool _checkingBlock = true;
+
   // لمنع سبام القراءة
   DateTime _lastReadMark = DateTime.fromMillisecondsSinceEpoch(0);
 
@@ -47,11 +51,37 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
       _chatId = cid;
       _creatingChat = false;
     });
+
+    await _checkBlock();
     // علّم مقروء أول ما تفتح
-    _markReadThrottled();
+    if (!_isBlocked) _markReadThrottled();
+  }
+
+  Future<void> _checkBlock() async {
+    setState(() => _checkingBlock = true);
+    try {
+      final meId = supabase.auth.currentUser!.id;
+      final blocked = await _chat.isBlocked(meId, widget.peer.id);
+      if (mounted) setState(() => _isBlocked = blocked);
+    } finally {
+      if (mounted) setState(() => _checkingBlock = false);
+    }
+  }
+
+  Future<void> _unblock() async {
+    try {
+      await _chat.unblockUser(widget.peer.id);
+      if (mounted) {
+        setState(() => _isBlocked = false);
+        showAppSnack(context, 'تم إلغاء الحظر', success: true);
+      }
+    } catch (e) {
+      showAppSnack(context, 'فشل إلغاء الحظر: $e', success: false);
+    }
   }
 
   void _markReadThrottled() {
+    if (_isBlocked) return;
     final now = DateTime.now();
     if (now.difference(_lastReadMark).inSeconds < 2) return;
     _lastReadMark = now;
@@ -77,6 +107,10 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
   }
 
   Future<void> _send(String text, File? image, File? audioFile, int audioDuration) async {
+    if (_isBlocked) {
+      showAppSnack(context, 'لا يمكنك المراسلة، هذا المستخدم محظور', success: false);
+      return;
+    }
     if (text.trim().isEmpty && image == null && audioFile == null) return;
 
     try {
@@ -93,9 +127,10 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
       _scrollToBottom(force: true);
     } catch (e) {
       if (!mounted) return;
-      final err = e.toString();
+      final err = e.toString().toLowerCase();
       if (err.contains('blocked')) {
-        showAppSnack(context, 'لا يمكن المراسلة، يوجد حظر', success: false);
+        setState(() => _isBlocked = true);
+        showAppSnack(context, 'لا يمكنك المراسلة، يوجد حظر', success: false);
       } else if (err.contains('offline')) {
         showAppSnack(context, 'تم حفظ الرسالة، سترسل عند عودة النت', success: true);
       } else {
@@ -104,11 +139,38 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
     }
   }
 
+  Widget _buildBlockedBar() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: const BoxDecoration(
+        color: AppColors.bgCard,
+        border: Border(top: BorderSide(color: Color(0xFF2A2A2A))),
+      ),
+      child: Row(
+        children: [
+          const Expanded(
+            child: Text(
+              'لا يمكنك مراسلة هذا المستخدم',
+              style: TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub, fontSize: 14),
+            ),
+          ),
+          TextButton(
+            onPressed: _unblock,
+            child: const Text(
+              'إلغاء الحظر',
+              style: TextStyle(fontFamily: 'Tajawal', color: AppColors.primary, fontWeight: FontWeight.w700),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final currentUserId = supabase.auth.currentUser!.id;
 
-    if (_creatingChat) {
+    if (_creatingChat || _checkingBlock) {
       return const Scaffold(
         backgroundColor: AppColors.bg,
         body: Center(child: CircularProgressIndicator(color: AppColors.primary)),
@@ -122,9 +184,9 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
         iconTheme: const IconThemeData(color: AppColors.white),
         title: StreamBuilder<List<Map<String, dynamic>>>(
           stream: supabase
-          .from('users')
-          .stream(primaryKey: ['id'])
-          .eq('id', widget.peer.id),
+         .from('users')
+         .stream(primaryKey: ['id'])
+         .eq('id', widget.peer.id),
           builder: (context, snap) {
             final data = snap.data?.isNotEmpty == true? snap.data!.first : null;
             final isOnline = data?['is_online']?? widget.peer.isOnline;
@@ -136,7 +198,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
                 UserAvatar(
                   url: avatarUrl,
                   name: username,
-                  isOnline: isOnline,
+                  isOnline: isOnline &&!_isBlocked,
                   size: 36,
                 ),
                 const SizedBox(width: 10),
@@ -148,7 +210,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
                         style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.white, fontSize: 16, fontWeight: FontWeight.w600),
                         overflow: TextOverflow.ellipsis,
                       ),
-                      Text(isOnline? 'متصل' : 'غير متصل',
+                      Text(_isBlocked? 'محظور' : isOnline? 'متصل' : 'غير متصل',
                         style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub, fontSize: 12),
                       ),
                     ],
@@ -175,7 +237,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
                 final messages = snap.data!;
 
                 // علّم مقروء بس إذا أكو رسائل جديدة من الطرف الثاني
-                if (messages.isNotEmpty) {
+                if (messages.isNotEmpty &&!_isBlocked) {
                   final hasUnread = messages.any((m) =>
                     m['sender_id']!= currentUserId &&
                     m['is_read']!= true && m['read_at'] == null
@@ -190,7 +252,9 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
                     child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
                       Icon(Icons.chat_bubble_outline_rounded, size: 56, color: AppColors.textSub.withOpacity(0.5)),
                       const SizedBox(height: 12),
-                      Text('ابدأ المحادثة مع ${widget.peer.username}',
+                      Text(_isBlocked
+                       ? 'لا يمكن عرض الرسائل أثناء الحظر'
+                        : 'ابدأ المحادثة مع ${widget.peer.username}',
                         style: const TextStyle(color: AppColors.textSub, fontFamily: 'Tajawal')),
                     ]),
                   );
@@ -211,7 +275,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
                       isMe: isMe,
                       showAvatar: false,
                       isRoom: false,
-                      onReply: () => setState(() => _replyingTo = msg),
+                      onReply: _isBlocked? null : () => setState(() => _replyingTo = msg),
                       onDelete: (_) {},
                     );
                   },
@@ -219,11 +283,14 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
               },
             ),
           ),
-          ChatInputBar(
-            onSend: _send,
-            replyTo: _replyingTo,
-            onCancelReply: () => setState(() => _replyingTo = null),
-          ),
+          if (_isBlocked)
+            _buildBlockedBar()
+          else
+            ChatInputBar(
+              onSend: _send,
+              replyTo: _replyingTo,
+              onCancelReply: () => setState(() => _replyingTo = null),
+            ),
         ],
       ),
     );
