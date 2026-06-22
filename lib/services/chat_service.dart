@@ -43,11 +43,11 @@ class ChatService {
   Future<bool> isBlocked(String userId, String peerId) async {
     try {
       final res = await _supabase
-         .from('blocked_users')
-         .select('blocker_id')
-         .or('and(blocker_id.eq.$userId,blocked_id.eq.$peerId),and(blocker_id.eq.$peerId,blocked_id.eq.$userId)')
-         .limit(1)
-         .maybeSingle();
+        .from('blocked_users')
+        .select('blocker_id')
+        .or('and(blocker_id.eq.$userId,blocked_id.eq.$peerId),and(blocker_id.eq.$peerId,blocked_id.eq.$userId)')
+        .limit(1)
+        .maybeSingle();
       return res!= null;
     } catch (_) {
       return false;
@@ -57,9 +57,9 @@ class ChatService {
   Future<Set<String>> _getBlockedIds(String uid) async {
     try {
       final blocked = await _supabase
-         .from('blocked_users')
-         .select('blocker_id, blocked_id')
-         .or('blocker_id.eq.$uid,blocked_id.eq.$uid');
+        .from('blocked_users')
+        .select('blocker_id, blocked_id')
+        .or('blocker_id.eq.$uid,blocked_id.eq.$uid');
       return blocked.map<String>((b) =>
           b['blocker_id'] == uid? b['blocked_id'] as String : b['blocker_id'] as String
       ).toSet();
@@ -68,22 +68,36 @@ class ChatService {
     }
   }
 
-  Future<void> blockUser(String peerId) async {
+  // يرجع 'blocked' أو 'already_blocked'
+  Future<String> blockUser(String peerId) async {
     final user = _supabase.auth.currentUser;
     if (user == null) throw Exception('not_authenticated');
-    await _supabase.from('blocked_users').upsert({
-      'blocker_id': user.id,
-      'blocked_id': peerId,
-    }, onConflict: 'blocker_id,blocked_id');
+
+    // إذا محظور أصلا
+    if (await isBlocked(user.id, peerId)) {
+      return 'already_blocked';
+    }
+
+    try {
+      await _supabase.from('blocked_users').insert({
+        'blocker_id': user.id,
+        'blocked_id': peerId,
+      });
+      return 'blocked';
+    } on PostgrestException catch (e) {
+      // 23505 = unique violation
+      if (e.code == '23505') return 'already_blocked';
+      rethrow;
+    }
   }
 
   Future<void> unblockUser(String peerId) async {
     final user = _supabase.auth.currentUser;
     if (user == null) throw Exception('not_authenticated');
     await _supabase.from('blocked_users')
-       .delete()
-       .eq('blocker_id', user.id)
-       .eq('blocked_id', peerId);
+      .delete()
+      .eq('blocker_id', user.id)
+      .eq('blocked_id', peerId);
   }
 
   Future<void> reportUser(String peerId, String reason) async {
@@ -102,13 +116,13 @@ class ChatService {
     if (uid == null) return;
     try {
       await _supabase.from('private_messages')
-         .update({
+        .update({
             'is_read': true,
             'is_delivered': true,
             'read_at': DateTime.now().toIso8601String(),
           })
-         .eq('chat_id', chatId)
-         .neq('sender_id', uid);
+        .eq('chat_id', chatId)
+        .neq('sender_id', uid);
     } catch (_) {}
   }
 
@@ -117,39 +131,31 @@ class ChatService {
     if (uid == null) return;
     try {
       await _supabase.from('room_messages')
-         .update({'is_read': true, 'is_delivered': true})
-         .eq('room_id', roomId)
-         .neq('sender_id', uid);
+        .update({'is_read': true, 'is_delivered': true})
+        .eq('room_id', roomId)
+        .neq('sender_id', uid);
     } catch (_) {}
   }
 
   // ====== Private messages ======
-  Stream<List<Map<String, dynamic>>> getPrivateMessagesStream(String chatId) {
-    final controller = StreamController<List<Map<String, dynamic>>>();
-    Set<String> blockedIds = {};
+  Stream<List<Map<String, dynamic>>> getPrivateMessagesStream(String chatId) async* {
+    final uid = _uid;
+    final blockedIds = uid!= null? await _getBlockedIds(uid) : <String>{};
 
-    if (_uid!= null) {
-      _getBlockedIds(_uid!).then((ids) => blockedIds = ids);
-    }
-
-    final sub = _supabase
-       .from('private_messages')
-       .stream(primaryKey: ['id'])
-       .eq('chat_id', chatId)
-       .order('created_at', ascending: true)
-       .listen((maps) {
+    yield* _supabase
+      .from('private_messages')
+      .stream(primaryKey: ['id'])
+      .eq('chat_id', chatId)
+      .order('created_at', ascending: true)
+      .map((maps) {
       final seen = <String>{};
-      final filtered = maps.where((m) =>
+      return maps.where((m) =>
           m['deleted_at'] == null &&
-         !_isDeletedForMe(m) &&
-         !blockedIds.contains(m['sender_id']) &&
+        !_isDeletedForMe(m) &&
+        !blockedIds.contains(m['sender_id']) &&
           seen.add(m['id'].toString())
       ).toList();
-      controller.add(filtered);
-    }, onError: controller.addError);
-
-    controller.onCancel = () => sub.cancel();
-    return controller.stream;
+    });
   }
 
   Stream<List<Map<String, dynamic>>> getPrivateMessagesStreamByUsers(String userId, String peerId) {
@@ -249,15 +255,15 @@ class ChatService {
   // ====== Room messages ======
   Stream<List<Map<String, dynamic>>> getRoomMessagesStream(String roomId) {
     return _supabase
-       .from('room_messages')
-       .stream(primaryKey: ['id'])
-       .eq('room_id', roomId)
-       .order('created_at', ascending: true)
-       .map((maps) {
+      .from('room_messages')
+      .stream(primaryKey: ['id'])
+      .eq('room_id', roomId)
+      .order('created_at', ascending: true)
+      .map((maps) {
       final seen = <String>{};
       return maps.where((m) =>
           m['deleted_at'] == null &&
-         !_isDeletedForMe(m) &&
+        !_isDeletedForMe(m) &&
           seen.add(m['id'].toString())
       ).toList();
     });
@@ -375,10 +381,10 @@ class ChatService {
 
     final table = isRoom? 'room_messages' : 'private_messages';
     final res = await _supabase.from(table)
-       .update({'deleted_at': DateTime.now().toIso8601String()})
-       .eq('id', messageId)
-       .eq('sender_id', user.id)
-       .select();
+      .update({'deleted_at': DateTime.now().toIso8601String()})
+      .eq('id', messageId)
+      .eq('sender_id', user.id)
+      .select();
 
     return res.isNotEmpty;
   }
@@ -392,10 +398,10 @@ class ChatService {
     final col = isRoom? 'room_id' : 'chat_id';
 
     final msgs = await _supabase
-       .from(table)
-       .select('id, deleted_for')
-       .eq(col, chatId)
-       .isFilter('deleted_at', null);
+      .from(table)
+      .select('id, deleted_for')
+      .eq(col, chatId)
+      .isFilter('deleted_at', null);
 
     for (final m in msgs as List) {
       final id = m['id'];
@@ -404,9 +410,9 @@ class ChatService {
 
       final newDeletedFor = [...deletedFor, userId];
       await _supabase
-         .from(table)
-         .update({'deleted_for': newDeletedFor})
-         .eq('id', id);
+        .from(table)
+        .update({'deleted_for': newDeletedFor})
+        .eq('id', id);
     }
   }
 
@@ -451,10 +457,10 @@ class ChatService {
   // ====== Chats list ======
   Future<List<Map<String, dynamic>>> getUserChats(String userId) async {
     final response = await _supabase.from('private_messages')
-       .select('chat_id, sender_id, receiver_id, content, created_at, deleted_at, deleted_for')
-       .or('sender_id.eq.$userId,receiver_id.eq.$userId')
-       .isFilter('deleted_at', null)
-       .order('created_at', ascending: false);
+      .select('chat_id, sender_id, receiver_id, content, created_at, deleted_at, deleted_for')
+      .or('sender_id.eq.$userId,receiver_id.eq.$userId')
+      .isFilter('deleted_at', null)
+      .order('created_at', ascending: false);
 
     final Map<String, Map<String, dynamic>> chats = {};
     for (var msg in response) {
@@ -468,9 +474,9 @@ class ChatService {
       if (await isBlocked(userId, peerId)) continue;
 
       final peerData = await _supabase.from(SupabaseConfig.tUsers)
-         .select('id, username, avatar_url, is_online')
-         .eq('id', peerId)
-         .maybeSingle();
+        .select('id, username, avatar_url, is_online')
+        .eq('id', peerId)
+        .maybeSingle();
 
       if (peerData!= null) {
         chats[chatId] = {
@@ -498,14 +504,14 @@ class ChatService {
   Future<int> getUnreadCount(String userId, String peerId) async {
     final chatId = _getChatId(userId, peerId);
     final res = await _supabase.from('private_messages').select('id')
-       .eq('chat_id', chatId).eq('receiver_id', userId).isFilter('read_at', null);
+      .eq('chat_id', chatId).eq('receiver_id', userId).isFilter('read_at', null);
     return (res as List).length;
   }
 
   Future<Map<String, dynamic>?> getLastPrivateMessage(String userId, String peerId) async {
     final chatId = _getChatId(userId, peerId);
     return await _supabase.from('private_messages').select()
-       .eq('chat_id', chatId).order('created_at', ascending: false).limit(1).maybeSingle();
+      .eq('chat_id', chatId).order('created_at', ascending: false).limit(1).maybeSingle();
   }
 
   Future<void> setUserOnlineInRoom(String userId, String roomId) async {
