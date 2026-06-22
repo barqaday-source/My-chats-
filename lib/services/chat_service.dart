@@ -1,257 +1,383 @@
-import 'dart:io';
-import 'package:flutter/foundation.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:hive_flutter/hive_flutter.dart';
-import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:path/path.dart' as p;
-import '../core/constants/supabase_config.dart';
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../../core/constants/app_colors.dart';
+import '../../models/chat_model.dart';
+import '../../providers/auth_provider.dart';
+import '../../services/chat_service.dart';
+import '../../widgets/user_avatar.dart';
+import '../../widgets/app_snackbar.dart';
+import 'private_chat_screen.dart';
+import '../users_grid_screen.dart';
 
-class ChatService {
-  final SupabaseClient _supabase = SupabaseConfig.client;
-  static const String _bucket = 'chat_media';
+class ChatsListScreen extends StatefulWidget {
+  const ChatsListScreen({super.key});
 
-  Box? get _outboxChat => Hive.isBoxOpen('outbox_chat') ? Hive.box('outbox_chat') : null;
-  Box? get _outboxRoom => Hive.isBoxOpen('outbox_room') ? Hive.box('outbox_room') : null;
+  @override
+  State<ChatsListScreen> createState() => _ChatsListScreenState();
+}
 
-  ChatService() {
-    Connectivity().onConnectivityChanged.listen((r) {
-      if (r != ConnectivityResult.none) {
-        _flushOutbox('private');
-        _flushOutbox('room');
+class _ChatsListScreenState extends State<ChatsListScreen> {
+  final _chatService = ChatService();
+  List<ChatModel> _chats = [];
+  bool _loading = true;
+
+  // للانميشن عند الحذف
+  final Set<String> _removingIds = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _loadChats();
+  }
+
+  Future<void> _loadChats() async {
+    setState(() => _loading = true);
+    try {
+      final user = context.read<AuthProvider>().user!;
+      final chats = await _chatService.getUserChats(user.id);
+      if (!mounted) return;
+      setState(() {
+        _chats = chats.map((c) => ChatModel.fromJson(c)).toList();
+        _loading = false;
+      });
+    } catch (e) {
+      if (mounted) {
+        setState(() => _loading = false);
+        showAppSnack(context, 'فشل تحميل المحادثات', success: false);
       }
-    });
-    _flushOutbox('private');
-    _flushOutbox('room');
+    }
   }
 
-  String _getChatId(String id1, String id2) {
-    final sorted = [id1, id2]..sort();
-    return sorted.join('_');
+  void _openChat(ChatModel chat) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PrivateChatScreen(
+          chatId: chat.id,
+          peer: chat.peer,
+        ),
+      ),
+    ).then((_) => _loadChats());
   }
 
-  String? get _uid => _supabase.auth.currentUser?.id;
-
-  bool _isDeletedForMe(Map<String, dynamic> m) {
-    final uid = _uid;
-    if (uid == null) return false;
-    final deletedFor = (m['deleted_for'] as List?)?.cast<String>() ?? const [];
-    return deletedFor.contains(uid);
+  // --- Bottom Sheet حذف احترافي ---
+  Future<bool?> _showDeleteSheet(BuildContext context, String peerName) {
+    return showModalBottomSheet<bool>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+        decoration: const BoxDecoration(
+          color: AppColors.bgCard,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(width: 40, height: 4, decoration: BoxDecoration(
+                color: AppColors.textSub.withOpacity(0.4),
+                borderRadius: BorderRadius.circular(2),
+              )),
+              const SizedBox(height: 20),
+              const Icon(Icons.delete_outline_rounded, size: 44, color: AppColors.danger),
+              const SizedBox(height: 12),
+              Text('حذف دردشة $peerName؟',
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontFamily: 'Tajawal', fontSize: 17, fontWeight: FontWeight.w700, color: AppColors.white)),
+              const SizedBox(height: 6),
+              const Text('سيتم حذف المحادثة من جهازك فقط',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontFamily: 'Tajawal', fontSize: 13, color: AppColors.textSub)),
+              const SizedBox(height: 20),
+              Row(children: [
+                Expanded(child: OutlinedButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.white,
+                    side: const BorderSide(color: AppColors.glassBorder),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: const Text('إلغاء', style: TextStyle(fontFamily: 'Tajawal')),
+                )),
+                const SizedBox(width: 12),
+                Expanded(child: FilledButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.danger,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: const Text('حذف', style: TextStyle(fontFamily: 'Tajawal', fontWeight: FontWeight.w700)),
+                )),
+              ]),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
-  // ====== Block system ======
-  Future<bool> isBlocked(String userId, String peerId) async {
+  // حذف دردشة - مع انميشن
+  Future<void> _deleteChat(ChatModel chat) async {
+    final ok = await _showDeleteSheet(context, chat.peer.username);
+    if (ok!= true) return;
+
+    // 1. انميشن خروج
+    setState(() => _removingIds.add(chat.id));
+    await Future.delayed(const Duration(milliseconds: 220));
+
     try {
-      final res = await _supabase
-          .from('blocked_users')
-          .select('blocker_id')
-          .or('and(blocker_id.eq.$userId,blocked_id.eq.$peerId),and(blocker_id.eq.$peerId,blocked_id.eq.$userId)')
-          .limit(1)
-          .maybeSingle();
-      return res != null;
-    } catch (_) {
-      return false;
+      await _chatService.clearChat(chat.id, isRoom: false);
+      if (!mounted) return;
+      setState(() {
+        _chats.removeWhere((c) => c.id == chat.id);
+        _removingIds.remove(chat.id);
+      });
+      showAppSnack(context, 'تم حذف الدردشة', success: true);
+    } catch (e) {
+      // رجعها لو فشل
+      if (mounted) {
+        setState(() => _removingIds.remove(chat.id));
+        showAppSnack(context, 'فشل الحذف: $e', success: false);
+      }
     }
   }
 
-  Future<Set<String>> _getBlockedIds(String uid) async {
-    try {
-      final blocked = await _supabase
-          .from('blocked_users')
-          .select('blocker_id, blocked_id')
-          .or('blocker_id.eq.$uid,blocked_id.eq.$uid');
-      return blocked.map<String>((b) => 
-        b['blocker_id'] == uid ? b['blocked_id'] as String : b['blocker_id'] as String
-      ).toSet();
-    } catch (_) {
-      return {};
+  void _openUsersSearch() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const UsersGridScreen()),
+    ).then((_) => _loadChats());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.bg,
+      appBar: AppBar(
+        backgroundColor: AppColors.bgCard,
+        title: const Text(
+          'المحادثات',
+          style: TextStyle(fontFamily: 'Tajawal', color: AppColors.white),
+        ),
+      ),
+      body: Column(
+        children: [
+          _buildUsersSearchButton(),
+          Expanded(
+            child: _loading
+      ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+                : _chats.isEmpty
+         ? _buildEmptyState()
+                    : RefreshIndicator(
+                        onRefresh: _loadChats,
+                        color: AppColors.primary,
+                        child: ListView.builder(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          itemCount: _chats.length,
+                          itemBuilder: (context, index) {
+                            final chat = _chats[index];
+                            return _buildChatTile(chat);
+                          },
+                        ),
+                      ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildUsersSearchButton() {
+    return InkWell(
+      onTap: _openUsersSearch,
+      splashColor: Colors.transparent,
+      highlightColor: AppColors.primary.withOpacity(0.06),
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        margin: const EdgeInsets.all(12),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: AppColors.bgCard,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.glassBorder),
+        ),
+        child: const Row(
+          textDirection: TextDirection.rtl,
+          children: [
+            Icon(Icons.person_search_rounded, color: AppColors.primary),
+            SizedBox(width: 12),
+            Text(
+              'ابحث عن أشخاص للدردشة...',
+              style: TextStyle(
+                fontFamily: 'Tajawal',
+                color: AppColors.textSub,
+                fontSize: 14,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.chat_bubble_outline_rounded, size: 64, color: AppColors.textSub),
+          const SizedBox(height: 16),
+          const Text(
+            'لا توجد محادثات',
+            style: TextStyle(
+              fontFamily: 'Tajawal',
+              color: AppColors.textSub,
+              fontSize: 16,
+            ),
+          ),
+          const SizedBox(height: 12),
+          ElevatedButton.icon(
+            onPressed: _openUsersSearch,
+            icon: const Icon(Icons.person_search_outlined),
+            label: const Text('ابحث عن أشخاص', style: TextStyle(fontFamily: 'Tajawal')),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildChatTile(ChatModel chat) {
+    final isRemoving = _removingIds.contains(chat.id);
+
+    return AnimatedOpacity(
+      opacity: isRemoving? 0.0 : 1.0,
+      duration: const Duration(milliseconds: 200),
+      child: AnimatedSize(
+        duration: const Duration(milliseconds: 200),
+        child: isRemoving
+        ? const SizedBox(height: 0)
+          : Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Material(
+                color: AppColors.bgCard,
+                borderRadius: BorderRadius.circular(12),
+                child: InkWell(
+                  onTap: () => _openChat(chat),
+                  onLongPress: () => _deleteChat(chat),
+                  splashColor: Colors.transparent,
+                  highlightColor: AppColors.primary.withOpacity(0.06),
+                  hoverColor: Colors.transparent,
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.glassBorder),
+                    ),
+                    child: Row(
+                      children: [
+                        UserAvatar(
+                          url: chat.peer.avatarUrl,
+                          name: chat.peer.username,
+                          isOnline: chat.peer.isOnline,
+                          size: 50,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      chat.peer.username,
+                                      style: const TextStyle(
+                                        fontFamily: 'Tajawal',
+                                        color: AppColors.white,
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                  Text(
+                                    _formatTime(chat.lastMessageTime),
+                                    style: const TextStyle(
+                                      fontFamily: 'Tajawal',
+                                      color: AppColors.textSub,
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 4),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      chat.lastMessage?? 'لا توجد رسائل',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontFamily: 'Tajawal',
+                                        color: chat.unreadCount > 0? AppColors.white : AppColors.textSub,
+                                        fontSize: 13,
+                                        fontWeight: chat.unreadCount > 0? FontWeight.w600 : FontWeight.normal,
+                                      ),
+                                    ),
+                                  ),
+                                  if (chat.unreadCount > 0)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: AppColors.primary,
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                      child: Text(
+                                        chat.unreadCount.toString(),
+                                        style: const TextStyle(
+                                          fontFamily: 'Tajawal',
+                                          color: Colors.white,
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+      ),
+    );
+  }
+
+  String _formatTime(DateTime time) {
+    final now = DateTime.now();
+    final diff = now.difference(time);
+    if (diff.inDays > 0) {
+      return '${time.day}/${time.month}';
+    } else if (diff.inHours > 0) {
+      return '${diff.inHours}س';
+    } else if (diff.inMinutes > 0) {
+      return '${diff.inMinutes}د';
+    } else {
+      return 'الآن';
     }
   }
-
-  Future<void> blockUser(String peerId) async {
-    final user = _supabase.auth.currentUser;
-    if (user == null) throw Exception('not_authenticated');
-    await _supabase.from('blocked_users').upsert({
-      'blocker_id': user.id,
-      'blocked_id': peerId,
-    }, onConflict: 'blocker_id,blocked_id');
-  }
-
-  Future<void> unblockUser(String peerId) async {
-    final user = _supabase.auth.currentUser;
-    if (user == null) throw Exception('not_authenticated');
-    await _supabase.from('blocked_users')
-        .delete()
-        .eq('blocker_id', user.id)
-        .eq('blocked_id', peerId);
-  }
-
-  Future<void> reportUser(String peerId, String reason) async {
-    final user = _supabase.auth.currentUser;
-    if (user == null) throw Exception('not_authenticated');
-    await _supabase.from('reports').insert({
-      'reporter_id': user.id,
-      'reported_id': peerId,
-      'reason': reason,
-    });
-  }
-
-  // ====== Read receipts ======
-  Future<void> markPrivateMessagesRead(String chatId) async {
-    final uid = _uid;
-    if (uid == null) return;
-    try {
-      await _supabase.from('private_messages')
-          .update({
-            'is_read': true,
-            'is_delivered': true,
-            'read_at': DateTime.now().toIso8601String(),
-          })
-          .eq('chat_id', chatId)
-          .neq('sender_id', uid);
-    } catch (_) {}
-  }
-
-  Future<void> markRoomMessagesRead(String roomId) async {
-    final uid = _uid;
-    if (uid == null) return;
-    try {
-      await _supabase.from('room_messages')
-          .update({'is_read': true, 'is_delivered': true})
-          .eq('room_id', roomId)
-          .neq('sender_id', uid);
-    } catch (_) {}
-  }
-
-  // ====== Private messages ======
-  Stream<List<Map<String, dynamic>>> getPrivateMessagesStream(String chatId) {
-    final controller = StreamController<List<Map<String, dynamic>>>();
-    Set<String> blockedIds = {};
-    bool blockedLoaded = false;
-
-    // حمل قائمة الحظر مرة وحدة
-    _uid != null ? _getBlockedIds(_uid!).then((ids) {
-      blockedIds = ids;
-      blockedLoaded = true;
-    }) : blockedLoaded = true;
-
-    final sub = _supabase
-        .from('private_messages')
-        .stream(primaryKey: ['id'])
-        .eq('chat_id', chatId)
-        .order('created_at', ascending: true)
-        .listen((maps) {
-      final seen = <String>{};
-      final filtered = maps.where((m) =>
-          m['deleted_at'] == null &&
-          !_isDeletedForMe(m) &&
-          (!blockedLoaded || !blockedIds.contains(m['sender_id'])) &&
-          seen.add(m['id'].toString())
-      ).toList();
-      controller.add(filtered);
-    }, onError: controller.addError);
-
-    controller.onCancel = () => sub.cancel();
-    return controller.stream;
-  }
-
-  Stream<List<Map<String, dynamic>>> getPrivateMessagesStreamByUsers(String userId, String peerId) {
-    final chatId = _getChatId(userId, peerId);
-    return getPrivateMessagesStream(chatId);
-  }
-
-  Future<void> sendPrivateMessageEx({
-    required String chatId,
-    required String peerId,
-    String content = '',
-    String? mediaUrl,
-    String? audioUrl,
-    File? imageFile,
-    File? audioFile,
-    int audioDuration = 0,
-    Map<String, dynamic>? replyMessage,
-  }) async {
-    final user = _supabase.auth.currentUser;
-    if (user == null) throw Exception('not_authenticated');
-    final userId = user.id;
-
-    if (await isBlocked(userId, peerId)) {
-      throw Exception('blocked');
-    }
-
-    final payload = {
-      'chat_id': chatId,
-      'sender_id': userId,
-      'receiver_id': peerId,
-      'content': content,
-      'media_url': mediaUrl,
-      'audio_url': audioUrl,
-      'audio_duration': audioDuration,
-      'image_path': imageFile?.path,
-      'audio_path': audioFile?.path,
-      'reply_message': replyMessage,
-    };
-
-    final conn = await Connectivity().checkConnectivity();
-    if (conn.contains(ConnectivityResult.none)) {
-      await _outboxChat?.add(payload);
-      throw Exception('offline');
-    }
-    await _sendPrivateOnline(payload);
-  }
-
-  Future<void> _sendPrivateOnline(Map payload) async {
-    final sender = payload['sender_id'] as String;
-    final receiver = payload['receiver_id'] as String;
-    
-    // فحص حظر ثاني - مهم للـ outbox
-    if (await isBlocked(sender, receiver)) {
-      throw Exception('blocked');
-    }
-
-    String? imageUrl = payload['media_url'];
-    String? audioUrl = payload['audio_url'];
-
-    if (imageUrl == null && payload['image_path'] != null) {
-      imageUrl = await _upload(File(payload['image_path']));
-    }
-    if (audioUrl == null && payload['audio_path'] != null) {
-      audioUrl = await _upload(File(payload['audio_path']));
-    }
-
-    final Map<String, dynamic>? reply = payload['reply_message'] as Map<String, dynamic>?;
-    final replyId = reply?['id'];
-    String? replyContent = reply?['content'] as String?;
-    String replyType = reply?['type'] ?? (reply?['audio_url'] != null ? 'audio' : reply?['image_url'] != null || reply?['media_url'] != null ? 'image' : 'text');
-    if (replyType == 'image' && (replyContent == null || replyContent.isEmpty)) replyContent = '📷 صورة';
-    if ((replyType == 'audio' || replyType == 'voice') && (replyContent == null || replyContent.isEmpty)) replyContent = '🎤 رسالة صوتية';
-    final replySenderName = reply?['sender_name'] ?? reply?['senderName'];
-
-    final insertData = {
-      'chat_id': payload['chat_id'],
-      'sender_id': sender,
-      'receiver_id': receiver,
-      'content': payload['content'] ?? '',
-      'type': audioUrl != null ? 'voice' : imageUrl != null ? 'image' : 'text',
-      'image_url': imageUrl,
-      'media_url': imageUrl,
-      'audio_url': audioUrl,
-      'audio_duration': payload['audio_duration'] ?? 0,
-      'duration': payload['audio_duration'] ?? 0,
-      'reply_to': replyId,
-      'reply_sender_name': replySenderName,
-      'reply_content': replyContent,
-      'reply_type': replyType,
-      'delivered_at': DateTime.now().toIso8601String(),
-      'is_delivered': false,
-      'is_read': false,
-    }..removeWhere((k, v) => v == null);
-
-    await _supabase.from('private_messages').insert(insertData);
-  }
-
-  // ====== باقي الملف بدون تغيير ======
-  // Room messages, upload, deleteMessage, clearChat, deletePrivateChat, 
-  // _flushOutbox, getUserChats, getUnreadCount, getLastPrivateMessage,
-  // setUserOnlineInRoom, setUserOfflineInRoom
-  // انسخها من ملفك الأصلي، ما لمستها
 }
