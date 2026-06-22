@@ -26,7 +26,9 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
   late String _chatId;
   bool _creatingChat = true;
   Map<String, dynamic>? _replyingTo;
-  bool _isSending = false;
+
+  // لمنع سبام القراءة
+  DateTime _lastReadMark = DateTime.fromMillisecondsSinceEpoch(0);
 
   @override
   void initState() {
@@ -45,26 +47,38 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
       _chatId = cid;
       _creatingChat = false;
     });
-    // علّم الرسائل كمقروءة أول ما تفتح
-    _chat.markPrivateMessagesRead(cid);
+    // علّم مقروء أول ما تفتح
+    _markReadThrottled();
   }
 
-  void _scrollToBottom() {
-    if (_scroll.hasClients) {
-      Future.delayed(const Duration(milliseconds: 100), () {
-        if (_scroll.hasClients) {
-          _scroll.animateTo(_scroll.position.maxScrollExtent,
-            duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
-        }
-      });
-    }
+  void _markReadThrottled() {
+    final now = DateTime.now();
+    if (now.difference(_lastReadMark).inSeconds < 2) return;
+    _lastReadMark = now;
+    _chat.markPrivateMessagesRead(_chatId);
+  }
+
+  void _scrollToBottom({bool force = false}) {
+    if (!_scroll.hasClients) return;
+    final max = _scroll.position.maxScrollExtent;
+    final current = _scroll.position.pixels;
+    // لا تقفز بوجهه إذا صاعد يقرأ قديم
+    if (!force && max - current > 200) return;
+
+    Future.delayed(const Duration(milliseconds: 80), () {
+      if (_scroll.hasClients) {
+        _scroll.animateTo(
+          _scroll.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOut,
+        );
+      }
+    });
   }
 
   Future<void> _send(String text, File? image, File? audioFile, int audioDuration) async {
-    if (_isSending) return;
     if (text.trim().isEmpty && image == null && audioFile == null) return;
 
-    setState(() => _isSending = true);
     try {
       await _chat.sendPrivateMessageEx(
         chatId: _chatId,
@@ -76,7 +90,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
         replyMessage: _replyingTo,
       );
       if (mounted) setState(() => _replyingTo = null);
-      _scrollToBottom();
+      _scrollToBottom(force: true);
     } catch (e) {
       if (!mounted) return;
       final err = e.toString();
@@ -87,8 +101,6 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
       } else {
         showAppSnack(context, 'فشل الإرسال: $e', success: false);
       }
-    } finally {
-      if (mounted) setState(() => _isSending = false);
     }
   }
 
@@ -108,14 +120,11 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
       appBar: AppBar(
         backgroundColor: AppColors.bgCard,
         iconTheme: const IconThemeData(color: AppColors.white),
-        // --- AppBar live ---
         title: StreamBuilder<List<Map<String, dynamic>>>(
           stream: supabase
-           .from('users')
-           .stream(primaryKey: ['id'])
-           .eq('id', widget.peer.id)
-           .map((rows) => rows),
-          initialData: const [],
+          .from('users')
+          .stream(primaryKey: ['id'])
+          .eq('id', widget.peer.id),
           builder: (context, snap) {
             final data = snap.data?.isNotEmpty == true? snap.data!.first : null;
             final isOnline = data?['is_online']?? widget.peer.isOnline;
@@ -162,14 +171,18 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
                 if (!snap.hasData) {
                   return const Center(child: CircularProgressIndicator(color: AppColors.primary));
                 }
-                // فلترة التكرار
-                final raw = snap.data!;
-                final seen = <String>{};
-                final messages = raw.where((m) => seen.add(m['id'].toString())).toList();
 
-                // علّم كمقروء كل ما توصل رسائل جديدة
+                final messages = snap.data!;
+
+                // علّم مقروء بس إذا أكو رسائل جديدة من الطرف الثاني
                 if (messages.isNotEmpty) {
-                  _chat.markPrivateMessagesRead(_chatId);
+                  final hasUnread = messages.any((m) =>
+                    m['sender_id']!= currentUserId &&
+                    m['is_read']!= true && m['read_at'] == null
+                  );
+                  if (hasUnread) {
+                    WidgetsBinding.instance.addPostFrameCallback((_) => _markReadThrottled());
+                  }
                 }
 
                 if (messages.isEmpty) {
@@ -182,7 +195,9 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
                     ]),
                   );
                 }
+
                 WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
+
                 return ListView.builder(
                   controller: _scroll,
                   padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
@@ -197,7 +212,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
                       showAvatar: false,
                       isRoom: false,
                       onReply: () => setState(() => _replyingTo = msg),
-                      onDelete: (_) => setState(() {}),
+                      onDelete: (_) {},
                     );
                   },
                 );
@@ -205,12 +220,18 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
             ),
           ),
           ChatInputBar(
-            onSend: _isSending? (_,__,___,____) async {} : _send,
+            onSend: _send,
             replyTo: _replyingTo,
             onCancelReply: () => setState(() => _replyingTo = null),
           ),
         ],
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
   }
 }
