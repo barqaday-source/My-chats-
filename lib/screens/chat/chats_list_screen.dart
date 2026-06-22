@@ -8,7 +8,6 @@ import '../../services/chat_service.dart';
 import '../../widgets/user_avatar.dart';
 import '../../widgets/app_snackbar.dart';
 import 'private_chat_screen.dart';
-// شاشة البحث عن المستخدمين
 import '../users_grid_screen.dart';
 
 class ChatsListScreen extends StatefulWidget {
@@ -22,6 +21,9 @@ class _ChatsListScreenState extends State<ChatsListScreen> {
   final _chatService = ChatService();
   List<ChatModel> _chats = [];
   bool _loading = true;
+
+  // للانميشن عند الحذف
+  final Set<String> _removingIds = {};
 
   @override
   void initState() {
@@ -59,36 +61,90 @@ class _ChatsListScreenState extends State<ChatsListScreen> {
     ).then((_) => _loadChats());
   }
 
-  // NEW: حذف دردشة - لي فقط
-  Future<void> _deleteChat(ChatModel chat) async {
-    final ok = await showDialog<bool>(
+  // --- Bottom Sheet حذف احترافي ---
+  Future<bool?> _showDeleteSheet(BuildContext context, String peerName) {
+    return showModalBottomSheet<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.bgCard,
-        title: const Text('هل تريد حذف دردشة واحدة؟', 
-          textAlign: TextAlign.center,
-          style: TextStyle(color: AppColors.white, fontFamily: 'Tajawal', fontSize: 16)),
-        actionsAlignment: MainAxisAlignment.spaceEvenly,
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('إلغاء', style: TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub))),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('حذف الدردشة', style: TextStyle(fontFamily: 'Tajawal', color: AppColors.primary))),
-        ],
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+        decoration: const BoxDecoration(
+          color: AppColors.bgCard,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(width: 40, height: 4, decoration: BoxDecoration(
+                color: AppColors.textSub.withOpacity(0.4),
+                borderRadius: BorderRadius.circular(2),
+              )),
+              const SizedBox(height: 20),
+              const Icon(Icons.delete_outline_rounded, size: 44, color: AppColors.danger),
+              const SizedBox(height: 12),
+              Text('حذف دردشة $peerName؟',
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontFamily: 'Tajawal', fontSize: 17, fontWeight: FontWeight.w700, color: AppColors.white)),
+              const SizedBox(height: 6),
+              const Text('سيتم حذف المحادثة من جهازك فقط',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontFamily: 'Tajawal', fontSize: 13, color: AppColors.textSub)),
+              const SizedBox(height: 20),
+              Row(children: [
+                Expanded(child: OutlinedButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.white,
+                    side: const BorderSide(color: AppColors.glassBorder),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: const Text('إلغاء', style: TextStyle(fontFamily: 'Tajawal')),
+                )),
+                const SizedBox(width: 12),
+                Expanded(child: FilledButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.danger,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: const Text('حذف', style: TextStyle(fontFamily: 'Tajawal', fontWeight: FontWeight.w700)),
+                )),
+              ]),
+            ],
+          ),
+        ),
       ),
     );
+  }
 
-    if (ok != true) return;
+  // حذف دردشة - مع انميشن
+  Future<void> _deleteChat(ChatModel chat) async {
+    final ok = await _showDeleteSheet(context, chat.peer.username);
+    if (ok!= true) return;
+
+    // 1. انميشن خروج
+    setState(() => _removingIds.add(chat.id));
+    await Future.delayed(const Duration(milliseconds: 220));
 
     try {
       await _chatService.clearChat(chat.id, isRoom: false);
       if (!mounted) return;
-      setState(() => _chats.removeWhere((c) => c.id == chat.id));
+      setState(() {
+        _chats.removeWhere((c) => c.id == chat.id);
+        _removingIds.remove(chat.id);
+      });
       showAppSnack(context, 'تم حذف الدردشة', success: true);
     } catch (e) {
-      if (mounted) showAppSnack(context, 'فشل الحذف: $e', success: false);
+      // رجعها لو فشل
+      if (mounted) {
+        setState(() => _removingIds.remove(chat.id));
+        showAppSnack(context, 'فشل الحذف: $e', success: false);
+      }
     }
   }
 
@@ -115,9 +171,9 @@ class _ChatsListScreenState extends State<ChatsListScreen> {
           _buildUsersSearchButton(),
           Expanded(
             child: _loading
-        ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+       ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
                 : _chats.isEmpty
-           ? _buildEmptyState()
+          ? _buildEmptyState()
                     : RefreshIndicator(
                         onRefresh: _loadChats,
                         color: AppColors.primary,
@@ -139,6 +195,8 @@ class _ChatsListScreenState extends State<ChatsListScreen> {
   Widget _buildUsersSearchButton() {
     return InkWell(
       onTap: _openUsersSearch,
+      splashColor: Colors.transparent,
+      highlightColor: AppColors.primary.withOpacity(0.06),
       borderRadius: BorderRadius.circular(12),
       child: Container(
         margin: const EdgeInsets.all(12),
@@ -199,93 +257,114 @@ class _ChatsListScreenState extends State<ChatsListScreen> {
   }
 
   Widget _buildChatTile(ChatModel chat) {
-    return InkWell(
-      onTap: () => _openChat(chat),
-      onLongPress: () => _deleteChat(chat), // NEW
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: AppColors.bgCard,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.glassBorder),
-        ),
-        child: Row(
-          children: [
-            UserAvatar(
-              url: chat.peer.avatarUrl,
-              name: chat.peer.username,
-              isOnline: chat.peer.isOnline,
-              size: 50,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          chat.peer.username,
-                          style: const TextStyle(
-                            fontFamily: 'Tajawal',
-                            color: AppColors.white,
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
+    final isRemoving = _removingIds.contains(chat.id);
+
+    return AnimatedOpacity(
+      opacity: isRemoving? 0.0 : 1.0,
+      duration: const Duration(milliseconds: 200),
+      child: AnimatedSize(
+        duration: const Duration(milliseconds: 200),
+        child: isRemoving
+         ? const SizedBox(height: 0)
+          : Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Material(
+                color: AppColors.bgCard,
+                borderRadius: BorderRadius.circular(12),
+                child: InkWell(
+                  onTap: () => _openChat(chat),
+                  onLongPress: () => _deleteChat(chat),
+                  // هذا اللي يقتل الضل الرمادي
+                  splashColor: Colors.transparent,
+                  highlightColor: AppColors.primary.withOpacity(0.06),
+                  hoverColor: Colors.transparent,
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.glassBorder),
+                    ),
+                    child: Row(
+                      children: [
+                        UserAvatar(
+                          url: chat.peer.avatarUrl,
+                          name: chat.peer.username,
+                          isOnline: chat.peer.isOnline,
+                          size: 50,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      chat.peer.username,
+                                      style: const TextStyle(
+                                        fontFamily: 'Tajawal',
+                                        color: AppColors.white,
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                  Text(
+                                    _formatTime(chat.lastMessageTime),
+                                    style: const TextStyle(
+                                      fontFamily: 'Tajawal',
+                                      color: AppColors.textSub,
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 4),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      chat.lastMessage?? 'لا توجد رسائل',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontFamily: 'Tajawal',
+                                        color: chat.unreadCount > 0? AppColors.white : AppColors.textSub,
+                                        fontSize: 13,
+                                        fontWeight: chat.unreadCount > 0? FontWeight.w600 : FontWeight.normal,
+                                      ),
+                                    ),
+                                  ),
+                                  if (chat.unreadCount > 0)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: AppColors.primary,
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                      child: Text(
+                                        chat.unreadCount.toString(),
+                                        style: const TextStyle(
+                                          fontFamily: 'Tajawal',
+                                          color: Colors.white,
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ],
                           ),
                         ),
-                      ),
-                      Text(
-                        _formatTime(chat.lastMessageTime),
-                        style: const TextStyle(
-                          fontFamily: 'Tajawal',
-                          color: AppColors.textSub,
-                          fontSize: 11,
-                        ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          chat.lastMessage?? 'لا توجد رسائل',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontFamily: 'Tajawal',
-                            color: chat.unreadCount > 0? AppColors.white : AppColors.textSub,
-                            fontSize: 13,
-                            fontWeight: chat.unreadCount > 0? FontWeight.w600 : FontWeight.normal,
-                          ),
-                        ),
-                      ),
-                      if (chat.unreadCount > 0)
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: AppColors.primary,
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Text(
-                            chat.unreadCount.toString(),
-                            style: const TextStyle(
-                              fontFamily: 'Tajawal',
-                              color: Colors.white,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ],
+                ),
               ),
             ),
-          ],
-        ),
       ),
     );
   }
