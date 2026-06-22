@@ -2,34 +2,39 @@ import 'package:flutter/widgets.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class PresenceService with WidgetsBindingObserver {
-  final supabase = Supabase.instance.client;
-  static final PresenceService _i = PresenceService._();
-  factory PresenceService() => _i;
-  PresenceService._();
+  final _db = Supabase.instance.client;
+  bool _started = false;
 
-  void init() {
+  void start() {
+    if (_started) return;
+    _started = true;
     WidgetsBinding.instance.addObserver(this);
-    _set(true);
+    _setOnline(true);
+    // heartbeat كل 30 ثانية
+    Stream.periodic(const Duration(seconds: 30)).listen((_) => _setOnline(true));
   }
 
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    _set(false);
+  Future<void> _setOnline(bool online) async {
+    final uid = _db.auth.currentUser?.id;
+    if (uid == null) return;
+    await _db.from('profiles').update({
+      'is_online': online,
+      'last_seen': DateTime.now().toIso8601String(),
+    }).eq('id', uid);
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) _set(true);
+    if (state == AppLifecycleState.resumed) _setOnline(true);
     if (state == AppLifecycleState.paused || 
-        state == AppLifecycleState.detached) _set(false);
+        state == AppLifecycleState.detached ||
+        state == AppLifecycleState.inactive) {
+      _setOnline(false);
+    }
   }
 
-  Future<void> _set(bool online) async {
-    final uid = supabase.auth.currentUser?.id;
-    if (uid == null) return;
-    await supabase.from('users').update({
-      'is_online': online,
-      'last_seen': DateTime.now().toIso8601String()
-    }).eq('id', uid);
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _setOnline(false);
   }
 }
