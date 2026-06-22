@@ -4,7 +4,7 @@ import 'package:audioplayers/audioplayers.dart';
 import '../../core/constants/app_colors.dart';
 import '../../services/chat_service.dart';
 import '../../screens/profile/user_profile_screen.dart';
-import '../widgets/app_snackbar.dart';
+import '../app_snackbar.dart';
 
 class MessageBubble extends StatefulWidget {
   final Map<String, dynamic> message;
