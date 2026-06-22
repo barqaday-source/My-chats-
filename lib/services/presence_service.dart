@@ -1,40 +1,54 @@
+import 'dart:async';
 import 'package:flutter/widgets.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class PresenceService with WidgetsBindingObserver {
-  final _db = Supabase.instance.client;
+  final supabase = Supabase.instance.client;
+  static final PresenceService _i = PresenceService._();
+  factory PresenceService() => _i;
+  PresenceService._();
+
+  Timer? _heartbeat;
   bool _started = false;
 
-  void start() {
+  void init() {
     if (_started) return;
     _started = true;
     WidgetsBinding.instance.addObserver(this);
-    _setOnline(true);
-    // heartbeat كل 30 ثانية
-    Stream.periodic(const Duration(seconds: 30)).listen((_) => _setOnline(true));
+    _set(true);
+    _heartbeat = Timer.periodic(const Duration(seconds: 30), (_) => _set(true));
   }
 
-  Future<void> _setOnline(bool online) async {
-    final uid = _db.auth.currentUser?.id;
-    if (uid == null) return;
-    await _db.from('profiles').update({
-      'is_online': online,
-      'last_seen': DateTime.now().toIso8601String(),
-    }).eq('id', uid);
+  // alias حتى لو ناديت start() يشتغل
+  void start() => init();
+
+  void close() {
+    _heartbeat?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    _set(false);
+    _started = false;
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) _setOnline(true);
-    if (state == AppLifecycleState.paused || 
-        state == AppLifecycleState.detached ||
-        state == AppLifecycleState.inactive) {
-      _setOnline(false);
+    if (state == AppLifecycleState.resumed) {
+      _set(true);
+    }
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      _set(false);
     }
   }
 
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    _setOnline(false);
+  Future<void> _set(bool online) async {
+    final uid = supabase.auth.currentUser?.id;
+    if (uid == null) return;
+    try {
+      await supabase.from('users').update({
+        'is_online': online,
+        'last_seen': DateTime.now().toIso8601String()
+      }).eq('id', uid);
+    } catch (_) {}
   }
 }
