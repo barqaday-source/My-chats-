@@ -169,34 +169,6 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     }
   }
 
-  Future<void> _banEmail() async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.bgCard,
-        title: const Text('حظر نهائي',
-            style: TextStyle(fontFamily: 'Tajawal', color: AppColors.white)),
-        content: const Text('هل أنت متأكد من حظر هذا الحساب نهائيا؟',
-            style: TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub)),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('إلغاء', style: TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub))),
-          TextButton(onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('حظر', style: TextStyle(fontFamily: 'Tajawal', color: AppColors.danger))),
-        ],
-      ),
-    );
-    if (confirm != true) return;
-    try {
-      await supabase.from('profiles').update({
-        'is_blocked': true,
-      }).eq('id', widget.userId);
-      if (mounted) showAppSnack(context, 'تم الحظر النهائي', success: true);
-    } catch (e) {
-      if (mounted) showAppSnack(context, 'فشل الحظر', success: false);
-    }
-  }
-
   Future<void> _openWhatsapp(String number) async {
     final clean = number.replaceAll(RegExp(r'[^0-9+]'), '');
     final uri = Uri.parse('https://wa.me/$clean');
@@ -206,8 +178,6 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   }
 
   void _showUserActions(UserModel user) {
-    final auth = context.read<AuthProvider>();
-    final isAdmin = auth.userProfile?['role'] == 'admin';
     final isMe = supabase.auth.currentUser?.id == widget.userId;
 
     showModalBottomSheet(
@@ -259,13 +229,6 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                   style: TextStyle(fontFamily: 'Tajawal', color: AppColors.white)),
               onTap: () { Navigator.pop(context); _reportUser(user); },
             ),
-            if (isAdmin)
-              ListTile(
-                leading: const Icon(Icons.gavel_rounded, color: AppColors.danger),
-                title: const Text('حظر نهائي',
-                    style: TextStyle(fontFamily: 'Tajawal', color: AppColors.danger)),
-                onTap: () { Navigator.pop(context); _banEmail(); },
-              ),
           ],
           const SizedBox(height: 8),
         ]),
@@ -301,7 +264,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
             ],
           ),
           body: Container(
-            decoration: BoxDecoration(gradient: AppColors.bgGrad),
+            decoration: const BoxDecoration(gradient: AppColors.bgGrad),
             child: loading
               ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
               : user == null
