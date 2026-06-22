@@ -1,4 +1,3 @@
-// lib/screens/rooms/rooms_screen.dart
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -8,6 +7,7 @@ import '../../core/constants/app_colors.dart';
 import '../../models/room_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/room_service.dart';
+import '../../widgets/app_snackbar.dart';
 import 'room_chat_screen.dart';
 import 'room_settings_screen.dart';
 
@@ -59,14 +59,7 @@ class _RoomsScreenState extends State<RoomsScreen> {
     if (result == true) _load();
   }
 
-  void _snack(String msg, bool success) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(msg, style: const TextStyle(fontFamily: 'Tajawal')),
-        backgroundColor: success? AppColors.success : AppColors.danger,
-      ),
-    );
-  }
+  void _snack(String msg, bool success) => showAppSnack(context, msg, success: success);
 
   void _showCreateRoom(BuildContext ctx) {
     final nameCtrl = TextEditingController();
@@ -180,7 +173,7 @@ class _RoomsScreenState extends State<RoomsScreen> {
         const SizedBox(height: 12),
         Expanded(
           child: _loading
-   ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+  ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
               : RefreshIndicator(
                   onRefresh: _load, color: AppColors.primary,
                   child: Builder(builder: (_) {
@@ -262,13 +255,12 @@ class _RoomCard extends StatelessWidget {
               ],
               const SizedBox(height: 12),
               Row(children: [
-                // --- عداد النشاط Live ---
                 StreamBuilder<List<Map<String, dynamic>>>(
                   stream: supabase
-                  .from('room_members')
-                  .stream(primaryKey: ['id'])
-                  .eq('room_id', room.id)
-                  .map((rows) => rows.where((m) => m['is_online'] == true).toList()),
+                 .from('room_members')
+                 .stream(primaryKey: ['id'])
+                 .eq('room_id', room.id)
+                 .map((rows) => rows.where((m) => m['is_online'] == true).toList()),
                   initialData: const [],
                   builder: (context, snap) {
                     final onlineCount = snap.data?.length?? room.onlineCount;
@@ -292,7 +284,6 @@ class _RoomCard extends StatelessWidget {
                   },
                 ),
                 const Spacer(),
-                // --- زر الدخول - نسخة UI فقط ---
                 IconButton.filled(
                   onPressed: onEnter,
                   tooltip: 'دخول الغرفة',
