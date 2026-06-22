@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:audioplayers/audioplayers.dart';
 import '../../core/constants/app_colors.dart';
 import '../../services/chat_service.dart';
 import '../../screens/profile/user_profile_screen.dart';
-import '../app_snackbar.dart';
-import 'audio_message_widget.dart';
+import 'app_snackbar.dart';
 
 class MessageBubble extends StatefulWidget {
   final Map<String, dynamic> message;
@@ -29,20 +29,31 @@ class MessageBubble extends StatefulWidget {
 }
 
 class _MessageBubbleState extends State<MessageBubble> {
+  final _player = AudioPlayer();
+  bool _isPlaying = false;
+  Duration _position = Duration.zero;
+  Duration _duration = Duration.zero;
+
+  @override
+  void initState() {
+    super.initState();
+    _player.onPlayerStateChanged.listen((s) { if (mounted) setState(() => _isPlaying = s == PlayerState.playing); });
+    _player.onPositionChanged.listen((p) { if (mounted) setState(() => _position = p); });
+    _player.onDurationChanged.listen((d) { if (mounted) setState(() => _duration = d); });
+    _player.onPlayerComplete.listen((_) { if (mounted) setState(() { _isPlaying = false; _position = Duration.zero; }); });
+  }
 
   Future<void> _deleteMessage() async {
     try {
       final msg = widget.message;
       final imageUrl = msg['image_url']?? msg['media_url'];
       final audioUrl = msg['audio_url'];
-
       final ok = await ChatService().deleteMessage(
         msg['id'].toString(),
         isRoom: widget.isRoom,
         imageUrl: imageUrl,
         audioUrl: audioUrl,
       );
-
       if (!mounted) return;
       if (ok) {
         showAppSnack(context, 'تم حذف الرسالة', success: true);
@@ -71,34 +82,50 @@ class _MessageBubbleState extends State<MessageBubble> {
   void _openProfile() {
     final userId = widget.message['sender_id'];
     if (userId == null || widget.isMe) return;
-    Navigator.push(context, MaterialPageRoute(
-      builder: (_) => UserProfileScreen(userId: userId),
-    ));
+    Navigator.push(context, MaterialPageRoute(builder: (_) => UserProfileScreen(userId: userId)));
   }
 
+  String _formatDuration(Duration d) { final m = d.inMinutes.remainder(60).toString().padLeft(2, '0'); final s = d.inSeconds.remainder(60).toString().padLeft(2, '0'); return '$m:$s'; }
   String _formatTime(dynamic ts) { try { final dt = DateTime.parse(ts.toString()).toLocal(); final h = dt.hour % 12 == 0? 12 : dt.hour % 12; final m = dt.minute.toString().padLeft(2, '0'); final am = dt.hour < 12? 'ص' : 'م'; return '$h:$m $am'; } catch (_) { return ''; } }
 
-  // --- الصحين ---
-  Widget _buildTicks() {
+  // صحين موحد - يقرأ is_read و read_at الاثنين
+  Widget _readTicks() {
+    if (!widget.isMe) return const SizedBox.shrink();
     final msg = widget.message;
-    final readAt = msg['read_at'];
-    final deliveredAt = msg['delivered_at'];
-
-    IconData icon;
-    Color color;
-    if (readAt!= null) {
-      icon = Icons.done_all;
-      color = const Color(0xFF00BFFF);
-    } else if (deliveredAt!= null) {
-      icon = Icons.done_all;
-      color = AppColors.textSub;
-    } else {
-      icon = Icons.done;
-      color = AppColors.textSub;
-    }
+    final isRead = msg['is_read'] == true || msg['read_at']!= null;
+    final isDelivered = msg['is_delivered'] == true || isRead;
     return Padding(
-      padding: const EdgeInsets.only(left: 4),
-      child: Icon(icon, size: 14, color: color),
+      padding: const EdgeInsets.only(right: 4),
+      child: Icon(
+        isDelivered? Icons.done_all_rounded : Icons.done_rounded,
+        size: 14,
+        color: isRead? const Color(0xFF34B7F1) : AppColors.textSub,
+      ),
+    );
+  }
+
+  Widget _waveform(bool isPlaying) {
+    return Expanded(
+      child: SizedBox(
+        height: 28,
+        child: Row(
+          children: List.generate(22, (i) {
+            final h = [6, 14, 8, 20, 12, 6, 18, 10, 14, 8, 22, 10, 16, 7, 13, 19, 9, 15, 8, 12, 6, 10][i].toDouble();
+            final active = isPlaying && _duration.inMilliseconds > 0 &&
+              (i / 22) < (_position.inMilliseconds / (_duration.inMilliseconds == 0? 1 : _duration.inMilliseconds));
+            return Expanded(
+              child: Container(
+                margin: const EdgeInsets.symmetric(horizontal: 1),
+                height: h,
+                decoration: BoxDecoration(
+                  color: active? AppColors.navy : AppColors.primary.withOpacity(0.45),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            );
+          }),
+        ),
+      ),
     );
   }
 
@@ -145,10 +172,30 @@ class _MessageBubbleState extends State<MessageBubble> {
               errorWidget: (c, u, e) => Container(width: 220, height: 140, color: AppColors.bgCard2,
                 child: const Icon(Icons.broken_image_rounded, color: AppColors.textSub)))),
         if (audioUrl!= null && audioUrl.toString().isNotEmpty)
-          AudioMessageWidget(
-            audioUrl: audioUrl,
-            duration: widget.message['audio_duration']?? widget.message['duration']?? 0,
-            isMe: widget.isMe,
+          Container(
+            width: 240,
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              color: AppColors.primary.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Row(children: [
+              GestureDetector(
+                onTap: () async { if (_isPlaying) { await _player.pause(); } else { await _player.play(UrlSource(audioUrl)); } },
+                child: Container(
+                  width: 36, height: 36,
+                  decoration: const BoxDecoration(color: AppColors.navy, shape: BoxShape.circle),
+                  child: Icon(_isPlaying? Icons.pause_rounded : Icons.play_arrow_rounded, color: Colors.white, size: 22),
+                ),
+              ),
+              const SizedBox(width: 8),
+              _waveform(_isPlaying),
+              const SizedBox(width: 8),
+              Text(
+                _duration.inSeconds > 0? _formatDuration(_isPlaying? _position : _duration) : '0:00',
+                style: const TextStyle(fontFamily: 'Tajawal', fontSize: 11, color: AppColors.navy, fontWeight: FontWeight.w600),
+              ),
+            ]),
           ),
         if (content.isNotEmpty)
           Padding(padding: EdgeInsets.only(top: (imageUrl!= null || audioUrl!= null)? 6 : 0),
@@ -158,7 +205,7 @@ class _MessageBubbleState extends State<MessageBubble> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(timeStr, style: const TextStyle(fontFamily: 'Tajawal', fontSize: 11, color: AppColors.textSub)),
-            if (widget.isMe &&!widget.isRoom) _buildTicks(),
+            _readTicks(),
           ],
         ),
       ],
@@ -211,4 +258,7 @@ class _MessageBubbleState extends State<MessageBubble> {
       ),
     );
   }
+
+  @override
+  void dispose() { _player.dispose(); super.dispose(); }
 }
