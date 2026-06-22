@@ -6,6 +6,7 @@ import '../../core/constants/app_colors.dart';
 import '../../core/constants/supabase_config.dart';
 import '../../models/user_model.dart';
 import '../../providers/auth_provider.dart';
+import '../../services/chat_service.dart';
 import '../../widgets/user_avatar.dart';
 import '../../widgets/app_snackbar.dart';
 import '../chat/private_chat_screen.dart';
@@ -20,6 +21,30 @@ class UserProfileScreen extends StatefulWidget {
 
 class _UserProfileScreenState extends State<UserProfileScreen> {
   final supabase = Supabase.instance.client;
+  final _chat = ChatService();
+
+  bool _isBlocked = false;
+  bool _checkingBlock = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkBlock();
+  }
+
+  Future<void> _checkBlock() async {
+    final meId = supabase.auth.currentUser?.id;
+    if (meId == null || meId == widget.userId) {
+      setState(() { _isBlocked = false; _checkingBlock = false; });
+      return;
+    }
+    try {
+      final blocked = await _chat.isBlocked(meId, widget.userId);
+      if (mounted) setState(() { _isBlocked = blocked; _checkingBlock = false; });
+    } catch (_) {
+      if (mounted) setState(() => _checkingBlock = false);
+    }
+  }
 
   Stream<UserModel?> getUserStream() {
     return supabase
@@ -30,6 +55,10 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   }
 
   void _startChat(UserModel user) {
+    if (_isBlocked) {
+      showAppSnack(context, 'لا يمكنك المراسلة، هذا المستخدم محظور', success: false);
+      return;
+    }
     final meId = supabase.auth.currentUser!.id;
     final ids = [meId, user.id]..sort();
     final chatId = ids.join('_');
@@ -42,7 +71,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
           peer: user,
         ),
       ),
-    );
+    ).then((_) => _checkBlock());
   }
 
   Future<String?> _askReason() async {
@@ -79,18 +108,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     final reason = await _askReason();
     if (reason == null || reason.isEmpty) return;
     try {
-      final auth = context.read<AuthProvider>();
-      final meId = supabase.auth.currentUser!.id;
-      final myName = auth.userProfile?['username'] as String? ?? 'مستخدم';
-
-      await supabase.from(SupabaseConfig.tReports).insert({
-        'reporter_id': meId,
-        'reporter_name': myName,
-        'reported_id': widget.userId,
-        'user_id': widget.userId,
-        'reason': reason,
-        'status': 'pending',
-      });
+      await _chat.reportUser(widget.userId, reason);
       if (mounted) showAppSnack(context, 'تم إرسال البلاغ للإدارة', success: true);
     } catch (e) {
       if (mounted) showAppSnack(context, 'فشل البلاغ', success: false);
@@ -99,14 +117,29 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
 
   Future<void> _blockUser() async {
     try {
-      final meId = supabase.auth.currentUser!.id;
-      await supabase.from(SupabaseConfig.tBlockedUsers).insert({
-        'blocker_id': meId,
-        'blocked_id': widget.userId,
-      });
-      if (mounted) showAppSnack(context, 'تم حظر المستخدم', success: true);
+      final result = await _chat.blockUser(widget.userId);
+      if (!mounted) return;
+      if (result == 'already_blocked') {
+        showAppSnack(context, 'هذا المستخدم محظور بالفعل', success: false);
+        setState(() => _isBlocked = true);
+      } else {
+        showAppSnack(context, 'تم حظر المستخدم', success: true);
+        setState(() => _isBlocked = true);
+      }
     } catch (e) {
-      if (mounted) showAppSnack(context, 'فشل الحظر', success: false);
+      if (mounted) showAppSnack(context, 'فشل الحظر: $e', success: false);
+    }
+  }
+
+  Future<void> _unblockUser() async {
+    try {
+      await _chat.unblockUser(widget.userId);
+      if (mounted) {
+        showAppSnack(context, 'تم إلغاء الحظر', success: true);
+        setState(() => _isBlocked = false);
+      }
+    } catch (e) {
+      if (mounted) showAppSnack(context, 'فشل إلغاء الحظر: $e', success: false);
     }
   }
 
@@ -160,16 +193,34 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           if (!isMe)...[
             ListTile(
-              leading: const Icon(Icons.message_rounded, color: AppColors.primary),
-              title: const Text('مراسلة خاصة',
-                  style: TextStyle(fontFamily: 'Tajawal', color: AppColors.white)),
-              onTap: () { Navigator.pop(context); _startChat(user); },
+              leading: Icon(
+                _isBlocked ? Icons.lock_open_rounded : Icons.message_rounded,
+                color: _isBlocked ? AppColors.warning : AppColors.primary,
+              ),
+              title: Text(
+                _isBlocked ? 'إلغاء الحظر والمراسلة' : 'مراسلة خاصة',
+                style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.white)),
+              onTap: () { 
+                Navigator.pop(context); 
+                if (_isBlocked) {
+                  _unblockUser();
+                } else {
+                  _startChat(user);
+                }
+              },
             ),
             ListTile(
-              leading: const Icon(Icons.block_rounded, color: AppColors.danger),
-              title: const Text('حظر المستخدم',
-                  style: TextStyle(fontFamily: 'Tajawal', color: AppColors.white)),
-              onTap: () { Navigator.pop(context); _blockUser(); },
+              leading: Icon(
+                _isBlocked ? Icons.lock_open_rounded : Icons.block_rounded,
+                color: _isBlocked ? AppColors.primary : AppColors.danger,
+              ),
+              title: Text(
+                _isBlocked ? 'إلغاء الحظر' : 'حظر المستخدم',
+                style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.white)),
+              onTap: () { 
+                Navigator.pop(context); 
+                _isBlocked ? _unblockUser() : _blockUser(); 
+              },
             ),
             ListTile(
               leading: const Icon(Icons.flag_rounded, color: AppColors.warning),
@@ -177,6 +228,13 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                   style: TextStyle(fontFamily: 'Tajawal', color: AppColors.white)),
               onTap: () { Navigator.pop(context); _reportUser(user); },
             ),
+            if (isAdmin)
+              ListTile(
+                leading: const Icon(Icons.gavel_rounded, color: AppColors.danger),
+                title: const Text('حظر نهائي',
+                    style: TextStyle(fontFamily: 'Tajawal', color: AppColors.danger)),
+                onTap: () { Navigator.pop(context); _banEmail(); },
+              ),
           ],
           const SizedBox(height: 8),
         ]),
@@ -246,7 +304,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         UserAvatar(
           url: user.avatarUrl,
           name: user.username,
-          isOnline: user.isOnline,
+          isOnline: user.isOnline && !_isBlocked,
           size: 90,
         ),
         const SizedBox(height: 12),
@@ -270,6 +328,20 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
               fontSize: 14,
             ),
           ),
+        if (_isBlocked) ...[
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            decoration: BoxDecoration(
+              color: AppColors.danger.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: const Text(
+              'محظور',
+              style: TextStyle(fontFamily: 'Tajawal', color: AppColors.danger, fontSize: 12),
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -278,6 +350,34 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     final meId = supabase.auth.currentUser!.id;
     if (meId == user.id) return const SizedBox.shrink();
     
+    if (_checkingBlock) {
+      return const Center(child: CircularProgressIndicator(color: AppColors.primary));
+    }
+
+    if (_isBlocked) {
+      return SizedBox(
+        width: double.infinity,
+        child: ElevatedButton.icon(
+          onPressed: _unblockUser,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.danger,
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+          icon: const Icon(Icons.lock_open_rounded, color: Colors.white),
+          label: const Text(
+            'إلغاء الحظر',
+            style: TextStyle(
+              fontFamily: 'Tajawal',
+              color: Colors.white,
+              fontWeight: FontWeight.w600,
+              fontSize: 16,
+            ),
+          ),
+        ),
+      );
+    }
+
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton.icon(
@@ -323,7 +423,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
             _buildInfoRow(Icons.auto_awesome_rounded, 'البرج', zodiac),
             const Divider(color: AppColors.glassBorder),
           ],
-          if (whatsapp != null && whatsapp.isNotEmpty) ...[
+          if (whatsapp != null && whatsapp.isNotEmpty && !_isBlocked) ...[
             InkWell(
               onTap: () => _openWhatsapp(whatsapp),
               child: _buildInfoRow(Icons.phone_rounded, 'واتساب', whatsapp, isLink: true),
