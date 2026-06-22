@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import 'package:hive_flutter/hive_flutter.dart';
 import 'core/theme/app_theme.dart';
@@ -15,7 +16,6 @@ import 'screens/admin/admin_panel_screen.dart';
 import 'screens/auth/welcome_screen.dart';
 import 'screens/home/home_screen.dart';
 import 'services/notification_service.dart';
-import 'services/presence_service.dart';
 import 'widgets/block_guard.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
@@ -44,17 +44,32 @@ void main() async {
   // تهيئة الإشعارات
   await NotificationService.init();
 
-  // --- النشاط live ---
-  PresenceService().init();
-  
+  // --- فحص حظر فوري ---
+  bool isBanned = false;
+  final user = Supabase.instance.client.auth.currentUser;
+  if (user != null) {
+    try {
+      final p = await Supabase.instance.client
+          .from('users')
+          .select('is_banned')
+          .eq('id', user.id)
+          .maybeSingle();
+      isBanned = p?['is_banned'] == true;
+      if (isBanned) {
+        await Supabase.instance.client.auth.signOut();
+      }
+    } catch (_) {}
+  }
+
   // تهيئة timeago للعربي
   timeago.setLocaleMessages('ar', timeago.ArMessages());
 
-  runApp(const MyChatApp());
+  runApp(MyChatApp(isBanned: isBanned));
 }
 
 class MyChatApp extends StatelessWidget {
-  const MyChatApp({super.key});
+  final bool isBanned;
+  const MyChatApp({super.key, this.isBanned = false});
 
   @override
   Widget build(BuildContext context) {
@@ -74,19 +89,21 @@ class MyChatApp extends StatelessWidget {
           GlobalWidgetsLocalizations.delegate,
           GlobalCupertinoLocalizations.delegate,
         ],
-        home: Consumer<AuthProvider>(
-          builder: (context, auth, _) {
-            if (!auth.initialized) {
-              return const Scaffold(
-                backgroundColor: AppColors.bg,
-                body: Center(
-                  child: CircularProgressIndicator(color: AppColors.primary),
-                ),
-              );
-            }
-            return auth.isLoggedIn ? const BlockGuard(child: HomeScreen()) : const WelcomeScreen();
-          },
-        ),
+        home: isBanned 
+          ? const BannedScreen()
+          : Consumer<AuthProvider>(
+              builder: (context, auth, _) {
+                if (!auth.initialized) {
+                  return const Scaffold(
+                    backgroundColor: AppColors.bg,
+                    body: Center(
+                      child: CircularProgressIndicator(color: AppColors.primary),
+                    ),
+                  );
+                }
+                return auth.isLoggedIn ? const BlockGuard(child: HomeScreen()) : const WelcomeScreen();
+              },
+            ),
         routes: {
           '/privacy': (_) => const PrivacyScreen(),
           '/contact': (_) => const ContactScreen(),
@@ -96,6 +113,49 @@ class MyChatApp extends StatelessWidget {
           '/home': (_) => const HomeScreen(),
           '/login': (_) => const WelcomeScreen(),
         },
+      ),
+    );
+  }
+}
+
+// شاشة حظر بسيطة
+class BannedScreen extends StatelessWidget {
+  const BannedScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      backgroundColor: AppColors.bg,
+      body: Center(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.block_rounded, size: 72, color: AppColors.danger),
+              SizedBox(height: 16),
+              Text(
+                'تم حظر حسابك',
+                style: TextStyle(
+                  fontFamily: 'Tajawal',
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.white,
+                ),
+              ),
+              SizedBox(height: 8),
+              Text(
+                'تواصل مع الإدارة إذا تعتقد أن هذا خطأ',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontFamily: 'Tajawal',
+                  fontSize: 14,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
