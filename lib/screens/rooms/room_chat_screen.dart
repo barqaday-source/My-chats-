@@ -23,7 +23,7 @@ class _RoomChatScreenState extends State<RoomChatScreen> {
   final ScrollController _scrollController = ScrollController();
 
   Map<String, dynamic>? _replyingTo;
-  bool _isSending = false;
+  DateTime _lastReadMark = DateTime.fromMillisecondsSinceEpoch(0);
 
   @override
   void initState() {
@@ -33,6 +33,7 @@ class _RoomChatScreenState extends State<RoomChatScreen> {
     if (uid!= null) {
       _chat.setUserOnlineInRoom(uid, widget.room.id);
     }
+    _markReadThrottled();
   }
 
   @override
@@ -45,22 +46,28 @@ class _RoomChatScreenState extends State<RoomChatScreen> {
     super.dispose();
   }
 
-  void _scrollToBottom() {
-    if (_scrollController.hasClients) {
-      Future.delayed(const Duration(milliseconds: 100), () {
-        if (_scrollController.hasClients) {
-          _scrollController.animateTo(_scrollController.position.maxScrollExtent,
-            duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
-        }
-      });
-    }
+  void _markReadThrottled() {
+    final now = DateTime.now();
+    if (now.difference(_lastReadMark).inSeconds < 2) return;
+    _lastReadMark = now;
+    _chat.markRoomMessagesRead(widget.room.id);
+  }
+
+  void _scrollToBottom({bool force = false}) {
+    if (!_scrollController.hasClients) return;
+    final max = _scrollController.position.maxScrollExtent;
+    final current = _scrollController.position.pixels;
+    if (!force && max - current > 200) return;
+    Future.delayed(const Duration(milliseconds: 80), () {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(_scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+      }
+    });
   }
 
   Future<void> _sendMessage(String text, File? imageFile, File? audioFile, int audioDuration) async {
-    if (_isSending) return;
     if (text.trim().isEmpty && imageFile == null && audioFile == null) return;
-
-    setState(() => _isSending = true);
     try {
       await _chat.sendMessageToRoomEx(
         roomId: widget.room.id,
@@ -71,7 +78,7 @@ class _RoomChatScreenState extends State<RoomChatScreen> {
         replyMessage: _replyingTo,
       );
       if (mounted) setState(() => _replyingTo = null);
-      _scrollToBottom();
+      _scrollToBottom(force: true);
     } catch (e) {
       final isOffline = e.toString().contains('offline');
       if (mounted) {
@@ -81,8 +88,6 @@ class _RoomChatScreenState extends State<RoomChatScreen> {
         );
         setState(() => _replyingTo = null);
       }
-    } finally {
-      if (mounted) setState(() => _isSending = false);
     }
   }
 
@@ -126,15 +131,21 @@ class _RoomChatScreenState extends State<RoomChatScreen> {
               if (snapshot.hasError) return Center(child: Text('خطأ: ${snapshot.error}', style: const TextStyle(color: AppColors.danger, fontFamily: 'Tajawal')));
               if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator(color: AppColors.primary));
 
-              final raw = snapshot.data?? [];
-              final seen = <String>{};
-              final messages = raw.where((m) => seen.add(m['id'].toString())).toList();
+              final messages = snapshot.data?? [];
+
+              if (messages.isNotEmpty) {
+                final hasUnread = messages.any((m) => m['sender_id']!= currentUserId && m['is_read']!= true);
+                if (hasUnread) {
+                  WidgetsBinding.instance.addPostFrameCallback((_) => _markReadThrottled());
+                }
+              }
 
               if (messages.isEmpty) return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
                 Icon(Icons.forum_outlined, size: 56, color: AppColors.textSub.withOpacity(0.5)),
                 const SizedBox(height: 12),
                 const Text('لا توجد رسائل بعد', style: TextStyle(color: AppColors.textSub, fontFamily: 'Tajawal', fontSize: 15)),
               ]));
+
               WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
               return ListView.builder(
                 controller: _scrollController,
@@ -150,7 +161,7 @@ class _RoomChatScreenState extends State<RoomChatScreen> {
                     showAvatar: true,
                     isRoom: true,
                     onReply: () => setState(() => _replyingTo = msg),
-                    onDelete: (_) => setState(() {}),
+                    onDelete: (_) {},
                   );
                 },
               );
@@ -158,7 +169,7 @@ class _RoomChatScreenState extends State<RoomChatScreen> {
           ),
         ),
         ChatInputBar(
-          onSend: _isSending? (_,__,___,____) async {} : _sendMessage,
+          onSend: _sendMessage,
           replyTo: _replyingTo,
           onCancelReply: () => setState(() => _replyingTo = null),
         ),
