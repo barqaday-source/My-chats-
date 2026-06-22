@@ -1,3 +1,4 @@
+// lib/screens/rooms/rooms_screen.dart
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -179,7 +180,7 @@ class _RoomsScreenState extends State<RoomsScreen> {
         const SizedBox(height: 12),
         Expanded(
           child: _loading
-    ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+   ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
               : RefreshIndicator(
                   onRefresh: _load, color: AppColors.primary,
                   child: Builder(builder: (_) {
@@ -264,10 +265,10 @@ class _RoomCard extends StatelessWidget {
                 // --- عداد النشاط Live ---
                 StreamBuilder<List<Map<String, dynamic>>>(
                   stream: supabase
-                   .from('room_members')
-                   .stream(primaryKey: ['id'])
-                   .eq('room_id', room.id)
-                   .map((rows) => rows.where((m) => m['is_online'] == true).toList()),
+                  .from('room_members')
+                  .stream(primaryKey: ['id'])
+                  .eq('room_id', room.id)
+                  .map((rows) => rows.where((m) => m['is_online'] == true).toList()),
                   initialData: const [],
                   builder: (context, snap) {
                     final onlineCount = snap.data?.length?? room.onlineCount;
@@ -291,28 +292,15 @@ class _RoomCard extends StatelessWidget {
                   },
                 ),
                 const Spacer(),
-                Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    onTap: onEnter, borderRadius: BorderRadius.circular(12),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                      decoration: BoxDecoration(
-                        color: AppColors.primary,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Row(mainAxisSize: MainAxisSize.min, children: [
-                        Icon(Icons.login_rounded, color: Colors.white, size: 16),
-                        SizedBox(width: 6),
-                        Text(
-                          'دخول الغرفة',
-                          style: TextStyle(
-                            fontFamily: 'Tajawal',
-                            color: Colors.white,
-                            fontSize: 13, fontWeight: FontWeight.w700),
-                        ),
-                      ]),
-                    ),
+                // --- زر الدخول - نسخة UI فقط ---
+                IconButton.filled(
+                  onPressed: onEnter,
+                  tooltip: 'دخول الغرفة',
+                  icon: const Icon(Icons.arrow_back_rounded, size: 20),
+                  style: IconButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                    minimumSize: const Size(44, 44),
                   ),
                 ),
               ]),
