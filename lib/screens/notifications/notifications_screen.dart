@@ -5,6 +5,7 @@ import '../../core/constants/app_colors.dart';
 import '../../models/notification_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/notification_service.dart';
+import '../../widgets/app_snackbar.dart';
 
 class NotificationsScreen extends StatefulWidget {
   final VoidCallback? onRead;
@@ -44,17 +45,9 @@ class _NotificationsScreenState extends State<NotificationsScreen>
   Future<void> _deleteNotification(String id) async {
     try {
       await _svc.deleteNotification(id);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('تم حذف الإشعار', style: TextStyle(fontFamily: 'Tajawal'))),
-        );
-      }
+      if (mounted) showAppSnack(context, 'تم حذف الإشعار', success: true);
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('فشل الحذف', style: TextStyle(fontFamily: 'Tajawal'))),
-        );
-      }
+      if (mounted) showAppSnack(context, 'فشل الحذف', success: false);
     }
   }
 
@@ -96,15 +89,15 @@ class _NotificationsScreenState extends State<NotificationsScreen>
 
   @override
   Widget build(BuildContext context) {
-    final uid = context.watch<AuthProvider>().user?.id ?? '';
+    final uid = context.watch<AuthProvider>().user?.id?? '';
     if (uid.isEmpty) {
       return Container(
-        decoration: BoxDecoration(gradient: AppColors.bgGrad),
+        decoration: const BoxDecoration(gradient: AppColors.bgGrad),
         child: const Center(child: CircularProgressIndicator(color: AppColors.primary)),
       );
     }
     return Container(
-      decoration: BoxDecoration(gradient: AppColors.bgGrad),
+      decoration: const BoxDecoration(gradient: AppColors.bgGrad),
       child: SafeArea(
         bottom: false,
         child: Column(
@@ -186,7 +179,30 @@ class _NotificationsScreenState extends State<NotificationsScreen>
                               color: AppColors.danger,
                               borderRadius: BorderRadius.circular(18),
                             ),
-                            child: const Icon(Icons.delete_outline, color: Colors.white),
+                            child: Row(
+                              children: const [
+                                Icon(Icons.delete_outline_rounded, color: Colors.white),
+                                SizedBox(width: 8),
+                                Text('حذف', style: TextStyle(fontFamily: 'Tajawal', color: Colors.white, fontWeight: FontWeight.w700)),
+                              ],
+                            ),
+                          ),
+                          secondaryBackground: Container(
+                            alignment: Alignment.centerRight,
+                            margin: const EdgeInsets.only(bottom: 10),
+                            padding: const EdgeInsets.symmetric(horizontal: 20),
+                            decoration: BoxDecoration(
+                              color: AppColors.danger,
+                              borderRadius: BorderRadius.circular(18),
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: const [
+                                Text('حذف', style: TextStyle(fontFamily: 'Tajawal', color: Colors.white, fontWeight: FontWeight.w700)),
+                                SizedBox(width: 8),
+                                Icon(Icons.delete_outline_rounded, color: Colors.white),
+                              ],
+                            ),
                           ),
                           onDismissed: (_) => _deleteNotification(n.id),
                           child: Container(
