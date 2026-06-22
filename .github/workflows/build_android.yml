@@ -108,15 +108,27 @@ jobs:
               }
               buildTypes {
                   release {
-                      isMinifyEnabled = false
-                      isShrinkResources = false
+                      isMinifyEnabled = true
+                      isShrinkResources = true
                       signingConfig = signingConfigs.getByName("debug")
+                      proguardFiles(
+                          getDefaultProguardFile("proguard-android-optimize.txt"),
+                          "proguard-rules.pro"
+                      )
                   }
               }
           }
           dependencies {
               coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
           }
+          EOF
+
+          # إنشاء proguard-rules.pro
+          cat > android/app/proguard-rules.pro << 'EOF'
+          # Flutter
+          -keep class io.flutter.app.** { *; }
+          -keep class io.flutter.plugin.** { *; }
+          -keep class io.flutter.embedding.** { *; }
           EOF
 
           # 4. حقن الـ Manifest مع فحص الصلاحيات الناقصة وإضافتها تلقائياً
@@ -131,7 +143,7 @@ jobs:
                   android:label="SeaChat"
                   android:name="${applicationName}"
                   android:icon="@mipmap/ic_launcher"
-                  android:usesCleartextTraffic="true">
+                  android:usesCleartextTraffic="false">
                   <activity
                       android:name=".MainActivity"
                       android:exported="true"
@@ -177,9 +189,10 @@ jobs:
           add_permission '<uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />'
           add_permission '<uses-permission android:name="android.permission.WAKE_LOCK" />'
 
-          # تأكد usesCleartextTraffic موجود لـ Supabase
-          if ! grep -q 'android:usesCleartextTraffic="true"' "$MANIFEST_PATH"; then
-            sed -i 's/<application/<application android:usesCleartextTraffic="true"/' "$MANIFEST_PATH"
+          # منع Cleartext Traffic - Supabase https
+          sed -i 's/android:usesCleartextTraffic="true"/android:usesCleartextTraffic="false"/g' "$MANIFEST_PATH"
+          if ! grep -q 'usesCleartextTraffic' "$MANIFEST_PATH"; then
+            sed -i 's/<application/<application android:usesCleartextTraffic="false"/' "$MANIFEST_PATH"
           fi
 
           # 5. إنشاء وحقن الـ MainActivity.kt لتجنب أي نقص في الكود المصدري للأندرويد
@@ -196,7 +209,12 @@ jobs:
 
       - name: Build Release APK
         if: ${{ github.event.inputs.build_type == 'release' || github.event.inputs.build_type == '' }}
-        run: flutter build apk --release --target-platform android-arm,android-arm64,android-x64
+        run: |
+          mkdir -p build/symbols
+          flutter build apk --release \
+            --obfuscate \
+            --split-debug-info=build/symbols \
+            --target-platform android-arm64
 
       - name: Upload Build Artifact APK
         uses: actions/upload-artifact@v4
@@ -204,4 +222,3 @@ jobs:
           name: SeaChat-APK-${{ github.run_number }}
           path: build/app/outputs/flutter-apk/app-*.apk
           retention-days: 14
-
