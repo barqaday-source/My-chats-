@@ -50,7 +50,7 @@ jobs:
           # 1. إزالة ملف الـ kts القديم من جذور الأندرويد لمنع تعارض الـ Plugins
           rm -f android/settings.gradle.kts
 
-          # 2. حقن ملف settings.gradle المتوافق والمستقر مع Kotlin 1.9.24 لحل تعارض الحزم
+          # 2. حقن ملف settings.gradle المتوافق تماماً مع Kotlin 2.2.0 وحزم مشروعك
           cat > android/settings.gradle << 'EOF'
           pluginManagement {
               def flutterSdkPath = {
@@ -74,13 +74,13 @@ jobs:
           plugins {
               id "dev.flutter.flutter-plugin-loader" version "1.0.0"
               id "com.android.application" version "8.1.0" apply false
-              id "org.jetbrains.kotlin.android" version "1.9.24" apply false
+              id "org.jetbrains.kotlin.android" version "2.2.0" apply false
           }
 
           include ":app"
           EOF
 
-          # 3. حقن ملف build.gradle.kts الخاص بالتطبيق وتفعيل الـ Minify والـ ProGuard لحماية كود الأندرويد والـ Plugins
+          # 3. حقن ملف build.gradle.kts الخاص بالتطبيق
           cat > android/app/build.gradle.kts << 'EOF'
           plugins {
               id("com.android.application")
@@ -108,13 +108,9 @@ jobs:
               }
               buildTypes {
                   release {
-                      isMinifyEnabled = true
-                      isShrinkResources = true
+                      isMinifyEnabled = false
+                      isShrinkResources = false
                       signingConfig = signingConfigs.getByName("debug")
-                      proguardFiles(
-                          getDefaultProguardFile("proguard-android-optimize.txt"),
-                          "proguard-rules.pro"
-                      )
                   }
               }
           }
@@ -126,6 +122,7 @@ jobs:
           # 4. حقن الـ Manifest مع فحص الصلاحيات الناقصة وإضافتها تلقائياً
           MANIFEST_PATH="android/app/src/main/AndroidManifest.xml"
           
+          # أنشئ Manifest أساسي لو مو موجود
           if [ ! -f "$MANIFEST_PATH" ]; then
             mkdir -p android/app/src/main/
             cat > "$MANIFEST_PATH" << 'EOF'
@@ -154,6 +151,7 @@ jobs:
           EOF
           fi
 
+          # دالة تضيف الصلاحية لو مو موجودة
           add_permission() {
             local permission="$1"
             if ! grep -q "$permission" "$MANIFEST_PATH"; then
@@ -162,6 +160,7 @@ jobs:
             fi
           }
 
+          # كل الصلاحيات المطلوبة للتطبيق + flutter_sound + image_picker + url_launcher
           add_permission '<uses-permission android:name="android.permission.INTERNET" />'
           add_permission '<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />'
           add_permission '<uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />'
@@ -178,6 +177,7 @@ jobs:
           add_permission '<uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />'
           add_permission '<uses-permission android:name="android.permission.WAKE_LOCK" />'
 
+          # تأكد usesCleartextTraffic موجود لـ Supabase
           if ! grep -q 'android:usesCleartextTraffic="true"' "$MANIFEST_PATH"; then
             sed -i 's/<application/<application android:usesCleartextTraffic="true"/' "$MANIFEST_PATH"
           fi
@@ -190,26 +190,13 @@ jobs:
           class MainActivity: FlutterActivity() {}
           EOF
 
-          # 6. إنشاء ملف قواعد ProGuard لحل مشكلة توقف البناء وحماية كلاسات فلاتر الحيوية من الحذف
-          cat > android/app/proguard-rules.pro << 'EOF'
-          -keep class io.flutter.embedding.engine.deferredcomponents.** { *; }
-          -keep class com.google.android.play.core.** { *; }
-          -dontwarn com.google.android.play.core.**
-          -dontwarn io.flutter.embedding.engine.deferredcomponents.**
-          EOF
-
       - name: Build Debug APK
         if: ${{ github.event.inputs.build_type == 'debug' }}
         run: flutter build apk --debug --target-platform android-arm,android-arm64,android-x64
 
       - name: Build Release APK
         if: ${{ github.event.inputs.build_type == 'release' || github.event.inputs.build_type == '' }}
-        run: |
-          mkdir -p build/symbols
-          flutter build apk --release \
-            --obfuscate \
-            --split-debug-info=build/symbols \
-            --target-platform android-arm,android-arm64,android-x64
+        run: flutter build apk --release --target-platform android-arm,android-arm64,android-x64
 
       - name: Upload Build Artifact APK
         uses: actions/upload-artifact@v4
@@ -217,3 +204,4 @@ jobs:
           name: SeaChat-APK-${{ github.run_number }}
           path: build/app/outputs/flutter-apk/app-*.apk
           retention-days: 14
+
