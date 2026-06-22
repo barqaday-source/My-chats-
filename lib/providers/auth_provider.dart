@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/auth_service.dart';
 import '../core/constants/supabase_config.dart';
+import '../services/presence_service.dart';
 import '../main.dart';
 
 class AuthProvider with ChangeNotifier {
@@ -12,6 +14,8 @@ class AuthProvider with ChangeNotifier {
   String? _error;
   bool _initialized = false;
   Map<String, dynamic>? _userProfile;
+
+  RealtimeChannel? _banChannel;
 
   User? get currentUser => _user;
   User? get user => _user;
@@ -29,8 +33,12 @@ class AuthProvider with ChangeNotifier {
       _user = data.session?.user;
       if (_user != null) {
         await _loadUserProfile();
-        await _setOnlineStatus(true);
+        if (_user != null) {
+          _startPresence();
+          _startBanWatch();
+        }
       } else {
+        await _stopPresence();
         _userProfile = null;
       }
       notifyListeners();
@@ -41,10 +49,57 @@ class AuthProvider with ChangeNotifier {
     _user = _authService.currentUser;
     if (_user != null) {
       await _loadUserProfile();
-      await _setOnlineStatus(true);
+      if (_user != null) {
+        _startPresence();
+        _startBanWatch();
+      }
     }
     _initialized = true;
     notifyListeners();
+  }
+
+  void _startPresence() {
+    PresenceService().init();
+  }
+
+  Future<void> _stopPresence() async {
+    _banChannel?.unsubscribe();
+    _banChannel = null;
+    PresenceService().close();
+  }
+
+  void _startBanWatch() {
+    if (_user == null) return;
+    _banChannel?.unsubscribe();
+    _banChannel = SupabaseConfig.client
+        .channel('ban_watch_${_user!.id}')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: SupabaseConfig.tUsers,
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'id',
+            value: _user!.id,
+          ),
+          callback: (payload) {
+            final banned = payload.newRecord['is_banned'] == true;
+            if (banned) {
+              _handleBanned();
+            }
+          },
+        )
+        .subscribe();
+  }
+
+  Future<void> _handleBanned() async {
+    _error = 'تم حظر حسابك';
+    await _stopPresence();
+    await _authService.signOut();
+    _user = null;
+    _userProfile = null;
+    notifyListeners();
+    navigatorKey.currentState?.pushNamedAndRemoveUntil('/login', (route) => false);
   }
 
   Future<void> _loadUserProfile() async {
@@ -63,13 +118,7 @@ class AuthProvider with ChangeNotifier {
 
       // فحص الحظر
       if (res['is_banned'] == true) {
-        _error = 'تم حظر حسابك';
-        await _authService.signOut();
-        _user = null;
-        _userProfile = null;
-        _initialized = true;
-        notifyListeners();
-        navigatorKey.currentState?.pushNamedAndRemoveUntil('/login', (route) => false);
+        await _handleBanned();
         return;
       }
 
@@ -77,16 +126,6 @@ class AuthProvider with ChangeNotifier {
     } catch (e) {
       _userProfile = null;
     }
-  }
-
-  Future<void> _setOnlineStatus(bool online) async {
-    if (_user == null) return;
-    try {
-      await SupabaseConfig.client.from(SupabaseConfig.tUsers).update({
-        'is_online': online,
-        'last_seen': DateTime.now().toIso8601String(),
-      }).eq('id', _user!.id);
-    } catch (_) {}
   }
 
   Future<bool> login(String email, String password) async {
@@ -100,18 +139,19 @@ class AuthProvider with ChangeNotifier {
       
       if (_user != null) {
         await _loadUserProfile();
-        if (_userProfile == null && _error != null) {
-          // محظور
+        if (_user == null) {
+          // محظور، _handleBanned اشتغلت
           _isLoading = false;
           notifyListeners();
           return false;
         }
-        await _setOnlineStatus(true);
+        _startPresence();
+        _startBanWatch();
       }
 
       _isLoading = false;
       notifyListeners();
-      return true;
+      return _user != null;
     } catch (e) {
       _error = e.toString();
       _isLoading = false;
@@ -138,9 +178,15 @@ class AuthProvider with ChangeNotifier {
           'email': email,
           'username': name,
           'is_online': true,
+          'last_seen': DateTime.now().toIso8601String(),
+          'is_banned': false,
         }, onConflict: 'id');
         _user = res.user;
         await _loadUserProfile();
+        if (_user != null) {
+          _startPresence();
+          _startBanWatch();
+        }
       }
 
       _isLoading = false;
@@ -171,7 +217,7 @@ class AuthProvider with ChangeNotifier {
       _isLoading = true;
       notifyListeners();
 
-      await _setOnlineStatus(false);
+      await _stopPresence();
       await _authService.signOut();
       _userProfile = null;
       _user = null;
