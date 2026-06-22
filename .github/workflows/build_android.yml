@@ -1,4 +1,4 @@
-Name: Build Android APK - SeaChat Pure Auto Fix
+name: Build Android APK - SeaChat Pure Auto Fix
 on:
   push:
     branches: [ main, master, develop ]
