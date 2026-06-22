@@ -101,7 +101,7 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               const SizedBox(height: 8),
               Text(
-                _isLogin ? 'مرحباً بعودتك إلى سي شات' : 'انضم إلى مجتمع سي شات',
+                _isLogin ? 'مرحباً بعودتك إلى  دردشاتي' : 'انضم إلى مجتمع دردشاتي ',
                 style: Theme.of(context).textTheme.bodyMedium,
               ),
               const SizedBox(height: 36),
