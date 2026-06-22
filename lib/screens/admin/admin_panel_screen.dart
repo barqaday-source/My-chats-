@@ -54,9 +54,9 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     }
     try {
       final userData = await _sb.from(SupabaseConfig.tUsers)
-       .select('role')
-       .eq('id', user.id)
-       .single();
+      .select('role')
+      .eq('id', user.id)
+      .single();
       final role = userData['role'] as String?? 'user';
       if (role == 'admin') {
         _isAdmin = true;
@@ -77,9 +77,9 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     setState(() => _loading = true);
     try {
       final roomsData = await _sb.from(SupabaseConfig.tRooms)
-       .select()
-       .eq('is_approved', false)
-       .order('created_at', ascending: false);
+      .select()
+      .eq('is_approved', false)
+      .order('created_at', ascending: false);
       _pendingRooms = List<Map<String, dynamic>>.from(roomsData);
 
       final contactData = await _sb.from('app_contact').select().eq('id', 1).maybeSingle();
@@ -97,22 +97,22 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
 
   Stream<List<UserModel>> _usersStream() {
     return _sb.from(SupabaseConfig.tUsers)
-    .stream(primaryKey: ['id'])
-    .order('created_at', ascending: false)
-    .map((list) => list.map((j) => UserModel.fromMap(j)).toList());
+   .stream(primaryKey: ['id'])
+   .order('created_at', ascending: false)
+   .map((list) => list.map((j) => UserModel.fromMap(j)).toList());
   }
 
   Stream<List<Map<String, dynamic>>> _reportsStream() {
     return _sb.from(SupabaseConfig.tReports)
-    .stream(primaryKey: ['id'])
-    .order('created_at', ascending: false);
+   .stream(primaryKey: ['id'])
+   .order('created_at', ascending: false);
   }
 
   Future<Map<String, dynamic>?> _getUserMini(String userId) async {
     return await _sb.from(SupabaseConfig.tUsers)
-    .select('id, username, avatar_url')
-    .eq('id', userId)
-    .maybeSingle();
+   .select('id, username, avatar_url')
+   .eq('id', userId)
+   .maybeSingle();
   }
 
   Future<void> _blockUser(String uid, String username) async {
@@ -120,12 +120,12 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     _busy = true;
     try {
       final res = await _sb.from(SupabaseConfig.tUsers)
-       .update({
+      .update({
             'is_banned': true,
             'is_blocked': true,
           })
-       .eq('id', uid)
-       .select();
+      .eq('id', uid)
+      .select();
       if (res.isEmpty) throw Exception('فشل الحظر - تحقق من RLS');
       await _notifSvc.sendNotification(NotificationModel(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
@@ -148,9 +148,9 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     _busy = true;
     try {
       final res = await _sb.from(SupabaseConfig.tUsers)
-       .update({'is_banned': false, 'is_blocked': false})
-       .eq('id', uid)
-       .select();
+      .update({'is_banned': false, 'is_blocked': false})
+      .eq('id', uid)
+      .select();
       if (res.isEmpty) throw Exception('فشل إلغاء الحظر');
       await _notifSvc.sendNotification(NotificationModel(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
@@ -171,13 +171,13 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
   Future<void> _replyReport(String reportId, String userId, String reply, {bool banUser = false}) async {
     try {
       await _sb.from(SupabaseConfig.tReports)
-       .update({'reply': reply, 'status': 'replied', 'updated_at': DateTime.now().toIso8601String()})
-       .eq('id', reportId);
+      .update({'reply': reply, 'status': 'replied', 'updated_at': DateTime.now().toIso8601String()})
+      .eq('id', reportId);
 
       if (banUser && userId.isNotEmpty) {
         await _sb.from(SupabaseConfig.tUsers)
-        .update({'is_banned': true, 'is_blocked': true})
-        .eq('id', userId);
+       .update({'is_banned': true, 'is_blocked': true})
+       .eq('id', userId);
       }
 
       await _notifSvc.sendNotification(NotificationModel(
@@ -194,8 +194,8 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
   Future<void> _approveRoom(String roomId, String ownerId) async {
     try {
       await _sb.from(SupabaseConfig.tRooms)
-       .update({'is_approved': true})
-       .eq('id', roomId);
+      .update({'is_approved': true})
+      .eq('id', roomId);
       if (mounted) showAppSnack(context, 'تمت الموافقة على الغرفة', success: true);
       await _loadStatic();
     } catch (e) {
@@ -221,18 +221,17 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                 indicatorColor: AppColors.primary,
                 labelColor: AppColors.white,
                 unselectedLabelColor: AppColors.textSub,
-                labelStyle: const TextStyle(fontFamily: 'Tajawal', fontWeight: FontWeight.w700, fontSize: 12),
                 tabs: const [
-                  Tab(text: 'المستخدمون'),
-                  Tab(text: 'البلاغات'),
-                  Tab(text: 'الغرف'),
-                  Tab(text: 'تواصل معنا'),
+                  Tab(icon: Icon(Icons.group_rounded, size: 22)),
+                  Tab(icon: Icon(Icons.flag_rounded, size: 22)),
+                  Tab(icon: Icon(Icons.meeting_room_rounded, size: 22)),
+                  Tab(icon: Icon(Icons.support_agent_rounded, size: 22)),
                 ],
               ),
             ),
             Expanded(
               child: _loading
-               ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+              ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
                   : TabBarView(controller: _tabs, children: [
                       StreamBuilder<List<UserModel>>(
                         stream: _usersStream(),
@@ -364,7 +363,8 @@ class _UsersTab extends StatelessWidget {
   }
 }
 
-class ReportCard extends StatelessWidget {
+// --- كرت البلاغ - بأنميشن موحد ---
+class ReportCard extends StatefulWidget {
   final Map<String, dynamic> report;
   final Future<Map<String, dynamic>?> Function(String) getUserMini;
   final Function(String, String, String) onReply;
@@ -379,75 +379,136 @@ class ReportCard extends StatelessWidget {
   });
 
   @override
+  State<ReportCard> createState() => _ReportCardState();
+}
+
+class _ReportCardState extends State<ReportCard> {
+  bool _pressed = false;
+  bool _actingIgnore = false;
+  bool _actingBlock = false;
+
+  void _tapDown(_) => setState(() => _pressed = true);
+  void _tapUp(_) => setState(() => _pressed = false);
+  void _tapCancel() => setState(() => _pressed = false);
+
+  @override
   Widget build(BuildContext context) {
-    final reporterId = report['reporter_id'] as String?;
-    final reportedId = report['reported_id'] as String?;
-    final reason = report['reason']?? 'بدون سبب';
-    final status = report['status']?? 'new';
-    final createdAt = report['created_at']?.toString()?? '';
+    final reporterId = widget.report['reporter_id'] as String?;
+    final reportedId = widget.report['reported_id'] as String?;
+    final reason = widget.report['reason']?? 'بدون سبب';
+    final status = widget.report['status']?? 'new';
+    final createdAt = widget.report['created_at']?.toString()?? '';
 
     return FutureBuilder<List<dynamic>>(
       future: Future.wait([
-        reporterId!= null? getUserMini(reporterId) : Future.value(null),
-        reportedId!= null? getUserMini(reportedId) : Future.value(null),
+        reporterId!= null? widget.getUserMini(reporterId) : Future.value(null),
+        reportedId!= null? widget.getUserMini(reportedId) : Future.value(null),
       ]),
       builder: (context, snap) {
         final reporter = snap.data?[0]?? {};
         final reported = snap.data?[1]?? {};
-        return Container(
-          margin: const EdgeInsets.only(bottom: 10),
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: AppColors.bgCard,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: AppColors.glassBorder),
+        return GestureDetector(
+          onTapDown: _tapDown,
+          onTapUp: _tapUp,
+          onTapCancel: _tapCancel,
+          child: AnimatedScale(
+            scale: _pressed? 0.98 : 1.0,
+            duration: const Duration(milliseconds: 120),
+            curve: Curves.easeOut,
+            child: Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: AppColors.bgCard,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: AppColors.glassBorder, width: 0.8),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.08),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  )
+                ],
+              ),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  UserAvatar(url: reported['avatar_url'], name: reported['username']?? 'مستخدم', size: 42),
+                  const SizedBox(width: 10),
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(reported['username']?? 'مستخدم',
+                        style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.white, fontWeight: FontWeight.w700, fontSize: 14)),
+                    Text('بلاغ من: ${reporter['username']?? 'مجهول'}',
+                        style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub, fontSize: 12)),
+                  ])),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                        color: AppColors.warning.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(8)),
+                    child: Text(status,
+                        style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.warning, fontSize: 11, fontWeight: FontWeight.w600)),
+                  ),
+                ]),
+                const SizedBox(height: 10),
+                Text(reason,
+                    style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub, fontSize: 13, height: 1.5)),
+                if (createdAt.isNotEmpty)...[
+                  const SizedBox(height: 4),
+                  Text(createdAt.length > 16? createdAt.substring(0, 16) : createdAt,
+                      style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub, fontSize: 11)),
+                ],
+                const SizedBox(height: 14),
+                Row(children: [
+                  Expanded(
+                    child: AnimatedScale(
+                      scale: _actingIgnore? 0.95 : 1.0,
+                      duration: const Duration(milliseconds: 120),
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          setState(() => _actingIgnore = true);
+                          Future.delayed(const Duration(milliseconds: 120), () {
+                            if (mounted) widget.onReply(widget.report['id'], reportedId?? '', 'تم رفض البلاغ');
+                          });
+                        },
+                        icon: const Icon(Icons.visibility_off_rounded, size: 18),
+                        label: const Text('تجاهل', style: TextStyle(fontFamily: 'Tajawal', fontWeight: FontWeight.w600)),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.textSub,
+                          side: const BorderSide(color: AppColors.glassBorder),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: AnimatedScale(
+                      scale: _actingBlock? 0.95 : 1.0,
+                      duration: const Duration(milliseconds: 120),
+                      child: ElevatedButton.icon(
+                        onPressed: () {
+                          setState(() => _actingBlock = true);
+                          Future.delayed(const Duration(milliseconds: 120), () {
+                            if (mounted) widget.onBanAndReply(widget.report['id'], reportedId?? '', 'تم حظر المستخدم بسبب البلاغ');
+                          });
+                        },
+                        icon: const Icon(Icons.block_rounded, size: 18),
+                        label: const Text('حظر', style: TextStyle(fontFamily: 'Tajawal', fontWeight: FontWeight.w700)),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.danger,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          elevation: 0,
+                        ),
+                      ),
+                    ),
+                  ),
+                ])
+              ]),
+            ),
           ),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              UserAvatar(url: reported['avatar_url'], name: reported['username']?? 'مستخدم', size: 38),
-              const SizedBox(width: 10),
-              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(reported['username']?? 'مستخدم',
-                    style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.white, fontWeight: FontWeight.w700)),
-                Text('بلاغ من: ${reporter['username']?? 'مجهول'}',
-                    style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub, fontSize: 12)),
-              ])),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                    color: AppColors.warning.withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(8)),
-                child: Text(status,
-                    style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.warning, fontSize: 11)),
-              ),
-            ]),
-            const SizedBox(height: 10),
-            Text(reason,
-                style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.white, fontSize: 13)),
-            if (createdAt.isNotEmpty)...[
-              const SizedBox(height: 4),
-              Text(createdAt.length > 16? createdAt.substring(0, 16) : createdAt,
-                  style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub, fontSize: 11)),
-            ],
-            const SizedBox(height: 12),
-            Row(children: [
-              Expanded(
-                child: OutlinedButton(
-                  style: OutlinedButton.styleFrom(side: const BorderSide(color: AppColors.glassBorder)),
-                  onPressed: () => onReply(report['id'], reportedId?? '', 'تم رفض البلاغ'),
-                  child: const Text('تجاهل', style: TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub)),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(backgroundColor: AppColors.danger),
-                  onPressed: () => onBanAndReply(report['id'], reportedId?? '', 'تم حظر المستخدم بسبب البلاغ'),
-                  child: const Text('حظر المستخدم', style: TextStyle(fontFamily: 'Tajawal', color: Colors.white)),
-                ),
-              ),
-            ])
-          ]),
         );
       },
     );
