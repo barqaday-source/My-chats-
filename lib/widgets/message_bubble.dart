@@ -48,14 +48,12 @@ class _MessageBubbleState extends State<MessageBubble> {
       final msg = widget.message;
       final imageUrl = msg['image_url']?? msg['media_url'];
       final audioUrl = msg['audio_url'];
-
       final ok = await ChatService().deleteMessage(
         msg['id'].toString(),
         isRoom: widget.isRoom,
         imageUrl: imageUrl,
         audioUrl: audioUrl,
       );
-
       if (!mounted) return;
       if (ok) {
         showAppSnack(context, 'تم حذف الرسالة', success: true);
@@ -84,13 +82,52 @@ class _MessageBubbleState extends State<MessageBubble> {
   void _openProfile() {
     final userId = widget.message['sender_id'];
     if (userId == null || widget.isMe) return;
-    Navigator.push(context, MaterialPageRoute(
-      builder: (_) => UserProfileScreen(userId: userId),
-    ));
+    Navigator.push(context, MaterialPageRoute(builder: (_) => UserProfileScreen(userId: userId)));
   }
 
   String _formatDuration(Duration d) { final m = d.inMinutes.remainder(60).toString().padLeft(2, '0'); final s = d.inSeconds.remainder(60).toString().padLeft(2, '0'); return '$m:$s'; }
   String _formatTime(dynamic ts) { try { final dt = DateTime.parse(ts.toString()).toLocal(); final h = dt.hour % 12 == 0? 12 : dt.hour % 12; final m = dt.minute.toString().padLeft(2, '0'); final am = dt.hour < 12? 'ص' : 'م'; return '$h:$m $am'; } catch (_) { return ''; } }
+
+  // --- صحين القراءة ---
+  Widget _readTicks() {
+    if (!widget.isMe) return const SizedBox.shrink();
+    final isRead = widget.message['is_read'] == true;
+    final isDelivered = widget.message['is_delivered'] == true || isRead;
+    
+    IconData icon = isDelivered ? Icons.done_all_rounded : Icons.done_rounded;
+    Color color = isRead ? const Color(0xFF34B7F1) : AppColors.textSub;
+    
+    return Padding(
+      padding: const EdgeInsets.only(right: 4),
+      child: Icon(icon, size: 14, color: color),
+    );
+  }
+
+  // موجة صوت كحلية ثابتة
+  Widget _waveform(bool isPlaying) {
+    return Expanded(
+      child: SizedBox(
+        height: 28,
+        child: Row(
+          children: List.generate(22, (i) {
+            final h = [6, 14, 8, 20, 12, 6, 18, 10, 14, 8, 22, 10, 16, 7, 13, 19, 9, 15, 8, 12, 6, 10][i].toDouble();
+            final active = isPlaying && _duration.inMilliseconds > 0 && 
+              (i / 22) < (_position.inMilliseconds / (_duration.inMilliseconds == 0 ? 1 : _duration.inMilliseconds));
+            return Expanded(
+              child: Container(
+                margin: const EdgeInsets.symmetric(horizontal: 1),
+                height: h,
+                decoration: BoxDecoration(
+                  color: active ? AppColors.navy : AppColors.primary.withOpacity(0.45),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            );
+          }),
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -135,25 +172,42 @@ class _MessageBubbleState extends State<MessageBubble> {
               errorWidget: (c, u, e) => Container(width: 220, height: 140, color: AppColors.bgCard2,
                 child: const Icon(Icons.broken_image_rounded, color: AppColors.textSub)))),
         if (audioUrl!= null && audioUrl.toString().isNotEmpty)
-          Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-            decoration: BoxDecoration(color: AppColors.bgCard2, borderRadius: BorderRadius.circular(10)),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              IconButton(onPressed: () async { if (_isPlaying) { await _player.pause(); } else { await _player.play(UrlSource(audioUrl)); } },
-                icon: Icon(_isPlaying? Icons.pause_circle : Icons.play_arrow_rounded, color: AppColors.navy, size: 28),
-                padding: EdgeInsets.zero, constraints: const BoxConstraints()),
-              const SizedBox(width: 6),
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const Text('رسالة صوتية', style: TextStyle(fontFamily: 'Tajawal', fontSize: 13, color: AppColors.text)),
-                if (_duration.inSeconds > 0)
-                  Text('${_formatDuration(_position)} / ${_formatDuration(_duration)}',
-                    style: const TextStyle(fontFamily: 'Tajawal', fontSize: 11, color: AppColors.textSub)),
-              ]),
-            ])),
+          Container(
+            width: 240,
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              color: AppColors.primary.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Row(children: [
+              GestureDetector(
+                onTap: () async { if (_isPlaying) { await _player.pause(); } else { await _player.play(UrlSource(audioUrl)); } },
+                child: Container(
+                  width: 36, height: 36,
+                  decoration: const BoxDecoration(color: AppColors.navy, shape: BoxShape.circle),
+                  child: Icon(_isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded, color: Colors.white, size: 22),
+                ),
+              ),
+              const SizedBox(width: 8),
+              _waveform(_isPlaying),
+              const SizedBox(width: 8),
+              Text(
+                _duration.inSeconds > 0 ? _formatDuration(_isPlaying ? _position : _duration) : '0:00',
+                style: const TextStyle(fontFamily: 'Tajawal', fontSize: 11, color: AppColors.navy, fontWeight: FontWeight.w600),
+              ),
+            ]),
+          ),
         if (content.isNotEmpty)
           Padding(padding: EdgeInsets.only(top: (imageUrl!= null || audioUrl!= null)? 6 : 0),
             child: Text(content, style: const TextStyle(fontFamily: 'Tajawal', fontSize: 15, color: AppColors.text, height: 1.4))),
         const SizedBox(height: 4),
-        Text(timeStr, style: const TextStyle(fontFamily: 'Tajawal', fontSize: 11, color: AppColors.textSub)),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(timeStr, style: const TextStyle(fontFamily: 'Tajawal', fontSize: 11, color: AppColors.textSub)),
+            _readTicks(),
+          ],
+        ),
       ],
     );
 
