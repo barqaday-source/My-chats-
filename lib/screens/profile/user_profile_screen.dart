@@ -178,15 +178,6 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
               onTap: () { Navigator.pop(context); _reportUser(user); },
             ),
           ],
-          if (isAdmin && !isMe)...[
-            const Divider(color: AppColors.glassBorder, height: 1),
-            ListTile(
-              leading: const Icon(Icons.gpp_bad_rounded, color: AppColors.danger),
-              title: const Text('حظر نهائي',
-                  style: TextStyle(fontFamily: 'Tajawal', color: AppColors.danger)),
-              onTap: () { Navigator.pop(context); _banEmail(); },
-            ),
-          ],
           const SizedBox(height: 8),
         ]),
       ),
