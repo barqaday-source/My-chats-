@@ -57,10 +57,14 @@ class _AudioMessageWidgetState extends State<AudioMessageWidget> {
       children: [
         GestureDetector(
           onTap: _toggle,
-          child: Container(
-            width: 38, height: 38,
-            decoration: BoxDecoration(color: bgIcon, shape: BoxShape.circle),
-            child: Icon(_isPlaying? Icons.pause_rounded : Icons.play_arrow_rounded, color: iconColor, size: 22),
+          child: AnimatedScale(
+            scale: _isPlaying? 0.95 : 1.0,
+            duration: const Duration(milliseconds: 120),
+            child: Container(
+              width: 38, height: 38,
+              decoration: BoxDecoration(color: bgIcon, shape: BoxShape.circle),
+              child: Icon(_isPlaying? Icons.pause_rounded : Icons.play_arrow_rounded, color: iconColor, size: 22),
+            ),
           ),
         ),
         const SizedBox(width: 10),
@@ -93,14 +97,16 @@ class _WaveformPainter extends CustomPainter {
   @override void paint(Canvas canvas, Size size) {
     const count = 32; const barW = 2.0;
     final spacing = size.width > count * barW? (size.width - count * barW) / (count - 1) : 1.0;
-    final filled = (count * progress).round();
+    final filled = (count * progress);
     for (int i = 0; i < count; i++) {
       final h = (_bars[i] / 16.0) * size.height;
       final x = i * (barW + spacing);
       final top = (size.height - h) / 2;
+      final t = (filled - i).clamp(0.0, 1.0);
+      final color = Color.lerp(trackColor, fillColor, t)!;
       canvas.drawRRect(
-        RRect.fromRectAndRadius(Rect.fromLTWH(x, top, barW, h), const Radius.circular(1)),
-        Paint()..color = i < filled? fillColor : trackColor
+        RRect.fromRectAndRadius(Rect.fromLTWH(x, top, barW, h), const Radius.circular(2)),
+        Paint()..color = color
       );
     }
   }
