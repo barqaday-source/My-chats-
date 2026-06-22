@@ -1,5 +1,5 @@
 class AppStrings {
-  static const appName = 'C Chat';
+  static const appName = 'دردشاتي';
   static const appNameAr = 'دردشاتي';
   static const welcome = 'مرحباً بك';
   static const welcomeSub = 'انضم إلى مجتمع دردشاتي وابدأ المحادثة';
@@ -36,9 +36,9 @@ class AppStrings {
   static const official = 'القناة الرسمية';
   static const online = 'متصل';
   static const offline = 'غير متصل';
-  static const privacyText = '''سياسة الخصوصية لتطبيق سي شات
+  static const privacyText = '''سياسة الخصوصية لتطبيق دردشاتي
 
-نحن في دردشاتي  نحترم خصوصيتك ونلتزم بحماية بياناتك الشخصية.
+نحن في دردشاتي نحترم خصوصيتك ونلتزم بحماية بياناتك الشخصية.
 
 1. البيانات التي نجمعها
 - معلومات الحساب (الاسم، البريد الإلكتروني، الصورة)
