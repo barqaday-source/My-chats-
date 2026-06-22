@@ -33,13 +33,10 @@ class _ChatInputBarState extends State<ChatInputBar> {
   Duration _recordDuration = Duration.zero;
   String? _recordPath;
 
-  // معاينة الصوت بعد التسجيل
-  File? _pendingAudio;
-  int _pendingDuration = 0;
-
   @override void initState() {
     super.initState();
     _initRecorder();
+    _ctrl.addListener(() => setState(() {}));
   }
 
   Future<void> _initRecorder() async {
@@ -78,18 +75,16 @@ class _ChatInputBarState extends State<ChatInputBar> {
     }
   }
 
+  // --- تسجيل واتساب: ضغطة تبدأ ---
   Future<void> _startRecord() async {
-    if (!_recorderReady || _sending || _isRecording || _pendingAudio != null) return;
+    if (!_recorderReady || _sending || _isRecording) return;
     final mic = await Permission.microphone.request();
     if (!mic.isGranted) return;
 
     final dir = await getTemporaryDirectory();
     _recordPath = '${dir.path}/voice_${DateTime.now().millisecondsSinceEpoch}.aac';
 
-    await _recorder.startRecorder(
-      toFile: _recordPath,
-      codec: Codec.aacADTS,
-    );
+    await _recorder.startRecorder(toFile: _recordPath, codec: Codec.aacADTS);
 
     setState(() {
       _isRecording = true;
@@ -101,7 +96,22 @@ class _ChatInputBarState extends State<ChatInputBar> {
     });
   }
 
-  Future<void> _stopRecord({bool cancel = false}) async {
+  Future<void> _cancelRecord() async {
+    if (!_isRecording) return;
+    _timer?.cancel();
+    await _recorder.stopRecorder();
+    if (_recordPath != null) {
+      final f = File(_recordPath!);
+      if (await f.exists()) await f.delete();
+    }
+    setState(() {
+      _isRecording = false;
+      _recordDuration = Duration.zero;
+      _recordPath = null;
+    });
+  }
+
+  Future<void> _sendRecord() async {
     if (!_isRecording) return;
     _timer?.cancel();
     await _recorder.stopRecorder();
@@ -115,7 +125,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
       _recordPath = null;
     });
 
-    if (cancel || path == null || duration < 1) {
+    if (path == null || duration < 1) {
       if (path != null) {
         final f = File(path);
         if (await f.exists()) await f.delete();
@@ -123,36 +133,13 @@ class _ChatInputBarState extends State<ChatInputBar> {
       return;
     }
 
-    // لا ترسل تلقائي، خليه معاينة
-    setState(() {
-      _pendingAudio = File(path);
-      _pendingDuration = duration;
-    });
-  }
-
-  Future<void> _sendPendingAudio() async {
-    if (_pendingAudio == null) return;
     setState(() => _sending = true);
     try {
-      await widget.onSend('', null, _pendingAudio, _pendingDuration);
-      await _pendingAudio!.delete().catchError((_){});
-      setState(() {
-        _pendingAudio = null;
-        _pendingDuration = 0;
-      });
+      await widget.onSend('', null, File(path), duration);
+      await File(path).delete().catchError((_) {});
     } finally {
       if (mounted) setState(() => _sending = false);
     }
-  }
-
-  void _cancelPendingAudio() async {
-    if (_pendingAudio != null) {
-      await _pendingAudio!.delete().catchError((_){});
-    }
-    setState(() {
-      _pendingAudio = null;
-      _pendingDuration = 0;
-    });
   }
 
   @override void dispose() {
@@ -165,7 +152,6 @@ class _ChatInputBarState extends State<ChatInputBar> {
   @override Widget build(BuildContext context) {
     final hasText = _ctrl.text.trim().isNotEmpty;
     final reply = widget.replyTo;
-    final hasPendingAudio = _pendingAudio != null;
 
     return Container(
       decoration: const BoxDecoration(
@@ -206,24 +192,37 @@ class _ChatInputBarState extends State<ChatInputBar> {
                 ),
               ),
 
-            // معاينة الصوت قبل الإرسال
-            if (hasPendingAudio)
+            // --- شريط التسجيل الواتسابي ---
+            if (_isRecording)
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                 decoration: const BoxDecoration(color: AppColors.bgCard, border: Border(bottom: BorderSide(color: AppColors.glassBorder))),
                 child: Row(
                   children: [
-                    IconButton(onPressed: _cancelPendingAudio, icon: const Icon(Icons.delete_outline, color: AppColors.danger)),
+                    // حذف
+                    IconButton(
+                      onPressed: _cancelRecord,
+                      icon: const Icon(Icons.delete_outline, color: AppColors.danger),
+                      tooltip: 'حذف',
+                    ),
                     const SizedBox(width: 8),
-                    const Icon(Icons.mic_rounded, color: AppColors.primary, size: 20),
+                    Container(width: 8, height: 8, decoration: const BoxDecoration(color: AppColors.danger, shape: BoxShape.circle)),
                     const SizedBox(width: 8),
-                    Text('${_pendingDuration}s', style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.white)),
-                    const Spacer(),
+                    Text(_format(_recordDuration),
+                      style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.danger, fontSize: 15, fontWeight: FontWeight.w700)),
+                    const SizedBox(width: 8),
+                    const Expanded(
+                      child: Text('جار التسجيل...', style: TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub, fontSize: 13)),
+                    ),
+                    // إرسال
                     FilledButton.icon(
-                      onPressed: _sending ? null : _sendPendingAudio,
+                      onPressed: _sendRecord,
                       icon: const Icon(Icons.send_rounded, size: 18),
                       label: const Text('إرسال', style: TextStyle(fontFamily: 'Tajawal')),
-                      style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AppColors.success,
+                        foregroundColor: Colors.white,
+                      ),
                     ),
                   ],
                 ),
@@ -234,11 +233,9 @@ class _ChatInputBarState extends State<ChatInputBar> {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  // زر إرسال / مايك
+                  // زر مايك / إرسال - ضغطة وحدة فقط
                   GestureDetector(
-                    onLongPressStart: hasText || _sending || hasPendingAudio ? null : (_) => _startRecord(),
-                    onLongPressEnd: hasText || _sending ? null : (_) => _stopRecord(),
-                    onLongPressCancel: () => _stopRecord(cancel: true),
+                    onTap: hasText ? _sendText : _startRecord,
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 180),
                       width: 52, height: 52,
@@ -247,16 +244,15 @@ class _ChatInputBarState extends State<ChatInputBar> {
                         shape: BoxShape.circle,
                         border: Border.all(color: hasText ? AppColors.primary : AppColors.glassBorder, width: 1.2),
                       ),
-                      child: IconButton(
-                        onPressed: hasText && !_sending ? _sendText : null,
-                        icon: Icon(hasText ? Icons.send_rounded : Icons.mic_rounded,
-                          color: hasText ? Colors.white : AppColors.textSub, size: 24),
-                      ),
+                      child: _sending
+                          ? const Center(child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)))
+                          : Icon(hasText ? Icons.send_rounded : Icons.mic_rounded,
+                              color: hasText ? Colors.white : AppColors.navy, size: 24),
                     ),
                   ),
                   const SizedBox(width: 8),
 
-                  // الحقل
+                  // حقل النص
                   Expanded(
                     child: Container(
                       constraints: const BoxConstraints(minHeight: 52),
@@ -265,50 +261,32 @@ class _ChatInputBarState extends State<ChatInputBar> {
                         borderRadius: BorderRadius.circular(26),
                         border: Border.all(color: AppColors.glassBorder),
                       ),
-                      child: _isRecording
-                          ? Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-                              child: Row(
-                                children: [
-                                  InkWell(
-                                    onTap: () => _stopRecord(cancel: true),
-                                    child: const Icon(Icons.close_rounded, color: AppColors.danger, size: 18),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Container(width: 8, height: 8, decoration: const BoxDecoration(color: AppColors.danger, shape: BoxShape.circle)),
-                                  const SizedBox(width: 8),
-                                  Text(_format(_recordDuration), style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.danger, fontSize: 14, fontWeight: FontWeight.w700)),
-                                  const Spacer(),
-                                  const Text('جار التسجيل...', style: TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub, fontSize: 13)),
-                                ],
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          IconButton(
+                            onPressed: _sending || _isRecording ? null : _pickImage,
+                            icon: const Icon(Icons.image_outlined, color: AppColors.textSub, size: 24),
+                          ),
+                          Expanded(
+                            child: TextField(
+                              controller: _ctrl,
+                              enabled: !_isRecording,
+                              maxLines: 5, minLines: 1,
+                              textAlign: TextAlign.right,
+                              style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.white, fontSize: 15),
+                              decoration: const InputDecoration(
+                                hintText: 'اكتب رسالة...',
+                                hintStyle: TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub),
+                                border: InputBorder.none,
+                                contentPadding: EdgeInsets.symmetric(vertical: 14),
                               ),
-                            )
-                          : Row(
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                IconButton(
-                                  onPressed: _sending || hasPendingAudio ? null : _pickImage,
-                                  icon: const Icon(Icons.image_outlined, color: AppColors.textSub, size: 24),
-                                ),
-                                Expanded(
-                                  child: TextField(
-                                    controller: _ctrl,
-                                    onChanged: (_) => setState(() {}),
-                                    maxLines: 5, minLines: 1,
-                                    textAlign: TextAlign.right,
-                                    style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.white, fontSize: 15),
-                                    decoration: const InputDecoration(
-                                      hintText: 'اكتب رسالة...',
-                                      hintStyle: TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub),
-                                      border: InputBorder.none,
-                                      contentPadding: EdgeInsets.symmetric(vertical: 14),
-                                    ),
-                                    onSubmitted: (_) => _sendText(),
-                                  ),
-                                ),
-                                const SizedBox(width: 4),
-                              ],
+                              onSubmitted: (_) => _sendText(),
                             ),
+                          ),
+                          const SizedBox(width: 4),
+                        ],
+                      ),
                     ),
                   ),
                 ],
