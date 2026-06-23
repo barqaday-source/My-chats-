@@ -8,6 +8,7 @@ class NotificationModel extends Equatable {
   final String type;
   final bool isRead;
   final DateTime createdAt;
+  final String? imageUrl; // NEW: صورة الإشعار اختيارية
 
   const NotificationModel({
     required this.id,
@@ -17,6 +18,7 @@ class NotificationModel extends Equatable {
     required this.type,
     this.isRead = false,
     required this.createdAt,
+    this.imageUrl,
   });
 
   factory NotificationModel.fromJson(Map<String, dynamic> json) {
@@ -28,6 +30,7 @@ class NotificationModel extends Equatable {
       type: json['type']?? 'general',
       isRead: json['is_read']?? false,
       createdAt: DateTime.parse(json['created_at']),
+      imageUrl: json['image_url'], // NEW
     );
   }
 
@@ -40,9 +43,10 @@ class NotificationModel extends Equatable {
       'type': type,
       'is_read': isRead,
       'created_at': createdAt.toIso8601String(),
+      'image_url': imageUrl, // NEW
     };
   }
 
   @override
-  List<Object?> get props => [id, userId, title, body, type, isRead, createdAt];
+  List<Object?> get props => [id, userId, title, body, type, isRead, createdAt, imageUrl];
 }
