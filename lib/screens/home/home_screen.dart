@@ -5,7 +5,7 @@ import 'package:badges/badges.dart' as badges;
 import '../chat/chats_list_screen.dart';
 import '../rooms/rooms_screen.dart';
 import '../profile/profile_screen.dart';
-import '../profile/profile_visitors_screen.dart';
+import '../profile_visits/profile_visits_screen.dart';
 import '../notifications/notifications_screen.dart';
 import '../../services/notification_service.dart';
 import '../../widgets/app_drawer.dart';
