@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/constants/app_colors.dart';
 import '../core/constants/supabase_config.dart';
+import '../widgets/user_avatar.dart';
 import 'profile/user_profile_screen.dart';
 
 class UsersGridScreen extends StatefulWidget {
@@ -17,10 +18,9 @@ class _UsersGridScreenState extends State<UsersGridScreen> {
   Future<List<Map<String, dynamic>>> _loadUsers() async {
     final myId = _sb.auth.currentUser?.id;
     var q = _sb.from(SupabaseConfig.tUsers)
-     .select('id, username, avatar_url, bio, is_online')
-     .eq('is_blocked', false);
+    .select('id, username, avatar_url, bio, is_online');
 
-    if (myId != null) {
+    if (myId!= null) {
       q = q.neq('id', myId);
     }
     if (_query.isNotEmpty) {
@@ -38,38 +38,26 @@ class _UsersGridScreenState extends State<UsersGridScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: AppColors.bgCard,
-        elevation: 0.5,
-        title: const Text('المستخدمون', style: TextStyle(fontFamily: 'Tajawal', color: AppColors.white, fontWeight: FontWeight.bold)),
+        backgroundColor: theme.scaffoldBackgroundColor,
+        elevation: 0,
+        title: const Text('المستخدمون', style: TextStyle(fontFamily: 'Tajawal', fontWeight: FontWeight.w800)),
         centerTitle: true,
-        iconTheme: const IconThemeData(color: AppColors.white),
       ),
       body: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
             child: TextField(
               textDirection: TextDirection.rtl,
-              style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.white),
+              onChanged: (v) => setState(() => _query = v),
               decoration: InputDecoration(
                 hintText: 'ابحث عن مستخدم...',
-                hintStyle: const TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub),
-                prefixIcon: const Icon(Icons.search, color: AppColors.textSub),
-                filled: true,
-                fillColor: AppColors.bgCard,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  borderSide: const BorderSide(color: AppColors.glassBorder),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  borderSide: const BorderSide(color: AppColors.glassBorder),
-                ),
+                prefixIcon: const Icon(Icons.search_rounded),
               ),
-              onChanged: (v) => setState(() => _query = v),
             ),
           ),
           Expanded(
@@ -84,55 +72,66 @@ class _UsersGridScreenState extends State<UsersGridScreen> {
                   return const Center(child: Text('لا يوجد مستخدمين', style: TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub)));
                 }
                 return GridView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
                   gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 3,
-                    mainAxisSpacing: 16,
-                    crossAxisSpacing: 16,
-                    childAspectRatio: 0.82,
+                    crossAxisCount: 2,
+                    mainAxisSpacing: 12,
+                    crossAxisSpacing: 12,
+                    childAspectRatio: 0.92,
                   ),
                   itemCount: users.length,
                   itemBuilder: (_, i) {
                     final u = users[i];
                     final online = u['is_online'] == true;
+                    final name = u['username']?? 'مستخدم';
+                    final bio = (u['bio']?? '').toString();
+
                     return GestureDetector(
                       onTap: () => _openProfile(u),
-                      child: Column(
-                        children: [
-                          Stack(
-                            children: [
-                              CircleAvatar(
-                                radius: 42,
-                                backgroundColor: AppColors.bgCard,
-                                backgroundImage: u['avatar_url'] != null
-                                 ? NetworkImage(u['avatar_url']) : null,
-                                child: u['avatar_url'] == null
-                                 ? Text((u['username'] ?? '؟')[0],
-                                      style: const TextStyle(fontSize: 22, color: AppColors.primary))
-                                  : null,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: theme.cardTheme.color,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: AppColors.glassBorder, width: 0.8),
+                        ),
+                        padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 12),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            UserAvatar(
+                              url: u['avatar_url'],
+                              name: name,
+                              size: 68,
+                              isOnline: online,
+                            ),
+                            const SizedBox(height: 10),
+                            Text(
+                              name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontFamily: 'Tajawal',
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.text,
                               ),
-                              if (online)
-                                Positioned(
-                                  bottom: 2, right: 2,
-                                  child: Container(width: 12, height: 12,
-                                    decoration: BoxDecoration(
-                                      color: AppColors.primary,
-                                      shape: BoxShape.circle,
-                                      border: Border.all(color: AppColors.bg, width: 2)
-                                    ),
-                                  ),
-                                ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            u['username'] ?? 'مستخدم',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontFamily: 'Tajawal', fontSize: 13, color: AppColors.white),
-                            textAlign: TextAlign.center,
-                          ),
-                        ],
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              online? 'متصل الآن' : (bio.isNotEmpty? bio : 'غير متصل'),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontFamily: 'Tajawal',
+                                fontSize: 12,
+                                color: online? AppColors.success : AppColors.textSub,
+                                fontWeight: online? FontWeight.w600 : FontWeight.normal,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
+                        ),
                       ),
                     );
                   },
