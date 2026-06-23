@@ -4,6 +4,7 @@ import 'package:audioplayers/audioplayers.dart';
 import '../../core/constants/app_colors.dart';
 import '../../services/chat_service.dart';
 import '../../screens/profile/user_profile_screen.dart';
+import '../user_avatar.dart'; // NEW
 import 'app_snackbar.dart';
 
 class MessageBubble extends StatefulWidget {
@@ -13,6 +14,7 @@ class MessageBubble extends StatefulWidget {
   final VoidCallback? onReply;
   final bool isRoom;
   final void Function(String messageId)? onDelete;
+  final VoidCallback? onAvatarTap; // NEW
 
   const MessageBubble({
     super.key,
@@ -22,6 +24,7 @@ class MessageBubble extends StatefulWidget {
     this.onReply,
     this.isRoom = true,
     this.onDelete,
+    this.onAvatarTap, // NEW
   });
 
   @override
@@ -93,10 +96,10 @@ class _MessageBubbleState extends State<MessageBubble> {
     if (!widget.isMe) return const SizedBox.shrink();
     final isRead = widget.message['is_read'] == true;
     final isDelivered = widget.message['is_delivered'] == true || isRead;
-    
-    IconData icon = isDelivered ? Icons.done_all_rounded : Icons.done_rounded;
-    Color color = isRead ? const Color(0xFF34B7F1) : AppColors.textSub;
-    
+
+    IconData icon = isDelivered? Icons.done_all_rounded : Icons.done_rounded;
+    Color color = isRead? const Color(0xFF34B7F1) : AppColors.textSub;
+
     return Padding(
       padding: const EdgeInsets.only(right: 4),
       child: Icon(icon, size: 14, color: color),
@@ -111,14 +114,14 @@ class _MessageBubbleState extends State<MessageBubble> {
         child: Row(
           children: List.generate(22, (i) {
             final h = [6, 14, 8, 20, 12, 6, 18, 10, 14, 8, 22, 10, 16, 7, 13, 19, 9, 15, 8, 12, 6, 10][i].toDouble();
-            final active = isPlaying && _duration.inMilliseconds > 0 && 
-              (i / 22) < (_position.inMilliseconds / (_duration.inMilliseconds == 0 ? 1 : _duration.inMilliseconds));
+            final active = isPlaying && _duration.inMilliseconds > 0 &&
+              (i / 22) < (_position.inMilliseconds / (_duration.inMilliseconds == 0? 1 : _duration.inMilliseconds));
             return Expanded(
               child: Container(
                 margin: const EdgeInsets.symmetric(horizontal: 1),
                 height: h,
                 decoration: BoxDecoration(
-                  color: active ? AppColors.navy : AppColors.primary.withOpacity(0.45),
+                  color: active? AppColors.navy : AppColors.primary.withOpacity(0.45),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -185,14 +188,14 @@ class _MessageBubbleState extends State<MessageBubble> {
                 child: Container(
                   width: 36, height: 36,
                   decoration: const BoxDecoration(color: AppColors.navy, shape: BoxShape.circle),
-                  child: Icon(_isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded, color: Colors.white, size: 22),
+                  child: Icon(_isPlaying? Icons.pause_rounded : Icons.play_arrow_rounded, color: Colors.white, size: 22),
                 ),
               ),
               const SizedBox(width: 8),
               _waveform(_isPlaying),
               const SizedBox(width: 8),
               Text(
-                _duration.inSeconds > 0 ? _formatDuration(_isPlaying ? _position : _duration) : '0:00',
+                _duration.inSeconds > 0? _formatDuration(_isPlaying? _position : _duration) : '0:00',
                 style: const TextStyle(fontFamily: 'Tajawal', fontSize: 11, color: AppColors.navy, fontWeight: FontWeight.w600),
               ),
             ]),
@@ -236,19 +239,14 @@ class _MessageBubbleState extends State<MessageBubble> {
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             if (!widget.isMe && widget.showAvatar)
-              GestureDetector(
-                onTap: _openProfile,
-                child: Padding(
-                  padding: const EdgeInsets.only(right: 6),
-                  child: CircleAvatar(
-                    radius: 16, backgroundColor: AppColors.bgCard2,
-                    backgroundImage: senderAvatar!= null && senderAvatar.toString().isNotEmpty
-                ? CachedNetworkImageProvider(senderAvatar) : null,
-                    child: senderAvatar == null || senderAvatar.toString().isEmpty
-                ? Text(senderName.isNotEmpty? senderName[0] : '?',
-                          style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.navy, fontWeight: FontWeight.w700))
-                      : null,
-                  ),
+              // CHANGED: استخدمنا UserAvatar بدل CircleAvatar
+              Padding(
+                padding: const EdgeInsets.only(right: 6),
+                child: UserAvatar(
+                  url: senderAvatar,
+                  name: senderName,
+                  size: 32,
+                  onTap: widget.onAvatarTap?? _openProfile, // NEW: يستخدم onAvatarTap لو موجود
                 ),
               ),
             if (!widget.isMe &&!widget.showAvatar) const SizedBox(width: 38),
