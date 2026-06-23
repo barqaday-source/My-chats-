@@ -20,10 +20,10 @@ class AuthService {
       // --- فحص الحظر ---
       try {
         final userData = await _supabase
-           .from('profiles')
-           .select('is_blocked')
-           .eq('id', res.user!.id)
-           .maybeSingle();
+          .from('profiles')
+          .select('is_blocked')
+          .eq('id', res.user!.id)
+          .maybeSingle();
 
         if (userData!= null && userData['is_blocked'] == true) {
           await _supabase.auth.signOut();
@@ -60,6 +60,7 @@ class AuthService {
           'id': res.user!.id,
           'email': email,
           'username': data?['username']?? email.split('@')[0],
+          'status_text': null, // NEW: القيمة الافتراضية للحالة
           'created_at': DateTime.now().toIso8601String(),
           'updated_at': DateTime.now().toIso8601String(),
         });
