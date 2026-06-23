@@ -6,6 +6,7 @@ import '../../models/user_model.dart';
 import '../../services/chat_service.dart';
 import '../../widgets/user_avatar.dart';
 import '../../widgets/app_snackbar.dart';
+import '../../widgets/activity_badge.dart';
 import '../chat/private_chat_screen.dart';
 
 class UserProfileScreen extends StatefulWidget {
@@ -274,6 +275,9 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         const SizedBox(height: 8),
         if (bio != null && bio.isNotEmpty)
           Text(bio, textAlign: TextAlign.center, style: const TextStyle(color: AppColors.textSub, fontSize: 14)),
+        const SizedBox(height: 8),
+        // NEW: وسام النشاط
+        ActivityBadge(createdAt: user.createdAt),
         if (_isBlocked) ...[
           const SizedBox(height: 8),
           Container(
