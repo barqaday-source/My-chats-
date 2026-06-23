@@ -1,17 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:badges/badges.dart' as badges; // NEW
+import 'package:badges/badges.dart' as badges;
 import '../chat/chats_list_screen.dart';
 import '../rooms/rooms_screen.dart';
 import '../profile/profile_screen.dart';
-import '../profile/profile_visitors_screen.dart'; // NEW
+import '../profile/profile_visitors_screen.dart';
 import '../notifications/notifications_screen.dart';
 import '../../services/notification_service.dart';
 import '../../widgets/app_drawer.dart';
 import '../../widgets/bottom_nav_bar.dart';
 import '../../providers/auth_provider.dart';
-import '../../core/constants/app_colors.dart'; // NEW
+import '../../core/constants/app_colors.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -25,7 +25,7 @@ class _HomeScreenState extends State<HomeScreen> {
   int _notifCount = 0;
   late final NotificationService _notifService;
   late final AuthProvider _authProvider;
-  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>(); // NEW
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
   @override
   void initState() {
@@ -46,16 +46,6 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  String _getTitle(int idx) {
-    switch (idx) {
-      case 0: return 'الدردشات';
-      case 1: return 'الغرف';
-      case 2: return 'البروفايل';
-      case 3: return 'الإشعارات';
-      default: return 'CChat';
-    }
-  }
-
   Widget _page(int idx) {
     switch (idx) {
       case 0: return const ChatsListScreen();
@@ -68,40 +58,34 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        key: _scaffoldKey, // NEW
-        drawer: _buildModernDrawer(), // CHANGED: بدل AppDrawer
+        key: _scaffoldKey,
+        drawer: _buildModernDrawer(),
         appBar: AppBar(
-          backgroundColor: AppColors.bgCard, // NEW
-          elevation: 0, // NEW
-          automaticallyImplyLeading: false, // NEW: نخفي المنيو القديم
-          title: Row( // CHANGED: هيدر جديد
+          backgroundColor: AppColors.bgCard,
+          elevation: 0,
+          automaticallyImplyLeading: false,
+          titleSpacing: 0,
+          title: Row(
             children: [
-              // NEW: منيو بخطين
+              // أيقونة المنيو بس - شلت اسم الصفحة عشان ما يتكرر
               IconButton(
                 onPressed: () => _scaffoldKey.currentState?.openDrawer(),
                 icon: const Icon(Icons.density_medium_rounded, color: AppColors.white),
               ),
-              const SizedBox(width: 8),
-              Text(_getTitle(_tab),
-                style: const TextStyle(
-                  fontFamily: 'Tajawal',
-                  color: AppColors.white,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 20
-                )
-              ),
+              const Spacer(),
             ],
           ),
-          actions: [ // NEW: أيقونات جديدة
-            // NEW: أيقونة العين - زوار الملف
-            IconButton(
-              onPressed: () => Navigator.push(context, MaterialPageRoute(
-                builder: (_) => const ProfileVisitorsScreen()
-              )),
-              icon: const Icon(Icons.visibility_rounded, color: AppColors.white),
-              tooltip: 'زوار ملفي',
-            ),
-            // NEW: الجرس مع العداد
+          actions: [
+            // أيقونة العين - تظهر بس بتبويب البروفايل
+            if (_tab == 2)
+              IconButton(
+                onPressed: () => Navigator.push(context, MaterialPageRoute(
+                  builder: (_) => const ProfileVisitorsScreen()
+                )),
+                icon: const Icon(Icons.visibility_rounded, color: AppColors.white),
+                tooltip: 'زوار ملفي',
+              ),
+            // الجرس مع العداد
             badges.Badge(
               showBadge: _notifCount > 0,
               badgeContent: Text(
@@ -112,7 +96,7 @@ class _HomeScreenState extends State<HomeScreen> {
               badgeStyle: const badges.BadgeStyle(badgeColor: AppColors.danger),
               child: IconButton(
                 onPressed: () {
-                  setState(() => _tab = 3); // يفتح تبويب الإشعارات
+                  setState(() => _tab = 3);
                   _loadNotifCount();
                 },
                 icon: const Icon(Icons.notifications_rounded, color: AppColors.white),
@@ -133,7 +117,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       );
 
-  // NEW: درور انزلاقي حديث مع X
+  // درور انزلاقي حديث مع X
   Widget _buildModernDrawer() {
     final user = _authProvider.user;
     return Drawer(
@@ -149,10 +133,10 @@ class _HomeScreenState extends State<HomeScreen> {
                   CircleAvatar(
                     radius: 24,
                     backgroundImage: user?.avatarUrl!= null
-                     ? NetworkImage(user!.avatarUrl!)
+                    ? NetworkImage(user!.avatarUrl!)
                       : null,
                     child: user?.avatarUrl == null
-                     ? Text(user?.username[0].toUpperCase()?? 'U',
+                    ? Text(user?.username[0].toUpperCase()?? 'U',
                           style: const TextStyle(fontFamily: 'Tajawal', fontWeight: FontWeight.w700))
                       : null,
                   ),
