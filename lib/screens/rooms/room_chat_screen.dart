@@ -10,6 +10,8 @@ import '../../widgets/chat/chat_input_bar.dart';
 import '../../widgets/chat/message_bubble.dart';
 import '../../widgets/app_snackbar.dart';
 import '../../widgets/status_chip.dart';
+import '../../widgets/user_avatar.dart'; // NEW
+import '../profile/user_profile_screen.dart'; // NEW
 
 class RoomChatScreen extends StatefulWidget {
   final RoomModel room;
@@ -92,6 +94,13 @@ class _RoomChatScreenState extends State<RoomChatScreen> {
     }
   }
 
+  // NEW: دالة فتح البروفايل
+  void _openProfile(String userId) {
+    Navigator.push(context, MaterialPageRoute(
+      builder: (_) => UserProfileScreen(userId: userId)
+    ));
+  }
+
   @override
   Widget build(BuildContext context) {
     final currentUserId = supabase.auth.currentUser!.id;
@@ -120,18 +129,26 @@ class _RoomChatScreenState extends State<RoomChatScreen> {
                 children: members.map((m) {
                   final statusText = (m['status_text']?? '').toString();
                   final isOnline = m['is_online'] == true;
+                  final userId = m['id'].toString(); // NEW
+                  final username = m['username']?? 'مستخدم';
+
                   return ListTile(
-                    leading: CircleAvatar(
-                      backgroundImage: m['avatar_url']!= null? NetworkImage(m['avatar_url']) : null,
-                      child: m['avatar_url'] == null? Text((m['username']?? 'U')[0].toUpperCase()) : null
+                    // CHANGED: استخدمنا UserAvatar بدل CircleAvatar
+                    leading: UserAvatar(
+                      url: m['avatar_url'],
+                      name: username,
+                      size: 44,
+                      isOnline: isOnline,
+                      onTap: () => _openProfile(userId), // NEW: الضغط عالصورة
                     ),
-                    title: Text(m['username']?? 'مستخدم', style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.white)),
+                    title: Text(username, style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.white)),
                     subtitle: statusText.isNotEmpty
-                     ? Padding(
+                    ? Padding(
                           padding: const EdgeInsets.only(top: 4),
                           child: StatusChip(statusText),
                         )
                       : Text(isOnline? 'متصل' : 'غير متصل', style: const TextStyle(fontFamily: 'Tajawal', fontSize: 12, color: AppColors.textSub)),
+                    onTap: () => _openProfile(userId), // NEW: الضغط عالاسم هم يودي
                   );
                 }).toList(),
               ));
@@ -177,6 +194,8 @@ class _RoomChatScreenState extends State<RoomChatScreen> {
                     isRoom: true,
                     onReply: () => setState(() => _replyingTo = msg),
                     onDelete: (_) {},
+                    // NEW: نمرر دالة فتح البروفايل للـ MessageBubble
+                    onAvatarTap: () => _openProfile(msg['sender_id']),
                   );
                 },
               );
