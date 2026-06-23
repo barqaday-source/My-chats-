@@ -14,8 +14,7 @@ import 'edit_contact_screen.dart';
 
 class AdminPanelScreen extends StatefulWidget {
   const AdminPanelScreen({super.key});
-  @override
-  State<AdminPanelScreen> createState() => _AdminPanelScreenState();
+  @override State<AdminPanelScreen> createState() => _AdminPanelScreenState();
 }
 
 class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerProviderStateMixin {
@@ -40,48 +39,25 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
   }
 
   @override
-  void dispose() {
-    _tabs.dispose();
-    super.dispose();
-  }
+  void dispose() { _tabs.dispose(); super.dispose(); }
 
   Future<void> _checkAdminAndLoad() async {
     final auth = context.read<AuthProvider>();
     final user = auth.currentUser;
-    if (user == null) {
-      if (mounted) Navigator.pop(context);
-      return;
-    }
+    if (user == null) { if (mounted) Navigator.pop(context); return; }
     try {
-      final userData = await _sb.from(SupabaseConfig.tUsers)
-      .select('role')
-      .eq('id', user.id)
-      .single();
+      final userData = await _sb.from(SupabaseConfig.tUsers).select('role').eq('id', user.id).single();
       final role = userData['role'] as String?? 'user';
-      if (role == 'admin') {
-        _isAdmin = true;
-        await _loadStatic();
-      } else {
-        if (mounted) {
-          showAppSnack(context, 'ليس لديك صلاحية', success: false);
-          Navigator.pop(context);
-        }
-      }
-    } catch (e) {
-      debugPrint('Check admin error: $e');
-      if (mounted) Navigator.pop(context);
-    }
+      if (role == 'admin') { _isAdmin = true; await _loadStatic(); }
+      else { if (mounted) { showAppSnack(context, 'ليس لديك صلاحية', success: false); Navigator.pop(context); }}
+    } catch (e) { debugPrint('Check admin error: $e'); if (mounted) Navigator.pop(context); }
   }
 
   Future<void> _loadStatic() async {
     setState(() => _loading = true);
     try {
-      final roomsData = await _sb.from(SupabaseConfig.tRooms)
-      .select()
-      .eq('is_approved', false)
-      .order('created_at', ascending: false);
+      final roomsData = await _sb.from(SupabaseConfig.tRooms).select().eq('is_approved', false).order('created_at', ascending: false);
       _pendingRooms = List<Map<String, dynamic>>.from(roomsData);
-
       final contactData = await _sb.from('app_contact').select().eq('id', 1).maybeSingle();
       if (contactData!= null) {
         adminPhone = contactData['whatsapp_number']?? '';
@@ -96,197 +72,124 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
   }
 
   Stream<List<UserModel>> _usersStream() {
-    return _sb.from(SupabaseConfig.tUsers)
-   .stream(primaryKey: ['id'])
-   .order('created_at', ascending: false)
-   .map((list) => list.map((j) => UserModel.fromMap(j)).toList());
+    return _sb.from(SupabaseConfig.tUsers).stream(primaryKey: ['id']).order('created_at', ascending: false)
+     .map((list) => list.map((j) => UserModel.fromMap(j)).toList());
   }
 
   Stream<List<Map<String, dynamic>>> _reportsStream() {
-    return _sb.from(SupabaseConfig.tReports)
-   .stream(primaryKey: ['id'])
-   .order('created_at', ascending: false);
+    return _sb.from(SupabaseConfig.tReports).stream(primaryKey: ['id']).order('created_at', ascending: false);
   }
 
   Future<Map<String, dynamic>?> _getUserMini(String userId) async {
-    return await _sb.from(SupabaseConfig.tUsers)
-   .select('id, username, avatar_url')
-   .eq('id', userId)
-   .maybeSingle();
+    return await _sb.from(SupabaseConfig.tUsers).select('id, username, avatar_url').eq('id', userId).maybeSingle();
   }
 
   Future<void> _blockUser(String uid, String username) async {
-    if (_busy) return;
-    _busy = true;
+    if (_busy) return; _busy = true;
     try {
-      final res = await _sb.from(SupabaseConfig.tUsers)
-      .update({
-            'is_banned': true,
-            'is_blocked': true,
-          })
-      .eq('id', uid)
-      .select();
+      final res = await _sb.from(SupabaseConfig.tUsers).update({'is_banned': true, 'is_blocked': true}).eq('id', uid).select();
       if (res.isEmpty) throw Exception('فشل الحظر - تحقق من RLS');
       await _notifSvc.sendNotification(NotificationModel(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        userId: uid,
-        title: 'تم حظر حسابك',
-        body: 'تم حظر حسابك نهائيا من قبل الإدارة.',
-        type: 'account_blocked',
-        createdAt: DateTime.now(),
+        id: DateTime.now().millisecondsSinceEpoch.toString(), userId: uid,
+        title: 'تم حظر حسابك', body: 'تم حظر حسابك نهائيا من قبل الإدارة.',
+        type: 'account_blocked', createdAt: DateTime.now(),
       ));
       if (mounted) showAppSnack(context, 'تم حظر $username نهائيا', success: true);
-    } catch (e) {
-      if (mounted) showAppSnack(context, 'فشل الحظر: $e', success: false);
-    } finally {
-      _busy = false;
-    }
+    } catch (e) { if (mounted) showAppSnack(context, 'فشل الحظر: $e', success: false); }
+    finally { _busy = false; }
   }
 
   Future<void> _unblockUser(String uid, String username) async {
-    if (_busy) return;
-    _busy = true;
+    if (_busy) return; _busy = true;
     try {
-      final res = await _sb.from(SupabaseConfig.tUsers)
-      .update({'is_banned': false, 'is_blocked': false})
-      .eq('id', uid)
-      .select();
+      final res = await _sb.from(SupabaseConfig.tUsers).update({'is_banned': false, 'is_blocked': false}).eq('id', uid).select();
       if (res.isEmpty) throw Exception('فشل إلغاء الحظر');
       await _notifSvc.sendNotification(NotificationModel(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        userId: uid,
-        title: 'تم إلغاء الحظر',
-        body: 'تم إلغاء حظر حسابك. يمكنك الآن تسجيل الدخول.',
-        type: 'account_unblocked',
-        createdAt: DateTime.now(),
+        id: DateTime.now().millisecondsSinceEpoch.toString(), userId: uid,
+        title: 'تم إلغاء الحظر', body: 'تم إلغاء حظر حسابك. يمكنك الآن تسجيل الدخول.',
+        type: 'account_unblocked', createdAt: DateTime.now(),
       ));
       if (mounted) showAppSnack(context, 'تم إلغاء حظر $username', success: true);
-    } catch (e) {
-      if (mounted) showAppSnack(context, 'فشل إلغاء الحظر: $e', success: false);
-    } finally {
-      _busy = false;
-    }
+    } catch (e) { if (mounted) showAppSnack(context, 'فشل إلغاء الحظر: $e', success: false); }
+    finally { _busy = false; }
   }
 
   Future<void> _replyReport(String reportId, String userId, String reply, {bool banUser = false}) async {
     try {
-      await _sb.from(SupabaseConfig.tReports)
-      .update({'reply': reply, 'status': 'replied', 'updated_at': DateTime.now().toIso8601String()})
-      .eq('id', reportId);
-
+      await _sb.from(SupabaseConfig.tReports).update({'reply': reply, 'status': 'replied', 'updated_at': DateTime.now().toIso8601String()}).eq('id', reportId);
       if (banUser && userId.isNotEmpty) {
-        await _sb.from(SupabaseConfig.tUsers)
-       .update({'is_banned': true, 'is_blocked': true})
-       .eq('id', userId);
+        await _sb.from(SupabaseConfig.tUsers).update({'is_banned': true, 'is_blocked': true}).eq('id', userId);
       }
-
       await _notifSvc.sendNotification(NotificationModel(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        userId: userId, title: 'رد على بلاغك', body: reply,
+        id: DateTime.now().millisecondsSinceEpoch.toString(), userId: userId, title: 'رد على بلاغك', body: reply,
         type: 'report_reply', createdAt: DateTime.now(),
       ));
       if (mounted) showAppSnack(context, banUser? 'تم حظر المستخدم والرد' : 'تم الرد', success: true);
-    } catch (e) {
-      if (mounted) showAppSnack(context, 'فشل الرد: $e', success: false);
-    }
+    } catch (e) { if (mounted) showAppSnack(context, 'فشل الرد: $e', success: false); }
   }
 
   Future<void> _approveRoom(String roomId, String ownerId) async {
     try {
-      await _sb.from(SupabaseConfig.tRooms)
-      .update({'is_approved': true})
-      .eq('id', roomId);
+      await _sb.from(SupabaseConfig.tRooms).update({'is_approved': true}).eq('id', roomId);
       if (mounted) showAppSnack(context, 'تمت الموافقة على الغرفة', success: true);
       await _loadStatic();
-    } catch (e) {
-      if (mounted) showAppSnack(context, 'فشل الموافقة: $e', success: false);
-    }
+    } catch (e) { if (mounted) showAppSnack(context, 'فشل الموافقة: $e', success: false); }
   }
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     if (!_isAdmin &&!_loading) {
-      return const Scaffold(body: Center(child: Text('ليس لديك صلاحية', style: TextStyle(fontFamily: 'Tajawal', color: AppColors.text))));
+      return const Scaffold(body: Center(child: Text('ليس لديك صلاحية')));
     }
     return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(gradient: AppColors.bgGrad),
-        child: SafeArea(
-          child: Column(children: [
-            AppBar(
-              backgroundColor: Colors.transparent, elevation: 0,
-              title: const Text('لوحة الإدارة', style: TextStyle(fontFamily: 'Tajawal')),
-              bottom: TabBar(
-                controller: _tabs,
-                indicatorColor: AppColors.primary,
-                labelColor: AppColors.white,
-                unselectedLabelColor: AppColors.textSub,
-                tabs: const [
-                  Tab(icon: Icon(Icons.group_rounded, size: 22)),
-                  Tab(icon: Icon(Icons.flag_rounded, size: 22)),
-                  Tab(icon: Icon(Icons.meeting_room_rounded, size: 22)),
-                  Tab(icon: Icon(Icons.support_agent_rounded, size: 22)),
-                ],
-              ),
-            ),
-            Expanded(
-              child: _loading
-              ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
-                  : TabBarView(controller: _tabs, children: [
-                      StreamBuilder<List<UserModel>>(
-                        stream: _usersStream(),
-                        builder: (context, snap) {
-                          if (!snap.hasData) {
-                            return const Center(child: CircularProgressIndicator(color: AppColors.primary));
-                          }
-                          return _UsersTab(
-                            users: snap.data!,
-                            myId: Supabase.instance.client.auth.currentUser?.id?? '',
-                            onBlock: _blockUser,
-                            onUnblock: _unblockUser);
-                        },
-                      ),
-                      StreamBuilder<List<Map<String, dynamic>>>(
-                        stream: _reportsStream(),
-                        builder: (context, snap) {
-                          final reports = snap.data?? [];
-                          return _ReportsTab(
-                            reports: reports,
-                            onReply: (id, uid, reply) => _replyReport(id, uid, reply, banUser: false),
-                            onBanAndReply: (id, uid, reply) => _replyReport(id, uid, reply, banUser: true),
-                            getUserMini: _getUserMini,
-                          );
-                        },
-                      ),
-                      _PendingRoomsTab(rooms: _pendingRooms, onApprove: _approveRoom),
-                      _ContactTab(phone: adminPhone, email: adminEmail, message: adminMessage, onEdit: () async {
-                        await Navigator.push(context, MaterialPageRoute(builder: (_) => const EditContactScreen()));
-                        _loadStatic();
-                      }),
-                    ]),
-            ),
-          ]),
+      appBar: AppBar(
+        title: const Text('لوحة الإدارة'),
+        bottom: TabBar(
+          controller: _tabs,
+          tabs: const [
+            Tab(icon: Icon(Icons.group_rounded), text: 'المستخدمين'),
+            Tab(icon: Icon(Icons.flag_rounded), text: 'البلاغات'),
+            Tab(icon: Icon(Icons.meeting_room_rounded), text: 'الغرف'),
+            Tab(icon: Icon(Icons.support_agent_rounded), text: 'التواصل'),
+          ],
         ),
       ),
+      body: _loading
+       ? const Center(child: CircularProgressIndicator())
+        : TabBarView(controller: _tabs, children: [
+            StreamBuilder<List<UserModel>>(
+              stream: _usersStream(),
+              builder: (context, snap) {
+                if (!snap.hasData) return const Center(child: CircularProgressIndicator());
+                return _UsersTab(users: snap.data!, myId: Supabase.instance.client.auth.currentUser?.id?? '', onBlock: _blockUser, onUnblock: _unblockUser);
+              },
+            ),
+            StreamBuilder<List<Map<String, dynamic>>>(
+              stream: _reportsStream(),
+              builder: (context, snap) {
+                final reports = snap.data?? [];
+                return _ReportsTab(reports: reports, onReply: (id, uid, reply) => _replyReport(id, uid, reply, banUser: false), onBanAndReply: (id, uid, reply) => _replyReport(id, uid, reply, banUser: true), getUserMini: _getUserMini);
+              },
+            ),
+            _PendingRoomsTab(rooms: _pendingRooms, onApprove: _approveRoom),
+            _ContactTab(phone: adminPhone, email: adminEmail, message: adminMessage, onEdit: () async {
+              await Navigator.push(context, MaterialPageRoute(builder: (_) => const EditContactScreen()));
+              _loadStatic();
+            }),
+          ]),
     );
   }
 }
 
 class _UsersTab extends StatelessWidget {
-  final List<UserModel> users;
-  final String myId;
-  final Function(String, String) onBlock;
-  final Function(String, String) onUnblock;
-
-  const _UsersTab({
-    required this.users,
-    required this.myId,
-    required this.onBlock,
-    required this.onUnblock,
-  });
+  final List<UserModel> users; final String myId;
+  final Function(String, String) onBlock; final Function(String, String) onUnblock;
+  const _UsersTab({required this.users, required this.myId, required this.onBlock, required this.onUnblock});
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return ListView.builder(
       padding: const EdgeInsets.all(12),
       itemCount: users.length,
@@ -295,65 +198,37 @@ class _UsersTab extends StatelessWidget {
         final isAdmin = u.role == 'admin';
         final isBlocked = u.isBlocked;
         final isMe = u.id == myId;
-
         return Container(
-          margin: const EdgeInsets.only(bottom: 8),
+          margin: const EdgeInsets.only(bottom: 10),
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: isBlocked? AppColors.danger.withOpacity(0.1) : AppColors.bgCard,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: isBlocked? AppColors.danger.withOpacity(0.5) : AppColors.glassBorder, width: 0.8),
+            color: theme.cardTheme.color,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: isBlocked? AppColors.danger.withOpacity(0.4) : AppColors.glassBorder),
           ),
           child: Row(children: [
-            UserAvatar(url: u.avatarUrl, name: u.username, size: 42, isOnline: u.isOnline),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(u.username, style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.white, fontSize: 14, fontWeight: FontWeight.w600)),
-                Text(u.email?? '', style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub, fontSize: 11), overflow: TextOverflow.ellipsis),
-                const SizedBox(height: 4),
-                Row(children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: (isAdmin? AppColors.primary : AppColors.bgCard2).withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      isAdmin? 'مدير' : 'عضو',
-                      style: TextStyle(fontFamily: 'Tajawal', color: isAdmin? AppColors.primary : AppColors.textSub, fontSize: 10),
-                    ),
-                  ),
-                  if (isBlocked)...[
-                    const SizedBox(width: 6),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                      decoration: BoxDecoration(color: AppColors.danger.withOpacity(0.2), borderRadius: BorderRadius.circular(8)),
-                      child: const Text('محظور', style: TextStyle(fontFamily: 'Tajawal', color: AppColors.danger, fontSize: 10)),
-                    ),
-                  ],
-                ]),
+            UserAvatar(url: u.avatarUrl, name: u.username, size: 46, isOnline: u.isOnline),
+            const SizedBox(width: 12),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(u.username, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+              Text(u.email?? '', style: const TextStyle(color: AppColors.textSub, fontSize: 12), overflow: TextOverflow.ellipsis),
+              const SizedBox(height: 4),
+              Row(children: [
+                Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(color: AppColors.bgCard2, borderRadius: BorderRadius.circular(20)),
+                  child: Text(isAdmin? 'مدير' : 'عضو', style: TextStyle(color: isAdmin? AppColors.primary : AppColors.textSub, fontSize: 11, fontWeight: FontWeight.w600))),
+                if (isBlocked)...[ const SizedBox(width: 6),
+                  Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(color: AppColors.danger.withOpacity(0.1), borderRadius: BorderRadius.circular(20)),
+                    child: const Text('محظور', style: TextStyle(color: AppColors.danger, fontSize: 11, fontWeight: FontWeight.w600))),
+                ],
               ]),
-            ),
+            ])),
             if (!isMe)
               PopupMenuButton<String>(
-                color: AppColors.bgCard2,
-                onSelected: (v) {
-                  if (v == 'block') onBlock(u.id, u.username);
-                  else if (v == 'unblock') onUnblock(u.id, u.username);
-                },
-                itemBuilder: (_) => [
-                  PopupMenuItem(
-                    value: isBlocked? 'unblock' : 'block',
-                    child: Text(
-                      isBlocked? 'إلغاء الحظر' : 'حظر نهائي',
-                      style: TextStyle(
-                        fontFamily: 'Tajawal',
-                        color: isBlocked? AppColors.success : AppColors.danger,
-                      ),
-                    ),
-                  ),
-                ],
+                onSelected: (v) { if (v == 'block') onBlock(u.id, u.username); else if (v == 'unblock') onUnblock(u.id, u.username); },
+                itemBuilder: (_) => [ PopupMenuItem(value: isBlocked? 'unblock' : 'block',
+                  child: Text(isBlocked? 'إلغاء الحظر' : 'حظر نهائي', style: TextStyle(color: isBlocked? AppColors.success : AppColors.danger))) ],
                 child: const Icon(Icons.more_vert_rounded, color: AppColors.textSub),
               ),
           ]),
@@ -363,34 +238,16 @@ class _UsersTab extends StatelessWidget {
   }
 }
 
-// --- كرت البلاغ - بأنميشن موحد ---
 class ReportCard extends StatefulWidget {
   final Map<String, dynamic> report;
   final Future<Map<String, dynamic>?> Function(String) getUserMini;
   final Function(String, String, String) onReply;
   final Function(String, String, String) onBanAndReply;
-
-  const ReportCard({
-    super.key,
-    required this.report,
-    required this.onReply,
-    required this.onBanAndReply,
-    required this.getUserMini
-  });
-
-  @override
-  State<ReportCard> createState() => _ReportCardState();
+  const ReportCard({super.key, required this.report, required this.onReply, required this.onBanAndReply, required this.getUserMini});
+  @override State<ReportCard> createState() => _ReportCardState();
 }
 
 class _ReportCardState extends State<ReportCard> {
-  bool _pressed = false;
-  bool _actingIgnore = false;
-  bool _actingBlock = false;
-
-  void _tapDown(_) => setState(() => _pressed = true);
-  void _tapUp(_) => setState(() => _pressed = false);
-  void _tapCancel() => setState(() => _pressed = false);
-
   @override
   Widget build(BuildContext context) {
     final reporterId = widget.report['reporter_id'] as String?;
@@ -398,6 +255,7 @@ class _ReportCardState extends State<ReportCard> {
     final reason = widget.report['reason']?? 'بدون سبب';
     final status = widget.report['status']?? 'new';
     final createdAt = widget.report['created_at']?.toString()?? '';
+    final theme = Theme.of(context);
 
     return FutureBuilder<List<dynamic>>(
       future: Future.wait([
@@ -407,108 +265,50 @@ class _ReportCardState extends State<ReportCard> {
       builder: (context, snap) {
         final reporter = snap.data?[0]?? {};
         final reported = snap.data?[1]?? {};
-        return GestureDetector(
-          onTapDown: _tapDown,
-          onTapUp: _tapUp,
-          onTapCancel: _tapCancel,
-          child: AnimatedScale(
-            scale: _pressed? 0.98 : 1.0,
-            duration: const Duration(milliseconds: 120),
-            curve: Curves.easeOut,
-            child: Container(
-              margin: const EdgeInsets.only(bottom: 12),
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: AppColors.bgCard,
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: AppColors.glassBorder, width: 0.8),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.08),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  )
-                ],
-              ),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Row(children: [
-                  UserAvatar(url: reported['avatar_url'], name: reported['username']?? 'مستخدم', size: 42),
-                  const SizedBox(width: 10),
-                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(reported['username']?? 'مستخدم',
-                        style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.white, fontWeight: FontWeight.w700, fontSize: 14)),
-                    Text('بلاغ من: ${reporter['username']?? 'مجهول'}',
-                        style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub, fontSize: 12)),
-                  ])),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                        color: AppColors.warning.withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(8)),
-                    child: Text(status,
-                        style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.warning, fontSize: 11, fontWeight: FontWeight.w600)),
-                  ),
-                ]),
-                const SizedBox(height: 10),
-                Text(reason,
-                    style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub, fontSize: 13, height: 1.5)),
-                if (createdAt.isNotEmpty)...[
-                  const SizedBox(height: 4),
-                  Text(createdAt.length > 16? createdAt.substring(0, 16) : createdAt,
-                      style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub, fontSize: 11)),
-                ],
-                const SizedBox(height: 14),
-                Row(children: [
-                  Expanded(
-                    child: AnimatedScale(
-                      scale: _actingIgnore? 0.95 : 1.0,
-                      duration: const Duration(milliseconds: 120),
-                      child: OutlinedButton.icon(
-                        onPressed: () {
-                          setState(() => _actingIgnore = true);
-                          Future.delayed(const Duration(milliseconds: 120), () {
-                            if (mounted) widget.onReply(widget.report['id'], reportedId?? '', 'تم رفض البلاغ');
-                          });
-                        },
-                        icon: const Icon(Icons.visibility_off_rounded, size: 18),
-                        label: const Text('تجاهل', style: TextStyle(fontFamily: 'Tajawal', fontWeight: FontWeight.w600)),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppColors.textSub,
-                          side: const BorderSide(color: AppColors.glassBorder),
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: AnimatedScale(
-                      scale: _actingBlock? 0.95 : 1.0,
-                      duration: const Duration(milliseconds: 120),
-                      child: ElevatedButton.icon(
-                        onPressed: () {
-                          setState(() => _actingBlock = true);
-                          Future.delayed(const Duration(milliseconds: 120), () {
-                            if (mounted) widget.onBanAndReply(widget.report['id'], reportedId?? '', 'تم حظر المستخدم بسبب البلاغ');
-                          });
-                        },
-                        icon: const Icon(Icons.block_rounded, size: 18),
-                        label: const Text('حظر', style: TextStyle(fontFamily: 'Tajawal', fontWeight: FontWeight.w700)),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.danger,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          elevation: 0,
-                        ),
-                      ),
-                    ),
-                  ),
-                ])
-              ]),
-            ),
+        return Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: theme.cardTheme.color,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: AppColors.glassBorder),
+            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8, offset: const Offset(0, 2))],
           ),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              UserAvatar(url: reported['avatar_url'], name: reported['username']?? 'مستخدم', size: 44),
+              const SizedBox(width: 10),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(reported['username']?? 'مستخدم', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                Text('بلاغ من: ${reporter['username']?? 'مجهول'}', style: const TextStyle(color: AppColors.textSub, fontSize: 12)),
+              ])),
+              Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(color: AppColors.warning.withOpacity(0.1), borderRadius: BorderRadius.circular(20)),
+                child: Text(status, style: const TextStyle(color: AppColors.warning, fontSize: 11, fontWeight: FontWeight.w600))),
+            ]),
+            const SizedBox(height: 10),
+            Text(reason, style: const TextStyle(color: AppColors.textSub, fontSize: 13, height: 1.5)),
+            if (createdAt.isNotEmpty)...[
+              const SizedBox(height: 4),
+              Text(createdAt.length > 16? createdAt.substring(0, 16) : createdAt, style: const TextStyle(color: AppColors.textSub, fontSize: 11)),
+            ],
+            const SizedBox(height: 14),
+            Row(children: [
+              Expanded(child: OutlinedButton.icon(
+                onPressed: () => widget.onReply(widget.report['id'], reportedId?? '', 'تم رفض البلاغ'),
+                icon: const Icon(Icons.visibility_off_rounded, size: 18),
+                label: const Text('تجاهل'),
+                style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12)),
+              )),
+              const SizedBox(width: 10),
+              Expanded(child: ElevatedButton.icon(
+                onPressed: () => widget.onBanAndReply(widget.report['id'], reportedId?? '', 'تم حظر المستخدم بسبب البلاغ'),
+                icon: const Icon(Icons.block_rounded, size: 18),
+                label: const Text('حظر'),
+                style: ElevatedButton.styleFrom(backgroundColor: AppColors.danger, foregroundColor: Colors.white),
+              )),
+            ])
+          ]),
         );
       },
     );
@@ -524,19 +324,9 @@ class _ReportsTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (reports.isEmpty) {
-      return const Center(child: Text('لا توجد بلاغات', style: TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub)));
-    }
-    return ListView.builder(
-      padding: const EdgeInsets.all(12),
-      itemCount: reports.length,
-      itemBuilder: (_, i) => ReportCard(
-        report: reports[i],
-        onReply: onReply,
-        onBanAndReply: onBanAndReply,
-        getUserMini: getUserMini
-      ),
-    );
+    if (reports.isEmpty) return const Center(child: Text('لا توجد بلاغات', style: TextStyle(color: AppColors.textSub)));
+    return ListView.builder(padding: const EdgeInsets.all(12), itemCount: reports.length,
+      itemBuilder: (_, i) => ReportCard(report: reports[i], onReply: onReply, onBanAndReply: onBanAndReply, getUserMini: getUserMini));
   }
 }
 
@@ -547,24 +337,22 @@ class _PendingRoomsTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (rooms.isEmpty) {
-      return const Center(child: Text('لا توجد غرف معلقة', style: TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub)));
-    }
+    if (rooms.isEmpty) return const Center(child: Text('لا توجد غرف معلقة', style: TextStyle(color: AppColors.textSub)));
     return ListView.builder(
       padding: const EdgeInsets.all(12),
       itemCount: rooms.length,
       itemBuilder: (_, i) {
         final r = rooms[i];
         return Container(
-          margin: const EdgeInsets.only(bottom: 8),
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(color: AppColors.bgCard, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.glassBorder)),
+          margin: const EdgeInsets.only(bottom: 10),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(color: Theme.of(context).cardTheme.color, borderRadius: BorderRadius.circular(20), border: Border.all(color: AppColors.glassBorder)),
           child: Row(children: [
-            Expanded(child: Text(r['name']?? 'غرفة', style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.white))),
+            Expanded(child: Text(r['name']?? 'غرفة', style: const TextStyle(fontWeight: FontWeight.w700))),
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: AppColors.success),
               onPressed: () => onApprove(r['id'], r['owner_id']?? ''),
-              child: const Text('موافقة', style: TextStyle(fontFamily: 'Tajawal', color: Colors.white)),
+              child: const Text('موافقة', style: TextStyle(color: Colors.white)),
             )
           ]),
         );
@@ -580,26 +368,25 @@ class _ContactTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        ListTile(
-          leading: const Icon(Icons.phone, color: AppColors.primary),
-          title: Text(phone.isEmpty? 'لا يوجد' : phone, style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.white)),
-          subtitle: const Text('واتساب', style: TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub)),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(color: theme.cardTheme.color, borderRadius: BorderRadius.circular(20), border: Border.all(color: AppColors.glassBorder)),
+          child: Column(children: [
+            ListTile(leading: const Icon(Icons.phone_rounded, color: AppColors.primary), title: Text(phone.isEmpty? 'لا يوجد' : phone), subtitle: const Text('واتساب', style: TextStyle(color: AppColors.textSub))),
+            const Divider(),
+            ListTile(leading: const Icon(Icons.email_rounded, color: AppColors.primary), title: Text(email.isEmpty? 'لا يوجد' : email), subtitle: const Text('البريد', style: TextStyle(color: AppColors.textSub))),
+            if (message.isNotEmpty)...[
+              const Divider(),
+              ListTile(leading: const Icon(Icons.message_rounded, color: AppColors.primary), title: Text(message)),
+            ],
+          ]),
         ),
-        ListTile(
-          leading: const Icon(Icons.email_rounded, color: AppColors.primary),
-          title: Text(email.isEmpty? 'لا يوجد' : email, style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.white)),
-          subtitle: const Text('البريد', style: TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub)),
-        ),
-        const SizedBox(height: 12),
-        ElevatedButton.icon(
-          onPressed: onEdit,
-          icon: const Icon(Icons.edit_rounded),
-          label: const Text('تعديل معلومات التواصل', style: TextStyle(fontFamily: 'Tajawal')),
-          style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
-        )
+        const SizedBox(height: 16),
+        ElevatedButton.icon(onPressed: onEdit, icon: const Icon(Icons.edit_rounded), label: const Text('تعديل معلومات التواصل')),
       ],
     );
   }
