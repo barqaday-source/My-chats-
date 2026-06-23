@@ -22,55 +22,35 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,
     statusBarIconBrightness: Brightness.dark,
     systemNavigationBarColor: Colors.transparent,
     systemNavigationBarIconBrightness: Brightness.dark,
-    systemNavigationBarDividerColor: Colors.transparent,
   ));
-
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
-
-  // تهيئة Hive - outbox المراسلات
   await Hive.initFlutter();
   await Hive.openBox('outbox_chat');
   await Hive.openBox('outbox_room');
-
-  // تهيئة Supabase
   await SupabaseConfig.init();
-  
-  // تهيئة الإشعارات
   await NotificationService.init();
 
-  // --- فحص حظر فوري ---
   bool isBanned = false;
   final user = Supabase.instance.client.auth.currentUser;
   if (user != null) {
     try {
-      final p = await Supabase.instance.client
-          .from('users')
-          .select('is_banned')
-          .eq('id', user.id)
-          .maybeSingle();
+      final p = await Supabase.instance.client.from('users').select('is_banned').eq('id', user.id).maybeSingle();
       isBanned = p?['is_banned'] == true;
-      if (isBanned) {
-        await Supabase.instance.client.auth.signOut();
-      }
+      if (isBanned) await Supabase.instance.client.auth.signOut();
     } catch (_) {}
   }
-
-  // تهيئة timeago للعربي
   timeago.setLocaleMessages('ar', timeago.ArMessages());
-
   runApp(MyChatApp(isBanned: isBanned));
 }
 
 class MyChatApp extends StatelessWidget {
   final bool isBanned;
   const MyChatApp({super.key, this.isBanned = false});
-
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
@@ -89,21 +69,11 @@ class MyChatApp extends StatelessWidget {
           GlobalWidgetsLocalizations.delegate,
           GlobalCupertinoLocalizations.delegate,
         ],
-        home: isBanned 
-          ? const BannedScreen()
-          : Consumer<AuthProvider>(
-              builder: (context, auth, _) {
-                if (!auth.initialized) {
-                  return const Scaffold(
-                    backgroundColor: AppColors.bg,
-                    body: Center(
-                      child: CircularProgressIndicator(color: AppColors.primary),
-                    ),
-                  );
-                }
-                return auth.isLoggedIn ? const BlockGuard(child: HomeScreen()) : const WelcomeScreen();
-              },
-            ),
+        home: isBanned ? const BannedScreen() : Consumer<AuthProvider>(
+          builder: (context, auth, _) {
+            if (!auth.initialized) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+            return auth.isLoggedIn ? const BlockGuard(child: HomeScreen()) : const WelcomeScreen();
+          }),
         routes: {
           '/privacy': (_) => const PrivacyScreen(),
           '/contact': (_) => const ContactScreen(),
@@ -118,45 +88,12 @@ class MyChatApp extends StatelessWidget {
   }
 }
 
-// شاشة حظر بسيطة
 class BannedScreen extends StatelessWidget {
   const BannedScreen({super.key});
-
   @override
   Widget build(BuildContext context) {
     return const Scaffold(
-      backgroundColor: AppColors.bg,
       body: Center(
         child: Padding(
           padding: EdgeInsets.all(24),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.block_rounded, size: 72, color: AppColors.danger),
-              SizedBox(height: 16),
-              Text(
-                'تم حظر حسابك',
-                style: TextStyle(
-                  fontFamily: 'Tajawal',
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.white,
-                ),
-              ),
-              SizedBox(height: 8),
-              Text(
-                'تواصل مع الإدارة إذا تعتقد أن هذا خطأ',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontFamily: 'Tajawal',
-                  fontSize: 14,
-                  color: AppColors.textSecondary,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
+          child: Column(mainAxisAlignment: MainAxisAlignment.center, children
