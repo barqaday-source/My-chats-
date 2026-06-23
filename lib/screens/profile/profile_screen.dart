@@ -18,6 +18,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final _bioCtrl = TextEditingController();
   final _whatsappCtrl = TextEditingController();
   final _zodiacCtrl = TextEditingController();
+  final _statusCtrl = TextEditingController();
   final _formKey = GlobalKey<FormState>();
 
   DateTime? _birthDate;
@@ -33,6 +34,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void dispose() {
     _usernameCtrl.dispose(); _bioCtrl.dispose();
     _whatsappCtrl.dispose(); _zodiacCtrl.dispose();
+    _statusCtrl.dispose();
     super.dispose();
   }
 
@@ -46,6 +48,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _bioCtrl.text = profile['bio'] ?? '';
         _whatsappCtrl.text = profile['whatsapp'] ?? '';
         _zodiacCtrl.text = profile['zodiac'] ?? '';
+        _statusCtrl.text = profile['status_text'] ?? '';
         _avatarUrl = profile['avatar_url'];
         final birth = profile['birth_date'];
         if (birth != null) {
@@ -78,6 +81,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     try {
       final userId = supabase.auth.currentUser!.id;
       final username = _usernameCtrl.text.trim();
+      final statusText = _statusCtrl.text.trim();
       final data = {
         'username': username,
         'bio': _bioCtrl.text.trim(),
@@ -85,6 +89,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         'birth_date': _birthDate == null ? null : 
           '${_birthDate!.year}-${_birthDate!.month.toString().padLeft(2,'0')}-${_birthDate!.day.toString().padLeft(2,'0')}',
         'zodiac': _zodiacCtrl.text.trim().isEmpty ? null : _zodiacCtrl.text.trim(),
+        'status_text': statusText.isEmpty ? null : statusText,
         'avatar_url': _avatarUrl,
         'updated_at': DateTime.now().toIso8601String(),
       };
@@ -181,6 +186,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       _field(_usernameCtrl, 'اسم المستخدم', Icons.person_outline_rounded,
                           validator: (v) => v == null || v.trim().isEmpty ? 'ادخل اسم المستخدم' : v.length < 3 ? 'الاسم قصير جداً' : null),
                       const SizedBox(height: 16),
+                      _field(_statusCtrl, 'الحالة اليومية', Icons.emoji_emotions_outlined, maxLength: 30, hint: 'مسافر، بالدوام، متاح...'),
+                      const SizedBox(height: 16),
                       _field(_bioCtrl, 'النبذة التعريفية', Icons.info_outline_rounded, maxLines: 3, maxLength: 150),
                       const SizedBox(height: 16),
                       _field(_whatsappCtrl, 'رقم الواتساب', Icons.phone_outlined, keyboardType: TextInputType.phone),
@@ -219,7 +226,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _field(TextEditingController ctrl, String label, IconData icon,
-      {int maxLines = 1, int? maxLength, TextInputType? keyboardType, String? Function(String?)? validator}) {
+      {int maxLines = 1, int? maxLength, TextInputType? keyboardType, String? Function(String?)? validator, String? hint}) {
     return TextFormField(
       controller: ctrl,
       maxLines: maxLines,
@@ -228,6 +235,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       validator: validator,
       decoration: InputDecoration(
         labelText: label,
+        hintText: hint,
         prefixIcon: Icon(icon),
       ),
     );
