@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/constants/app_colors.dart';
 import '../core/constants/supabase_config.dart';
 import '../widgets/user_avatar.dart';
+import '../widgets/status_chip.dart';
 import 'profile/user_profile_screen.dart';
 
 class UsersGridScreen extends StatefulWidget {
@@ -18,7 +19,7 @@ class _UsersGridScreenState extends State<UsersGridScreen> {
   Future<List<Map<String, dynamic>>> _loadUsers() async {
     final myId = _sb.auth.currentUser?.id;
     var q = _sb.from(SupabaseConfig.tUsers)
-    .select('id, username, avatar_url, bio, is_online');
+   .select('id, username, avatar_url, bio, is_online, status_text');
 
     if (myId!= null) {
       q = q.neq('id', myId);
@@ -85,6 +86,7 @@ class _UsersGridScreenState extends State<UsersGridScreen> {
                     final online = u['is_online'] == true;
                     final name = u['username']?? 'مستخدم';
                     final bio = (u['bio']?? '').toString();
+                    final statusText = (u['status_text']?? '').toString();
 
                     return GestureDetector(
                       onTap: () => _openProfile(u),
@@ -118,18 +120,23 @@ class _UsersGridScreenState extends State<UsersGridScreen> {
                               textAlign: TextAlign.center,
                             ),
                             const SizedBox(height: 4),
-                            Text(
-                              online? 'متصل الآن' : (bio.isNotEmpty? bio : 'غير متصل'),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontFamily: 'Tajawal',
-                                fontSize: 12,
-                                color: online? AppColors.success : AppColors.textSub,
-                                fontWeight: online? FontWeight.w600 : FontWeight.normal,
+                            // NEW: الحالة اليومية
+                            if (statusText.isNotEmpty)...[
+                              StatusChip(statusText),
+                            ] else...[
+                              Text(
+                                online? 'متصل الآن' : (bio.isNotEmpty? bio : 'غير متصل'),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontFamily: 'Tajawal',
+                                  fontSize: 12,
+                                  color: online? AppColors.success : AppColors.textSub,
+                                  fontWeight: online? FontWeight.w600 : FontWeight.normal,
+                                ),
+                                textAlign: TextAlign.center,
                               ),
-                              textAlign: TextAlign.center,
-                            ),
+                            ],
                           ],
                         ),
                       ),
