@@ -9,6 +9,7 @@ import '../../services/room_service.dart';
 import '../../widgets/chat/chat_input_bar.dart';
 import '../../widgets/chat/message_bubble.dart';
 import '../../widgets/app_snackbar.dart';
+import '../../widgets/status_chip.dart';
 
 class RoomChatScreen extends StatefulWidget {
   final RoomModel room;
@@ -111,14 +112,28 @@ class _RoomChatScreenState extends State<RoomChatScreen> {
               final members = await _roomSvc.getRoomMembers(widget.room.id);
               if (!context.mounted) return;
               showModalBottomSheet(context: context, backgroundColor: AppColors.bgCard,
+                shape: const RoundedRectangleBorder(
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                ),
                 builder: (_) => ListView(
                 padding: const EdgeInsets.all(12),
-                children: members.map((m) => ListTile(
-                  leading: CircleAvatar(backgroundImage: m['avatar_url']!= null? NetworkImage(m['avatar_url']) : null,
-                    child: m['avatar_url'] == null? Text((m['username']?? 'U')[0].toUpperCase()) : null),
-                  title: Text(m['username']?? 'مستخدم', style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.white)),
-                  subtitle: Text(m['is_online'] == true? 'متصل' : 'غير متصل', style: const TextStyle(fontFamily: 'Tajawal', fontSize: 12, color: AppColors.textSub)),
-                )).toList(),
+                children: members.map((m) {
+                  final statusText = (m['status_text']?? '').toString();
+                  final isOnline = m['is_online'] == true;
+                  return ListTile(
+                    leading: CircleAvatar(
+                      backgroundImage: m['avatar_url']!= null? NetworkImage(m['avatar_url']) : null,
+                      child: m['avatar_url'] == null? Text((m['username']?? 'U')[0].toUpperCase()) : null
+                    ),
+                    title: Text(m['username']?? 'مستخدم', style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.white)),
+                    subtitle: statusText.isNotEmpty
+                     ? Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: StatusChip(statusText),
+                        )
+                      : Text(isOnline? 'متصل' : 'غير متصل', style: const TextStyle(fontFamily: 'Tajawal', fontSize: 12, color: AppColors.textSub)),
+                  );
+                }).toList(),
               ));
             }),
         ],
