@@ -1,146 +1,123 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../core/constants/app_colors.dart';
-import '../core/constants/supabase_config.dart';
-import '../widgets/user_avatar.dart';
-import 'profile/user_profile_screen.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../../core/constants/app_colors.dart';
+import '../../models/user_model.dart';
+import '../../services/chat_service.dart';
+import '../../widgets/user_avatar.dart';
+import '../../widgets/app_snackbar.dart';
+import '../chat/private_chat_screen.dart';
 
-class UsersGridScreen extends StatefulWidget {
-  const UsersGridScreen({super.key});
+class UserProfileScreen extends StatefulWidget {
+  final String userId;
+  const UserProfileScreen({super.key, required this.userId});
+
   @override
-  State<UsersGridScreen> createState() => _UsersGridScreenState();
+  State<UserProfileScreen> createState() => _UserProfileScreenState();
 }
 
-class _UsersGridScreenState extends State<UsersGridScreen> {
-  final _sb = Supabase.instance.client;
-  String _query = '';
+class _UserProfileScreenState extends State<UserProfileScreen> {
+  final supabase = Supabase.instance.client;
+  final _chat = ChatService();
 
-  Future<List<Map<String, dynamic>>> _loadUsers() async {
-    final myId = _sb.auth.currentUser?.id;
-    var q = _sb.from(SupabaseConfig.tUsers)
-    .select('id, username, avatar_url, bio, is_online');
-
-    if (myId!= null) {
-      q = q.neq('id', myId);
-    }
-    if (_query.isNotEmpty) {
-      q = q.ilike('username', '%$_query%');
-    }
-    final res = await q.order('is_online', ascending: false).limit(60);
-    return List<Map<String, dynamic>>.from(res);
-  }
-
-  void _openProfile(Map<String, dynamic> user) {
-    Navigator.push(context, MaterialPageRoute(
-      builder: (_) => UserProfileScreen(userId: user['id'])
-    ));
-  }
+  bool _iBlockedPeer = false;
+  bool _peerBlockedMe = false;
+  bool get _isBlocked => _iBlockedPeer || _peerBlockedMe;
+  bool _checkingBlock = true;
 
   @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Scaffold(
-      backgroundColor: theme.scaffoldBackgroundColor,
-      appBar: AppBar(
-        backgroundColor: theme.scaffoldBackgroundColor,
-        elevation: 0,
-        title: const Text('المستخدمون', style: TextStyle(fontFamily: 'Tajawal', fontWeight: FontWeight.w800)),
-        centerTitle: true,
-      ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-            child: TextField(
-              textDirection: TextDirection.rtl,
-              onChanged: (v) => setState(() => _query = v),
-              decoration: InputDecoration(
-                hintText: 'ابحث عن مستخدم...',
-                prefixIcon: const Icon(Icons.search_rounded),
-              ),
-            ),
-          ),
-          Expanded(
-            child: FutureBuilder<List<Map<String, dynamic>>>(
-              future: _loadUsers(),
-              builder: (context, snap) {
-                if (!snap.hasData) {
-                  return const Center(child: CircularProgressIndicator(color: AppColors.primary));
-                }
-                final users = snap.data!;
-                if (users.isEmpty) {
-                  return const Center(child: Text('لا يوجد مستخدمين', style: TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub)));
-                }
-                return GridView.builder(
-                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2,
-                    mainAxisSpacing: 12,
-                    crossAxisSpacing: 12,
-                    childAspectRatio: 0.92,
-                  ),
-                  itemCount: users.length,
-                  itemBuilder: (_, i) {
-                    final u = users[i];
-                    final online = u['is_online'] == true;
-                    final name = u['username']?? 'مستخدم';
-                    final bio = (u['bio']?? '').toString();
+  void initState() {
+    super.initState();
+    _checkBlock();
+  }
 
-                    return GestureDetector(
-                      onTap: () => _openProfile(u),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: theme.cardTheme.color,
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: AppColors.glassBorder, width: 0.8),
-                        ),
-                        padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 12),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            UserAvatar(
-                              url: u['avatar_url'],
-                              name: name,
-                              size: 68,
-                              isOnline: online,
-                            ),
-                            const SizedBox(height: 10),
-                            Text(
-                              name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontFamily: 'Tajawal',
-                                fontSize: 15,
-                                fontWeight: FontWeight.w700,
-                                color: AppColors.text,
-                              ),
-                              textAlign: TextAlign.center,
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              online? 'متصل الآن' : (bio.isNotEmpty? bio : 'غير متصل'),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontFamily: 'Tajawal',
-                                fontSize: 12,
-                                color: online? AppColors.success : AppColors.textSub,
-                                fontWeight: online? FontWeight.w600 : FontWeight.normal,
-                              ),
-                              textAlign: TextAlign.center,
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                );
-              },
-            ),
+  Future<void> _checkBlock() async {
+    final meId = supabase.auth.currentUser?.id;
+    if (meId == null || meId == widget.userId) {
+      setState(() { _iBlockedPeer = false; _peerBlockedMe = false; _checkingBlock = false; });
+      return;
+    }
+    try {
+      final blocking = await supabase
+        .from('blocked_users')
+        .select('blocker_id')
+        .eq('blocker_id', meId)
+        .eq('blocked_id', widget.userId)
+        .maybeSingle();
+      final blockedBy = await supabase
+        .from('blocked_users')
+        .select('blocker_id')
+        .eq('blocker_id', widget.userId)
+        .eq('blocked_id', meId)
+        .maybeSingle();
+      if (mounted) setState(() {
+        _iBlockedPeer = blocking != null;
+        _peerBlockedMe = blockedBy != null;
+        _checkingBlock = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _checkingBlock = false);
+    }
+  }
+
+  Stream<UserModel?> getUserStream() {
+    return supabase
+      .from('profiles')
+      .stream(primaryKey: ['id'])
+      .eq('id', widget.userId)
+      .map((list) => list.isEmpty ? null : UserModel.fromJson(list.first));
+  }
+
+  void _startChat(UserModel user) {
+    if (_peerBlockedMe) {
+      showAppSnack(context, 'فشل الإرسال لأنك محظور من قبل هذا المستخدم', success: false);
+      return;
+    }
+    if (_iBlockedPeer) {
+      showAppSnack(context, 'لا يمكنك المراسلة، هذا المستخدم محظور', success: false);
+      return;
+    }
+    final meId = supabase.auth.currentUser!.id;
+    final ids = [meId, user.id]..sort();
+    final chatId = ids.join('_');
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PrivateChatScreen(
+          chatId: chatId,
+          peer: user,
+        ),
+      ),
+    ).then((_) => _checkBlock());
+  }
+
+  Future<String?> _askReason() async {
+    final ctrl = TextEditingController();
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('سبب البلاغ'),
+        content: TextField(
+          controller: ctrl,
+          decoration: const InputDecoration(
+            hintText: 'اكتب السبب...',
           ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('إلغاء')),
+          ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+              child: const Text('إرسال')),
         ],
       ),
     );
   }
-}
+
+  Future<void> _reportUser(UserModel reportedUser) async {
+    final reason = await _askReason();
+    if (reason == null || reason.isEmpty) return;
+    try {
+      await _chat.reportUser(widget
