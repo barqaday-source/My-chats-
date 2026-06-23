@@ -29,7 +29,20 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   @override
   void initState() {
     super.initState();
+    _logVisit(); // NEW: تسجيل الزيارة
     _checkBlock();
+  }
+
+  // NEW: دالة تسجيل الزيارة
+  Future<void> _logVisit() async {
+    final meId = supabase.auth.currentUser?.id;
+    if (meId == null || meId == widget.userId) return; // لا تسجل زيارتك لنفسك
+    
+    try {
+      await supabase.rpc('log_profile_visit', params: {'p_profile_id': widget.userId});
+    } catch (e) {
+      debugPrint('Failed to log visit: $e');
+    }
   }
 
   Future<void> _checkBlock() async {
