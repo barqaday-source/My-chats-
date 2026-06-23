@@ -96,4 +96,16 @@ class BannedScreen extends StatelessWidget {
       body: Center(
         child: Padding(
           padding: EdgeInsets.all(24),
-          child: Column(mainAxisAlignment: MainAxisAlignment.center, children
+          child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+            Icon(Icons.block_rounded, size: 72, color: AppColors.danger),
+            SizedBox(height: 16),
+            Text('تم حظر حسابك', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+            SizedBox(height: 8),
+            Text('تواصل مع الإدارة إذا تعتقد أن هذا خطأ', textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 14, color: AppColors.textSub)),
+          ]),
+        ),
+      ),
+    );
+  }
+}
