@@ -14,6 +14,7 @@ class UserModel extends Equatable {
   final bool isBlocked;
   final DateTime? lastSeen;
   final DateTime createdAt;
+  final String? statusText; // NEW
 
   // legacy - للتوافق فقط
   final bool isMod;
@@ -35,6 +36,7 @@ class UserModel extends Equatable {
     this.isBlocked = false,
     this.lastSeen,
     required this.createdAt,
+    this.statusText, // NEW
     this.isMod = false,
     this.followersCount = 0,
     this.followingCount = 0,
@@ -93,6 +95,7 @@ class UserModel extends Equatable {
       isBlocked: json['is_banned'] as bool? ?? json['is_blocked'] as bool? ?? false,
       lastSeen: _parseDate(json['last_seen']),
       createdAt: _parseDate(json['created_at']) ?? DateTime.now(),
+      statusText: json['status_text'] as String?, // NEW
       isMod: json['is_mod'] as bool? ?? false,
       followersCount: (json['followers_count'] as num?)?.toInt() ?? 0,
       followingCount: (json['following_count'] as num?)?.toInt() ?? 0,
@@ -118,6 +121,7 @@ class UserModel extends Equatable {
       'is_blocked': isBlocked,
       'last_seen': lastSeen?.toIso8601String(),
       'created_at': createdAt.toIso8601String(),
+      'status_text': statusText, // NEW
     };
   }
 
@@ -141,6 +145,8 @@ class UserModel extends Equatable {
     bool? isBlocked,
     DateTime? lastSeen,
     DateTime? createdAt,
+    String? statusText, // NEW
+    bool clearStatusText = false, // NEW
   }) {
     return UserModel(
       id: id ?? this.id,
@@ -156,6 +162,7 @@ class UserModel extends Equatable {
       isBlocked: isBlocked ?? this.isBlocked,
       lastSeen: lastSeen ?? this.lastSeen,
       createdAt: createdAt ?? this.createdAt,
+      statusText: clearStatusText ? null : statusText ?? this.statusText, // NEW
       isMod: isMod,
       followersCount: followersCount,
       followingCount: followingCount,
@@ -166,7 +173,8 @@ class UserModel extends Equatable {
   @override
   List<Object?> get props => [
     id, username, email, avatarUrl, bio, whatsapp,
-    birthDate, zodiac, role, isOnline, isBlocked, lastSeen, createdAt
+    birthDate, zodiac, role, isOnline, isBlocked, lastSeen, createdAt,
+    statusText // NEW
   ];
 
   @override
