@@ -79,7 +79,7 @@ class _RoomsScreenState extends State<RoomsScreen> {
             color: Colors.transparent,
             child: Container(
               constraints: const BoxConstraints(maxWidth: 420),
-              decoration: BoxDecoration(color: AppColors.bgCard, borderRadius: BorderRadius.circular(24)),
+              decoration: BoxDecoration(color: AppColors.bgCard, borderRadius: BorderRadius.circular(20)),
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
                 child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -163,10 +163,10 @@ class _RoomsScreenState extends State<RoomsScreen> {
             decoration: InputDecoration(
               prefixIcon: const Icon(Icons.search_rounded, color: AppColors.textSub, size: 20),
               hintText: 'ابحث عن غرفة...', hintStyle: const TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub),
-              contentPadding: const EdgeInsets.symmetric(vertical: 10),
+              contentPadding: const EdgeInsets.symmetric(vertical: 12),
               filled: true, fillColor: AppColors.bgCard2,
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: AppColors.glassBorder, width: 0.8)),
-              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: AppColors.glassBorder, width: 0.8)),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: const BorderSide(color: AppColors.glassBorder, width: 0.8)),
+              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: const BorderSide(color: AppColors.glassBorder, width: 0.8)),
             ),
           ),
         ),
@@ -187,7 +187,7 @@ class _RoomsScreenState extends State<RoomsScreen> {
         const SizedBox(height: 12),
         Expanded(
           child: _loading
- ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+? const Center(child: CircularProgressIndicator(color: AppColors.primary))
               : RefreshIndicator(
                   onRefresh: _load, color: AppColors.primary,
                   child: Builder(builder: (_) {
@@ -226,93 +226,164 @@ class _RoomCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final isOwner = room.ownerId == context.read<AuthProvider>().user!.id;
     final supabase = Supabase.instance.client;
+    final theme = Theme.of(context);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20), color: AppColors.bgCard,
-        border: Border.all(color: AppColors.glassBorder, width: 0.8),
-        boxShadow: [BoxShadow(color: AppColors.text.withOpacity(0.04), blurRadius: 8, offset: const Offset(0, 2))],
-      ),
-      child: ClipRRect(
         borderRadius: BorderRadius.circular(20),
-        child: Stack(children: [
-          if (room.imageUrl!= null) Positioned.fill(child: CachedNetworkImage(imageUrl: room.imageUrl!, fit: BoxFit.cover, errorWidget: (_, __, ___) => const SizedBox())),
-          if (room.imageUrl!= null) Positioned.fill(child: BackdropFilter(filter: ImageFilter.blur(sigmaX: 3, sigmaY: 3), child: Container(color: Colors.black.withOpacity(0.3)))),
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-              Row(children: [
-                CircleAvatar(radius: 14, backgroundColor: AppColors.glass, backgroundImage: room.ownerAvatar!= null? CachedNetworkImageProvider(room.ownerAvatar!) : null, child: room.ownerAvatar == null? Text(room.ownerName.isNotEmpty? room.ownerName[0].toUpperCase() : 'U', style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.primaryDark, fontSize: 10, fontWeight: FontWeight.bold)) : null),
-                const SizedBox(width: 8),
-                Expanded(child: Text(room.ownerName, style: TextStyle(fontFamily: 'Tajawal', color: room.imageUrl!= null? Colors.white.withOpacity(0.85) : AppColors.textSub, fontSize: 12), overflow: TextOverflow.ellipsis)),
-                if (isOwner)...[
-                  const SizedBox(width: 4),
-                  Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(8),
-                      onTap: () async {
-                        final changed = await Navigator.push(context, MaterialPageRoute(builder: (_) => RoomSettingsScreen(room: room)));
-                        if (changed == true) onSettingsChanged?.call();
-                      },
-                      child: Padding(padding: const EdgeInsets.all(4), child: Icon(Icons.settings_rounded, size: 18, color: room.imageUrl!= null? Colors.white.withOpacity(0.8) : AppColors.textSub)),
-                    ),
-                  ),
-                ],
-              ]),
-              const SizedBox(height: 10),
-              Text(room.name, style: TextStyle(fontFamily: 'Tajawal', color: room.imageUrl!= null? Colors.white : AppColors.text, fontSize: 17, fontWeight: FontWeight.w800), maxLines: 2, overflow: TextOverflow.ellipsis),
-              if (room.description!= null && room.description!.isNotEmpty)...[
-                const SizedBox(height: 4),
-                Text(room.description!, style: TextStyle(fontFamily: 'Tajawal', color: room.imageUrl!= null? Colors.white.withOpacity(0.75) : AppColors.textSub, fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis),
-              ],
-              const SizedBox(height: 12),
-              Row(children: [
-                StreamBuilder<List<Map<String, dynamic>>>(
-                  stream: supabase
-               .from('room_members')
-               .stream(primaryKey: ['id'])
-               .eq('room_id', room.id)
-               .map((rows) => rows.where((m) => m['is_online'] == true).toList()),
-                  initialData: const [],
-                  builder: (context, snap) {
-                    final onlineCount = snap.data?.length?? room.onlineCount;
-                    final online = onlineCount > 0;
-                    return Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(width: 6, height: 6, decoration: BoxDecoration(color: online? AppColors.success : AppColors.offline, shape: BoxShape.circle)),
-                        const SizedBox(width: 4),
-                        Text(
-                          online? '$onlineCount متصل' : 'لا أحد متصل',
-                          style: TextStyle(
+        color: theme.cardTheme.color?? AppColors.bgCard,
+        border: Border.all(color: AppColors.glassBorder, width: 0.8),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 3))],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // صورة الغرفة - كبيرة وواضحة
+            ClipRRect(
+              borderRadius: BorderRadius.circular(18),
+              child: room.imageUrl!= null && room.imageUrl!.isNotEmpty
+                 ? CachedNetworkImage(
+                      imageUrl: room.imageUrl!,
+                      width: 72,
+                      height: 72,
+                      fit: BoxFit.cover,
+                      errorWidget: (_, __, ___) => _roomPlaceholder(),
+                    )
+                  : _roomPlaceholder(),
+            ),
+            const SizedBox(width: 14),
+            // معلومات الغرفة
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          room.name,
+                          style: const TextStyle(
                             fontFamily: 'Tajawal',
-                            color: online? AppColors.success : (room.imageUrl!= null? Colors.white.withOpacity(0.7) : AppColors.textSub),
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
+                            color: AppColors.text,
+                            fontSize: 17,
+                            fontWeight: FontWeight.w800,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (isOwner)
+                        InkWell(
+                          borderRadius: BorderRadius.circular(8),
+                          onTap: () async {
+                            final changed = await Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (_) => RoomSettingsScreen(room: room)),
+                            );
+                            if (changed == true) onSettingsChanged?.call();
+                          },
+                          child: const Padding(
+                            padding: EdgeInsets.all(4),
+                            child: Icon(Icons.settings_rounded, size: 18, color: AppColors.textSub),
                           ),
                         ),
-                      ],
-                    );
-                  },
-                ),
-                const Spacer(),
-                IconButton.filled(
-                  onPressed: onEnter,
-                  tooltip: 'دخول الغرفة',
-                  icon: const Icon(Icons.arrow_back_rounded, size: 20),
-                  style: IconButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    foregroundColor: Colors.white,
-                    minimumSize: const Size(44, 44),
+                    ],
                   ),
-                ),
-              ]),
-            ]),
-          ),
-        ]),
+                  if (room.description!= null && room.description!.isNotEmpty)...[
+                    const SizedBox(height: 4),
+                    Text(
+                      room.description!,
+                      style: const TextStyle(
+                        fontFamily: 'Tajawal',
+                        color: AppColors.textSub,
+                        fontSize: 12,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      // عداد الأعضاء الأونلاين - تصميم جديد
+                      StreamBuilder<List<Map<String, dynamic>>>(
+                        stream: supabase
+                           .from('room_members')
+                           .stream(primaryKey: ['id'])
+                           .eq('room_id', room.id)
+                           .map((rows) => rows.where((m) => m['is_online'] == true).toList()),
+                        initialData: const [],
+                        builder: (context, snap) {
+                          final onlineCount = snap.data?.length?? room.onlineCount;
+                          final online = onlineCount > 0;
+                          return Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: online? AppColors.success.withOpacity(0.1) : AppColors.bgCard2,
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  width: 6,
+                                  height: 6,
+                                  decoration: BoxDecoration(
+                                    color: online? AppColors.success : AppColors.offline,
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  online? '$onlineCount متصل' : 'غير نشطة',
+                                  style: TextStyle(
+                                    fontFamily: 'Tajawal',
+                                    color: online? AppColors.success : AppColors.textSub,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                      const Spacer(),
+                      // زر الدخول
+                      FilledButton(
+                        onPressed: onEnter,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          foregroundColor: Colors.white,
+                          minimumSize: const Size(44, 44),
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        ),
+                        child: const Icon(Icons.arrow_back_rounded, size: 18),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
+    );
+  }
+
+  Widget _roomPlaceholder() {
+    return Container(
+      width: 72,
+      height: 72,
+      decoration: BoxDecoration(
+        color: AppColors.primary.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: const Icon(Icons.meeting_room_rounded, color: AppColors.primary, size: 28),
     );
   }
 }
