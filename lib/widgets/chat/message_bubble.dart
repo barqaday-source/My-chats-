@@ -4,6 +4,7 @@ import 'package:audioplayers/audioplayers.dart';
 import '../../core/constants/app_colors.dart';
 import '../../services/chat_service.dart';
 import '../../screens/profile/user_profile_screen.dart';
+import '../../screens/chat/image_viewer_screen.dart';
 import '../app_snackbar.dart';
 
 class MessageBubble extends StatefulWidget {
@@ -83,6 +84,12 @@ class _MessageBubbleState extends State<MessageBubble> {
     final userId = widget.message['sender_id'];
     if (userId == null || widget.isMe) return;
     Navigator.push(context, MaterialPageRoute(builder: (_) => UserProfileScreen(userId: userId)));
+  }
+
+  void _openImageViewer(String url) {
+    Navigator.push(context, MaterialPageRoute(
+      builder: (_) => ImageViewerScreen(imageUrl: url),
+    ));
   }
 
   String _formatDuration(Duration d) { final m = d.inMinutes.remainder(60).toString().padLeft(2, '0'); final s = d.inSeconds.remainder(60).toString().padLeft(2, '0'); return '$m:$s'; }
@@ -165,12 +172,15 @@ class _MessageBubbleState extends State<MessageBubble> {
           child: Text(replyContent, maxLines: 1, overflow: TextOverflow.ellipsis,
             style: const TextStyle(fontFamily: 'Tajawal', fontSize: 12, color: AppColors.textSub))),
         if (imageUrl!= null && imageUrl.toString().isNotEmpty)
-          ClipRRect(borderRadius: BorderRadius.circular(12),
-            child: CachedNetworkImage(imageUrl: imageUrl, width: 220, fit: BoxFit.cover,
-              placeholder: (c, u) => Container(width: 220, height: 140, color: AppColors.bgCard2,
-                child: const Center(child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary))),
-              errorWidget: (c, u, e) => Container(width: 220, height: 140, color: AppColors.bgCard2,
-                child: const Icon(Icons.broken_image_rounded, color: AppColors.textSub)))),
+          GestureDetector(
+            onTap: () => _openImageViewer(imageUrl.toString()),
+            child: ClipRRect(borderRadius: BorderRadius.circular(12),
+              child: CachedNetworkImage(imageUrl: imageUrl, width: 220, fit: BoxFit.cover,
+                placeholder: (c, u) => Container(width: 220, height: 140, color: AppColors.bgCard2,
+                  child: const Center(child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary))),
+                errorWidget: (c, u, e) => Container(width: 220, height: 140, color: AppColors.bgCard2,
+                  child: const Icon(Icons.broken_image_rounded, color: AppColors.textSub)))),
+          ),
         if (audioUrl!= null && audioUrl.toString().isNotEmpty)
           Container(
             width: 240,
@@ -243,9 +253,9 @@ class _MessageBubbleState extends State<MessageBubble> {
                   child: CircleAvatar(
                     radius: 16, backgroundColor: AppColors.bgCard2,
                     backgroundImage: senderAvatar!= null && senderAvatar.toString().isNotEmpty
-               ? CachedNetworkImageProvider(senderAvatar) : null,
+              ? CachedNetworkImageProvider(senderAvatar) : null,
                     child: senderAvatar == null || senderAvatar.toString().isEmpty
-               ? Text(senderName.isNotEmpty? senderName[0] : '?',
+              ? Text(senderName.isNotEmpty? senderName[0] : '?',
                           style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.navy, fontWeight: FontWeight.w700))
                       : null,
                   ),
