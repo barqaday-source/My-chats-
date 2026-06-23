@@ -6,6 +6,9 @@ class AppColors {
   static const Color bgCard = Color(0xFFF8F9FA);
   static const Color bgCard2 = Color(0xFFF1F3F5);
   static const Color bgPrimary = Color(0xFFFFFFFF);
+  
+  // NEW: alias عشان الملفات اللي تستخدم card تشتغل
+  static const Color card = bgCard;
 
   // الأساسي – نعناعي
   static const Color primary = Color(0xFF00D4AA);
