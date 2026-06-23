@@ -11,7 +11,8 @@ dependencies:
     sdk: flutter
   flutter_localizations:
     sdk: flutter
-
+    
+  badges: ^3.1.2
   cupertino_icons: ^1.0.8
   supabase_flutter: ^2.8.0
   provider: ^6.1.2
