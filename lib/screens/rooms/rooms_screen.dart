@@ -64,60 +64,74 @@ class _RoomsScreenState extends State<RoomsScreen> {
   void _showCreateRoom(BuildContext ctx) {
     final nameCtrl = TextEditingController();
     final descCtrl = TextEditingController();
-    showModalBottomSheet(
-      context: ctx, isScrollControlled: true, backgroundColor: Colors.transparent,
-      builder: (_) => Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
-        child: Container(
-          decoration: BoxDecoration(color: AppColors.bgCard, borderRadius: const BorderRadius.vertical(top: Radius.circular(24))),
-          child: SafeArea(
-            top: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
-              child: Column(mainAxisSize: MainAxisSize.min, children: [
-                Container(width: 40, height: 4, margin: const EdgeInsets.only(bottom: 16), decoration: BoxDecoration(color: AppColors.divider, borderRadius: BorderRadius.circular(2))),
-                const Text('إنشاء غرفة جديدة', style: TextStyle(fontFamily: 'Tajawal', color: AppColors.text, fontSize: 18, fontWeight: FontWeight.w700)),
-                const SizedBox(height: 16),
-                TextField(controller: nameCtrl, style: const TextStyle(color: AppColors.text), decoration: const InputDecoration(labelText: 'اسم الغرفة *', labelStyle: TextStyle(color: AppColors.textSub), prefixIcon: Icon(Icons.meeting_room_outlined, color: AppColors.textSub))),
-                const SizedBox(height: 12),
-                TextField(controller: descCtrl, maxLines: 2, style: const TextStyle(color: AppColors.text), decoration: const InputDecoration(labelText: 'وصف الغرفة (اختياري)', labelStyle: TextStyle(color: AppColors.textSub), prefixIcon: Icon(Icons.description_outlined, color: AppColors.textSub))),
-                const SizedBox(height: 20),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, foregroundColor: Colors.white),
-                    onPressed: () async {
-                      if (nameCtrl.text.trim().isEmpty) {
-                        _snack('اسم الغرفة مطلوب', false);
-                        return;
-                      }
-                      final auth = ctx.read<AuthProvider>();
-                      final room = RoomModel(
-                        id: '',
-                        name: nameCtrl.text.trim(),
-                        description: descCtrl.text.trim().isEmpty? null : descCtrl.text.trim(),
-                        ownerId: auth.user!.id,
-                        ownerName: auth.userProfile?['username']?? auth.user!.email?.split('@')[0]?? 'مجهول',
-                        ownerAvatar: auth.userProfile?['avatar_url'],
-                        createdAt: DateTime.now(),
-                        updatedAt: DateTime.now(),
-                        members: [auth.user!.id],
-                      );
-                      try {
-                        await _svc.createRoom(room, auth.user!.id);
-                        if (ctx.mounted) {
-                          Navigator.pop(ctx);
-                          _snack('تم وصول الطلب للمدير', true);
+    showDialog(
+      context: ctx,
+      barrierDismissible: true,
+      builder: (dialogCtx) => Center(
+        child: SingleChildScrollView(
+          padding: EdgeInsets.only(
+            left: 20,
+            right: 20,
+            bottom: MediaQuery.of(dialogCtx).viewInsets.bottom + 20,
+            top: 20,
+          ),
+          child: Material(
+            color: Colors.transparent,
+            child: Container(
+              constraints: const BoxConstraints(maxWidth: 420),
+              decoration: BoxDecoration(color: AppColors.bgCard, borderRadius: BorderRadius.circular(24)),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  Container(width: 40, height: 4, margin: const EdgeInsets.only(bottom: 16), decoration: BoxDecoration(color: AppColors.divider, borderRadius: BorderRadius.circular(2))),
+                  const Text('إنشاء غرفة جديدة', style: TextStyle(fontFamily: 'Tajawal', color: AppColors.text, fontSize: 18, fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 16),
+                  TextField(controller: nameCtrl, style: const TextStyle(color: AppColors.text), decoration: const InputDecoration(labelText: 'اسم الغرفة *', labelStyle: TextStyle(color: AppColors.textSub), prefixIcon: Icon(Icons.meeting_room_outlined, color: AppColors.textSub))),
+                  const SizedBox(height: 12),
+                  TextField(controller: descCtrl, maxLines: 2, style: const TextStyle(color: AppColors.text), decoration: const InputDecoration(labelText: 'وصف الغرفة (اختياري)', labelStyle: TextStyle(color: AppColors.textSub), prefixIcon: Icon(Icons.description_outlined, color: AppColors.textSub))),
+                  const SizedBox(height: 20),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, foregroundColor: Colors.white),
+                      onPressed: () async {
+                        if (nameCtrl.text.trim().isEmpty) {
+                          _snack('اسم الغرفة مطلوب', false);
+                          return;
                         }
-                        _load();
-                      } catch (e) {
-                        if (ctx.mounted) _snack('فشل إنشاء الغرفة: $e', false);
-                      }
-                    },
-                    child: const Text('إنشاء الغرفة', style: TextStyle(fontFamily: 'Tajawal', fontWeight: FontWeight.w700)),
+                        final auth = ctx.read<AuthProvider>();
+                        final room = RoomModel(
+                          id: '',
+                          name: nameCtrl.text.trim(),
+                          description: descCtrl.text.trim().isEmpty? null : descCtrl.text.trim(),
+                          ownerId: auth.user!.id,
+                          ownerName: auth.userProfile?['username']?? auth.user!.email?.split('@')[0]?? 'مجهول',
+                          ownerAvatar: auth.userProfile?['avatar_url'],
+                          createdAt: DateTime.now(),
+                          updatedAt: DateTime.now(),
+                          members: [auth.user!.id],
+                        );
+                        try {
+                          await _svc.createRoom(room, auth.user!.id);
+                          if (ctx.mounted) {
+                            Navigator.pop(dialogCtx);
+                            _snack('تم وصول الطلب للمدير', true);
+                          }
+                          _load();
+                        } catch (e) {
+                          if (ctx.mounted) _snack('فشل إنشاء الغرفة: $e', false);
+                        }
+                      },
+                      child: const Text('إنشاء الغرفة', style: TextStyle(fontFamily: 'Tajawal', fontWeight: FontWeight.w700)),
+                    ),
                   ),
-                ),
-              ]),
+                  const SizedBox(height: 8),
+                  TextButton(
+                    onPressed: () => Navigator.pop(dialogCtx),
+                    child: const Text('إلغاء', style: TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub)),
+                  ),
+                ]),
+              ),
             ),
           ),
         ),
@@ -173,7 +187,7 @@ class _RoomsScreenState extends State<RoomsScreen> {
         const SizedBox(height: 12),
         Expanded(
           child: _loading
-  ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+ ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
               : RefreshIndicator(
                   onRefresh: _load, color: AppColors.primary,
                   child: Builder(builder: (_) {
@@ -257,10 +271,10 @@ class _RoomCard extends StatelessWidget {
               Row(children: [
                 StreamBuilder<List<Map<String, dynamic>>>(
                   stream: supabase
-                 .from('room_members')
-                 .stream(primaryKey: ['id'])
-                 .eq('room_id', room.id)
-                 .map((rows) => rows.where((m) => m['is_online'] == true).toList()),
+               .from('room_members')
+               .stream(primaryKey: ['id'])
+               .eq('room_id', room.id)
+               .map((rows) => rows.where((m) => m['is_online'] == true).toList()),
                   initialData: const [],
                   builder: (context, snap) {
                     final onlineCount = snap.data?.length?? room.onlineCount;
