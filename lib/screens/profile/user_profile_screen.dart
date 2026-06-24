@@ -267,7 +267,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     } else if (days > 365) {
       label = 'أسطوري';
       icon = Icons.diamond_rounded;
-      color = const Color(0xFFFFD700); // ذهبي
+      color = const Color(0xFFFFD700);
     } else if (minutesAgo < 5) {
       label = 'نشط جداً';
       icon = Icons.flash_on_rounded;
@@ -375,21 +375,17 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                                 left: 0,
                                 right: 0,
                                 child: Center(
-                                  child: Stack(
-                                    children: [
-                                      Container(
-                                        decoration: BoxDecoration(
-                                          shape: BoxShape.circle,
-                                          border: Border.all(color: AppColors.bg, width: 4),
-                                        ),
-                                        child: UserAvatar(
-                                          url: user.avatarUrl,
-                                          name: user.username,
-                                          isOnline: user.isOnline && !_isBlocked,
-                                          size: 100,
-                                        ),
-                                      ),
-                                    ],
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      border: Border.all(color: AppColors.bg, width: 4),
+                                    ),
+                                    child: UserAvatar(
+                                      url: user.avatarUrl,
+                                      name: user.username,
+                                      isOnline: user.isOnline && !_isBlocked,
+                                      size: 100,
+                                    ),
                                   ),
                                 ),
                               ),
@@ -411,7 +407,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                                   '@${user.username}',
                                   style: const TextStyle(fontFamily: 'Tajawal', fontSize: 14, color: AppColors.textSub),
                                 ),
-                                _activityBadge(user), // وسام النشاط
+                                _activityBadge(user),
                                 if (_isBlocked) ...[
                                   const SizedBox(height: 8),
                                   Container(
@@ -432,7 +428,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
 
                           const SizedBox(height: 24),
 
-                          // معلومات: عمر + برج + دولة - بدون كروت، زجاجي مرتب
+                          // معلومات: عمر + برج + دولة
                           Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 20),
                             child: ClipRRect(
