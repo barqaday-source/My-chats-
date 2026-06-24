@@ -44,10 +44,10 @@ class _HomeScreenState extends State<HomeScreen> {
     if (uid == null) return;
     try {
       final res = await Supabase.instance.client
-       .from('profiles')
-       .select('username, avatar_url')
-       .eq('id', uid)
-       .single();
+    .from('profiles')
+    .select('username, avatar_url')
+    .eq('id', uid)
+    .single();
       if (mounted) setState(() => _userProfile = res);
     } catch (e) {
       debugPrint('_loadUserProfile error: $e');
@@ -67,7 +67,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _page(int idx) {
     switch (idx) {
-      case 0: return const ChatsListScreen();
+      case 0: return ChatsListScreen();
       case 1: return const RoomsScreen();
       case 2: return const ProfileScreen();
       case 3: return NotificationsScreen(onRead: () => setState(() => _notifCount = 0));
@@ -150,7 +150,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     radius: 24,
                     backgroundImage: avatarUrl!= null? NetworkImage(avatarUrl) : null,
                     child: avatarUrl == null
-                  ? Text(username[0].toUpperCase(),
+                ? Text(username[0].toUpperCase(),
                           style: const TextStyle(fontFamily: 'Tajawal', fontWeight: FontWeight.w700))
                       : null,
                   ),
