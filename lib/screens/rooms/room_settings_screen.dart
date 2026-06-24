@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/constants/app_colors.dart';
 import '../../models/room_model.dart';
 import '../../providers/auth_provider.dart';
@@ -21,6 +22,7 @@ class _RoomSettingsScreenState extends State<RoomSettingsScreen> {
   final _roomService = RoomService();
   final _nameController = TextEditingController();
   final _descController = TextEditingController();
+  final supabase = Supabase.instance.client;
   bool _loading = false;
   late bool _isOwner;
   String? _avatarUrl;
@@ -33,8 +35,8 @@ class _RoomSettingsScreenState extends State<RoomSettingsScreen> {
     final user = context.read<AuthProvider>().user!;
     _isOwner = user.id == widget.room.ownerId;
     _nameController.text = widget.room.name;
-    _descController.text = widget.room.description ?? '';
-    _avatarUrl = widget.room.imageUrl; // غيّر avatarUrl لـ imageUrl
+    _descController.text = widget.room.description?? '';
+    _avatarUrl = widget.room.imageUrl;
     _isActive = widget.room.isActive;
   }
 
@@ -76,7 +78,7 @@ class _RoomSettingsScreenState extends State<RoomSettingsScreen> {
       final updatedRoom = widget.room.copyWith(
         name: _nameController.text.trim(),
         description: _descController.text.trim(),
-        imageUrl: newAvatar, // غيّر avatarUrl لـ imageUrl
+        imageUrl: newAvatar,
         isActive: _isActive,
       );
       await _roomService.updateRoom(updatedRoom);
@@ -161,8 +163,6 @@ class _RoomSettingsScreenState extends State<RoomSettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final meId = supabase.auth.currentUser?.id;
-    final isOwnProfile = meId == widget.room.ownerId;
     return Scaffold(
       backgroundColor: AppColors.bg,
       appBar: AppBar(
@@ -170,7 +170,7 @@ class _RoomSettingsScreenState extends State<RoomSettingsScreen> {
         elevation: 0,
         title: const Text('إعدادات الغرفة', style: TextStyle(fontFamily: 'Tajawal', fontWeight: FontWeight.w700)),
         actions: [
-          if (_isOwner && !_loading)
+          if (_isOwner &&!_loading)
             TextButton(
               onPressed: _saveChanges,
               child: const Text('حفظ', style: TextStyle(fontFamily: 'Tajawal', fontWeight: FontWeight.w700, color: AppColors.primary)),
@@ -180,12 +180,12 @@ class _RoomSettingsScreenState extends State<RoomSettingsScreen> {
       body: Container(
         decoration: const BoxDecoration(gradient: AppColors.bgGrad),
         child: _loading
-         ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+      ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
           : ListView(
               padding: const EdgeInsets.fromLTRB(20, 10, 20, 40),
               children: [
                 // صورة الغرفة
-                if (_isOwner) ...[
+                if (_isOwner)...[
                   Center(
                     child: GestureDetector(
                       onTap: _pickAvatar,
@@ -194,9 +194,9 @@ class _RoomSettingsScreenState extends State<RoomSettingsScreen> {
                           ClipRRect(
                             borderRadius: BorderRadius.circular(20),
                             child: _pickedImage!= null
-                             ? Image.file(_pickedImage!, width: 120, height: 120, fit: BoxFit.cover)
+                          ? Image.file(_pickedImage!, width: 120, height: 120, fit: BoxFit.cover)
                               : (_avatarUrl!= null
-                               ? Image.network(_avatarUrl!, width: 120, height: 120, fit: BoxFit.cover)
+                             ? Image.network(_avatarUrl!, width: 120, height: 120, fit: BoxFit.cover)
                                 : Container(
                                     width: 120,
                                     height: 120,
@@ -221,7 +221,7 @@ class _RoomSettingsScreenState extends State<RoomSettingsScreen> {
                     ),
                   ),
                   const SizedBox(height: 24),
-                ] else if (_avatarUrl!= null) ...[
+                ] else if (_avatarUrl!= null)...[
                   Center(
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(20),
@@ -232,7 +232,7 @@ class _RoomSettingsScreenState extends State<RoomSettingsScreen> {
                 ],
 
                 // معلومات الغرفة - للمالك
-                if (_isOwner) ...[
+                if (_isOwner)...[
                   _buildField(controller: _nameController, label: 'اسم الغرفة', icon: Icons.badge_rounded),
                   const SizedBox(height: 16),
                   _buildField(controller: _descController, label: 'وصف الغرفة', icon: Icons.description_rounded, maxLines: 3),
@@ -267,11 +267,11 @@ class _RoomSettingsScreenState extends State<RoomSettingsScreen> {
                       label: const Text('حذف الغرفة نهائياً', style: TextStyle(fontFamily: 'Tajawal', fontSize: 15, fontWeight: FontWeight.w700)),
                     ),
                   ),
-                ] else ...[
+                ] else...[
                   // معلومات للعضو العادي
                   _buildInfoTile('اسم الغرفة', widget.room.name),
                   const SizedBox(height: 12),
-                  _buildInfoTile('الوصف', widget.room.description ?? 'لا يوجد'),
+                  _buildInfoTile('الوصف', widget.room.description?? 'لا يوجد'),
                   const SizedBox(height: 12),
                   _buildInfoTile('الحالة', widget.room.isActive? 'مفتوحة' : 'مغلقة'),
                   const SizedBox(height: 32),
