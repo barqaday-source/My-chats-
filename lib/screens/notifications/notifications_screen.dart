@@ -17,6 +17,7 @@ class NotificationsScreen extends StatefulWidget {
 
 class _NotificationsScreenState extends State<NotificationsScreen> {
   final _svc = NotificationService();
+  List<NotificationModel> _currentNotifs = []; // نخزن القائمة الحالية
 
   // وضع التحديد
   bool _selectionMode = false;
@@ -138,13 +139,13 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     });
   }
 
-  void _selectAll(List<NotificationModel> notifs) {
+  void _selectAll() {
     setState(() {
-      if (_selectedIds.length == notifs.length) {
+      if (_selectedIds.length == _currentNotifs.length) {
         _selectedIds.clear();
         _selectionMode = false;
       } else {
-        _selectedIds.addAll(notifs.map((n) => n.id));
+        _selectedIds.addAll(_currentNotifs.map((n) => n.id));
       }
     });
   }
@@ -200,8 +201,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         actions: [
           if (_selectionMode)...[
             TextButton(
-              onPressed: () => _selectAll([]), // سيتم تمرير القائمة من StreamBuilder
-              child: const Text('تحديد الكل', style: TextStyle(fontFamily: 'Tajawal', color: AppColors.primary, fontWeight: FontWeight.w700)),
+              onPressed: _selectAll,
+              child: Text(
+                _selectedIds.length == _currentNotifs.length? 'إلغاء الكل' : 'تحديد الكل',
+                style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.primary, fontWeight: FontWeight.w700),
+              ),
             ),
             IconButton(
               icon: const Icon(Icons.close_rounded),
@@ -226,6 +230,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               return const Center(child: CircularProgressIndicator(color: AppColors.primary));
             }
             final notifs = snap.data!;
+            _currentNotifs = notifs; // خزن القائمة عشان "تحديد الكل"
+
             if (notifs.isEmpty) {
               return _buildEmptyState();
             }
@@ -247,7 +253,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       ),
       // زر حذف ثابت تحت لما يكون وضع التحديد شغال
       bottomNavigationBar: _selectionMode && _selectedIds.isNotEmpty
-      ? SafeArea(
+     ? SafeArea(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
               child: SizedBox(
