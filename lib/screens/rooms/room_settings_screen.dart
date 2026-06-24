@@ -33,8 +33,8 @@ class _RoomSettingsScreenState extends State<RoomSettingsScreen> {
     final user = context.read<AuthProvider>().user!;
     _isOwner = user.id == widget.room.ownerId;
     _nameController.text = widget.room.name;
-    _descController.text = widget.room.description?? '';
-    _avatarUrl = widget.room.avatarUrl;
+    _descController.text = widget.room.description ?? '';
+    _avatarUrl = widget.room.imageUrl; // غيّر avatarUrl لـ imageUrl
     _isActive = widget.room.isActive;
   }
 
@@ -76,7 +76,7 @@ class _RoomSettingsScreenState extends State<RoomSettingsScreen> {
       final updatedRoom = widget.room.copyWith(
         name: _nameController.text.trim(),
         description: _descController.text.trim(),
-        avatarUrl: newAvatar,
+        imageUrl: newAvatar, // غيّر avatarUrl لـ imageUrl
         isActive: _isActive,
       );
       await _roomService.updateRoom(updatedRoom);
@@ -161,6 +161,8 @@ class _RoomSettingsScreenState extends State<RoomSettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final meId = supabase.auth.currentUser?.id;
+    final isOwnProfile = meId == widget.room.ownerId;
     return Scaffold(
       backgroundColor: AppColors.bg,
       appBar: AppBar(
@@ -269,7 +271,7 @@ class _RoomSettingsScreenState extends State<RoomSettingsScreen> {
                   // معلومات للعضو العادي
                   _buildInfoTile('اسم الغرفة', widget.room.name),
                   const SizedBox(height: 12),
-                  _buildInfoTile('الوصف', widget.room.description?? 'لا يوجد'),
+                  _buildInfoTile('الوصف', widget.room.description ?? 'لا يوجد'),
                   const SizedBox(height: 12),
                   _buildInfoTile('الحالة', widget.room.isActive? 'مفتوحة' : 'مغلقة'),
                   const SizedBox(height: 32),
