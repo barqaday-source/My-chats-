@@ -171,9 +171,9 @@ class _ChatsListScreenState extends State<ChatsListScreen> {
           _buildUsersSearchButton(),
           Expanded(
             child: _loading
-       ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+      ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
                 : _chats.isEmpty
-          ? _buildEmptyState()
+         ? _buildEmptyState()
                     : RefreshIndicator(
                         onRefresh: _loadChats,
                         color: AppColors.primary,
@@ -265,7 +265,7 @@ class _ChatsListScreenState extends State<ChatsListScreen> {
       child: AnimatedSize(
         duration: const Duration(milliseconds: 200),
         child: isRemoving
-         ? const SizedBox(height: 0)
+        ? const SizedBox(height: 0)
           : Padding(
               padding: const EdgeInsets.only(bottom: 8),
               child: Material(
@@ -274,7 +274,6 @@ class _ChatsListScreenState extends State<ChatsListScreen> {
                 child: InkWell(
                   onTap: () => _openChat(chat),
                   onLongPress: () => _deleteChat(chat),
-                  // هذا اللي يقتل الضل الرمادي
                   splashColor: Colors.transparent,
                   highlightColor: AppColors.primary.withOpacity(0.06),
                   hoverColor: Colors.transparent,
