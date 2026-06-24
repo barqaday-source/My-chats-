@@ -1,7 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../core/constants/app_colors.dart';
 import '../../widgets/user_avatar.dart';
@@ -15,13 +14,10 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   final supabase = Supabase.instance.client;
   final _usernameCtrl = TextEditingController();
-  final _bioCtrl = TextEditingController();
-  final _whatsappCtrl = TextEditingController();
-  final _zodiacCtrl = TextEditingController();
-  final _statusCtrl = TextEditingController();
-  final _formKey = GlobalKey<FormState>();
-
+  final _countryCtrl = TextEditingController();
+  
   DateTime? _birthDate;
+  String? _zodiac;
   String? _avatarUrl;
   bool _isLoading = true;
   bool _isSaving = false;
@@ -32,9 +28,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   void dispose() {
-    _usernameCtrl.dispose(); _bioCtrl.dispose();
-    _whatsappCtrl.dispose(); _zodiacCtrl.dispose();
-    _statusCtrl.dispose();
+    _usernameCtrl.dispose(); 
+    _countryCtrl.dispose();
     super.dispose();
   }
 
@@ -45,10 +40,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final profile = await supabase.from('profiles').select().eq('id', userId).maybeSingle();
       if (profile != null && mounted) {
         _usernameCtrl.text = profile['username'] ?? '';
-        _bioCtrl.text = profile['bio'] ?? '';
-        _whatsappCtrl.text = profile['whatsapp'] ?? '';
-        _zodiacCtrl.text = profile['zodiac'] ?? '';
-        _statusCtrl.text = profile['status_text'] ?? '';
+        _countryCtrl.text = profile['country'] ?? '';
+        _zodiac = profile['zodiac'];
         _avatarUrl = profile['avatar_url'];
         final birth = profile['birth_date'];
         if (birth != null) {
@@ -60,6 +53,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  int get _age {
+    if (_birthDate == null) return 0;
+    final now = DateTime.now();
+    int age = now.year - _birthDate!.year;
+    if (now.month < _birthDate!.month || (now.month == _birthDate!.month && now.day < _birthDate!.day)) {
+      age--;
+    }
+    return age;
   }
 
   Future<void> _pickBirthDate() async {
@@ -76,36 +79,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _updateProfile() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (_usernameCtrl.text.trim().isEmpty) {
+      _showSnack('ادخل اسم المستخدم', false);
+      return;
+    }
     setState(() => _isSaving = true);
     try {
       final userId = supabase.auth.currentUser!.id;
       final username = _usernameCtrl.text.trim();
-      final statusText = _statusCtrl.text.trim();
       final data = {
         'username': username,
-        'bio': _bioCtrl.text.trim(),
-        'whatsapp': _whatsappCtrl.text.trim().isEmpty ? null : _whatsappCtrl.text.trim(),
+        'country': _countryCtrl.text.trim().isEmpty ? null : _countryCtrl.text.trim(),
         'birth_date': _birthDate == null ? null : 
           '${_birthDate!.year}-${_birthDate!.month.toString().padLeft(2,'0')}-${_birthDate!.day.toString().padLeft(2,'0')}',
-        'zodiac': _zodiacCtrl.text.trim().isEmpty ? null : _zodiacCtrl.text.trim(),
-        'status_text': statusText.isEmpty ? null : statusText,
+        'zodiac': _zodiac,
         'avatar_url': _avatarUrl,
         'updated_at': DateTime.now().toIso8601String(),
       };
       await supabase.from('profiles').update(data).eq('id', userId);
-      try {
-        await supabase.from('room_members').update({'display_name': username}).eq('user_id', userId);
-      } catch (_) {}
-      try {
-        await supabase.from('users').update({'username': username, 'avatar_url': _avatarUrl}).eq('id', userId);
-      } catch (_) {}
+      await supabase.from('room_members').update({'display_name': username}).eq('user_id', userId);
       
       if (mounted) {
-        _showSnack('تم تحديث البروفايل بنجاح', true);
+        _showSnack('تم حفظ التغييرات', true);
+        Navigator.pop(context);
       }
     } catch (e) {
-      if (mounted) _showSnack('فشل تحديث البروفايل: $e', false);
+      if (mounted) _showSnack('فشل الحفظ: $e', false);
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
@@ -137,106 +136,197 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return Scaffold(
+      backgroundColor: AppColors.bg,
       appBar: AppBar(
-        title: const Text('تعديل البروفايل'),
-        actions: [
-          if (!_isSaving)
-            TextButton(onPressed: _updateProfile, child: const Text('حفظ', style: TextStyle(fontWeight: FontWeight.w700)))
-        ],
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        title: const Text('تعديل الملف الشخصي', style: TextStyle(fontFamily: 'Tajawal', fontWeight: FontWeight.w700)),
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(16, 24, 16, 24),
-              child: Form(
-                key: _formKey,
-                child: Column(children: [
-                  GestureDetector(
+          : ListView(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 40),
+              children: [
+                // الصورة
+                Center(
+                  child: GestureDetector(
                     onTap: _isUploading ? null : _uploadAvatar,
                     child: Stack(alignment: Alignment.center, children: [
                       UserAvatar(
                         url: _avatarUrl,
                         name: _usernameCtrl.text.isEmpty ? '؟' : _usernameCtrl.text,
-                        size: 110,
+                        size: 120,
                         showBorder: true,
                       ),
                       if (_isUploading)
-                        Container(width: 110, height: 110,
-                            decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.black.withOpacity(0.4)),
-                            child: const Center(child: CircularProgressIndicator())),
+                        Container(
+                          width: 120, height: 120,
+                          decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.black.withOpacity(0.4)),
+                          child: const Center(child: CircularProgressIndicator())
+                        ),
                       Positioned(
-                          bottom: 0, right: 0,
-                          child: Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(color: AppColors.primary, shape: BoxShape.circle, border: Border.all(color: theme.scaffoldBackgroundColor, width: 2)),
-                              child: const Icon(Icons.camera_alt_rounded, color: Colors.white, size: 18))),
-                    ]),
-                  ),
-                  const SizedBox(height: 28),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                        color: theme.cardTheme.color,
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: AppColors.glassBorder)),
-                    child: Column(children: [
-                      _field(_usernameCtrl, 'اسم المستخدم', Icons.person_outline_rounded,
-                          validator: (v) => v == null || v.trim().isEmpty ? 'ادخل اسم المستخدم' : v.length < 3 ? 'الاسم قصير جداً' : null),
-                      const SizedBox(height: 16),
-                      _field(_statusCtrl, 'الحالة اليومية', Icons.emoji_emotions_outlined, maxLength: 30, hint: 'مسافر، بالدوام، متاح...'),
-                      const SizedBox(height: 16),
-                      _field(_bioCtrl, 'النبذة التعريفية', Icons.info_outline_rounded, maxLines: 3, maxLength: 150),
-                      const SizedBox(height: 16),
-                      _field(_whatsappCtrl, 'رقم الواتساب', Icons.phone_outlined, keyboardType: TextInputType.phone),
-                      const SizedBox(height: 16),
-                      TextFormField(
-                        readOnly: true,
-                        onTap: _pickBirthDate,
-                        controller: TextEditingController(
-                          text: _birthDate == null ? '' : '${_birthDate!.year}-${_birthDate!.month.toString().padLeft(2,'0')}-${_birthDate!.day.toString().padLeft(2,'0')}',
-                        ),
-                        decoration: const InputDecoration(
-                          labelText: 'تاريخ الميلاد',
-                          prefixIcon: Icon(Icons.cake_outlined),
-                          suffixIcon: Icon(Icons.calendar_today_rounded, size: 18),
-                        ),
+                        bottom: 4, right: 4,
+                        child: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: AppColors.primary, 
+                            shape: BoxShape.circle, 
+                            border: Border.all(color: AppColors.bg, width: 2)
+                          ),
+                          child: const Icon(Icons.camera_alt_rounded, color: Colors.white, size: 18)
+                        )
                       ),
-                      const SizedBox(height: 16),
-                      _field(_zodiacCtrl, 'البرج', Icons.auto_awesome_rounded),
                     ]),
                   ),
-                  const SizedBox(height: 24),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 52,
-                    child: ElevatedButton(
-                      onPressed: _isSaving ? null : _updateProfile,
-                      child: _isSaving
-                          ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                          : const Text('حفظ التغييرات', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                ),
+                const SizedBox(height: 32),
+                
+                // الاسم
+                _buildField(
+                  controller: _usernameCtrl,
+                  label: 'اسم المستخدم',
+                  icon: Icons.person_outline_rounded,
+                ),
+                
+                // العمر
+                _buildTapField(
+                  label: 'العمر',
+                  value: _birthDate == null ? 'غير محدد' : '$_age سنة',
+                  icon: Icons.cake_outlined,
+                  onTap: _pickBirthDate,
+                ),
+                
+                // البرج
+                _buildDropdownField(
+                  label: 'البرج',
+                  value: _zodiac,
+                  icon: Icons.auto_awesome_rounded,
+                  items: const ['الحمل','الثور','الجوزاء','السرطان','الأسد','العذراء','الميزان','العقرب','القوس','الجدي','الدلو','الحوت'],
+                  onChanged: (v) => setState(() => _zodiac = v),
+                ),
+                
+                // الدولة
+                _buildField(
+                  controller: _countryCtrl,
+                  label: 'الدولة',
+                  icon: Icons.public_rounded,
+                ),
+                
+                const SizedBox(height: 40),
+                
+                // زر حفظ واحد فقط
+                SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: ElevatedButton(
+                    onPressed: _isSaving ? null : _updateProfile,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                     ),
+                    child: _isSaving
+                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                        : const Text('حفظ التغييرات', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, fontFamily: 'Tajawal')),
                   ),
-                ]),
-              ),
+                ),
+              ],
             ),
     );
   }
 
-  Widget _field(TextEditingController ctrl, String label, IconData icon,
-      {int maxLines = 1, int? maxLength, TextInputType? keyboardType, String? Function(String?)? validator, String? hint}) {
-    return TextFormField(
-      controller: ctrl,
-      maxLines: maxLines,
-      maxLength: maxLength,
-      keyboardType: keyboardType,
-      validator: validator,
-      decoration: InputDecoration(
-        labelText: label,
-        hintText: hint,
-        prefixIcon: Icon(icon),
+  // حقل نص عادي - خط سفلي فقط بدون كرت
+  Widget _buildField({
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+  }) {
+    return Container(
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: AppColors.divider, width: 0.5)),
+      ),
+      child: TextField(
+        controller: controller,
+        style: const TextStyle(fontFamily: 'Tajawal', fontSize: 16, color: AppColors.text),
+        decoration: InputDecoration(
+          labelText: label,
+          labelStyle: const TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub),
+          prefixIcon: Icon(icon, color: AppColors.textSub, size: 22),
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(vertical: 16),
+        ),
+      ),
+    );
+  }
+
+  // حقل قابل للنقر - مع سهم >
+  Widget _buildTapField({
+    required String label,
+    required String value,
+    required IconData icon,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        decoration: const BoxDecoration(
+          border: Border(bottom: BorderSide(color: AppColors.divider, width: 0.5)),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: AppColors.textSub, size: 22),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label, style: const TextStyle(fontFamily: 'Tajawal', fontSize: 12, color: AppColors.textSub)),
+                  const SizedBox(height: 4),
+                  Text(value, style: const TextStyle(fontFamily: 'Tajawal', fontSize: 16, color: AppColors.text)),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_left_rounded, color: AppColors.textSub), // >
+          ],
+        ),
+      ),
+    );
+  }
+
+  // حقل Dropdown - مع سهم >
+  Widget _buildDropdownField({
+    required String label,
+    required String? value,
+    required IconData icon,
+    required List<String> items,
+    required ValueChanged<String?> onChanged,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: AppColors.divider, width: 0.5)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: AppColors.textSub, size: 22),
+          const SizedBox(width: 16),
+          Expanded(
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String>(
+                value: value,
+                hint: Text(label, style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub)),
+                isExpanded: true,
+                icon: const Icon(Icons.chevron_left_rounded, color: AppColors.textSub), // >
+                style: const TextStyle(fontFamily: 'Tajawal', fontSize: 16, color: AppColors.text),
+                items: items.map((e) => DropdownMenuItem(value: e, child: Text(e, style: const TextStyle(fontFamily: 'Tajawal')))).toList(),
+                onChanged: onChanged,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
