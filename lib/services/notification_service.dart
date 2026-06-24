@@ -52,8 +52,6 @@ class NotificationService {
           .update({'is_read': true})
           .eq('user_id', uid)
           .eq('is_read', false);
-      // اشعارات الادمن العامة ما نقدر نعلمها مقروءة للكل، 
-      // إذا تريدها per-user لازم جدول notifications_read منفصل
     } catch (e) {
       print('markAllRead error: $e');
     }
@@ -63,14 +61,18 @@ class NotificationService {
     await _supabase.from('notifications').delete().eq('id', notificationId);
   }
 
-  // هنا كان السبب
+  // ضفت هذي الدالة - كانت ناقصة
+  Future<void> deleteNotifications(List<String> ids) async {
+    if (ids.isEmpty) return;
+    await _supabase.from('notifications').delete().inFilter('id', ids);
+  }
+
   Stream<List<NotificationModel>> userNotifications(String uid) {
     return _supabase
         .from('notifications')
         .stream(primaryKey: ['id'])
         .order('created_at', ascending: false)
         .map((maps) {
-          // فلترة محلية: لي أو للكل
           final filtered = maps.where((m) => 
             m['user_id'] == null || m['user_id'] == uid
           ).toList();
