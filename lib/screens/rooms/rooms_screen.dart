@@ -119,12 +119,9 @@ class _RoomsScreenState extends State<RoomsScreen> {
                             name: nameCtrl.text.trim(),
                             description: descCtrl.text.trim().isEmpty? null : descCtrl.text.trim(),
                             ownerId: auth.user!.id,
-                            ownerName: auth.userProfile?['username']?? auth.user!.email?.split('@')[0]?? 'مجهول',
-                            ownerAvatar: auth.userProfile?['avatar_url'],
                             createdAt: DateTime.now(),
-                            updatedAt: DateTime.now(),
-                            members: [auth.user!.id],
-                            isActive: true,
+                            isActive: true, // الغرفة تبدأ مفتوحة
+                            onlineCount: 0,
                           );
                           try {
                             await _svc.createRoom(room, auth.user!.id);
