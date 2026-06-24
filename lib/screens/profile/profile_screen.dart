@@ -15,6 +15,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final supabase = Supabase.instance.client;
   final _usernameCtrl = TextEditingController();
   final _countryCtrl = TextEditingController();
+  final _statusCtrl = TextEditingController(); // جديد
   
   DateTime? _birthDate;
   String? _zodiac;
@@ -30,6 +31,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void dispose() {
     _usernameCtrl.dispose(); 
     _countryCtrl.dispose();
+    _statusCtrl.dispose(); // جديد
     super.dispose();
   }
 
@@ -41,6 +43,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (profile != null && mounted) {
         _usernameCtrl.text = profile['username'] ?? '';
         _countryCtrl.text = profile['country'] ?? '';
+        _statusCtrl.text = profile['status'] ?? ''; // جديد
         _zodiac = profile['zodiac'];
         _avatarUrl = profile['avatar_url'];
         final birth = profile['birth_date'];
@@ -90,6 +93,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final data = {
         'username': username,
         'country': _countryCtrl.text.trim().isEmpty ? null : _countryCtrl.text.trim(),
+        'status': _statusCtrl.text.trim().isEmpty ? null : _statusCtrl.text.trim(), // جديد
         'birth_date': _birthDate == null ? null : 
           '${_birthDate!.year}-${_birthDate!.month.toString().padLeft(2,'0')}-${_birthDate!.day.toString().padLeft(2,'0')}',
         'zodiac': _zodiac,
@@ -180,7 +184,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ]),
                   ),
                 ),
-                const SizedBox(height: 32),
+                
+                const SizedBox(height: 16),
+                
+                // خانة الحالة - جديدة تحت الصورة مباشرة
+                _buildStatusField(),
+                
+                const SizedBox(height: 24),
                 
                 // الاسم
                 _buildField(
@@ -237,7 +247,33 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // حقل نص عادي - خط سفلي فقط بدون كرت
+  // خانة الحالة الجديدة - مثل واتساب وانستا
+  Widget _buildStatusField() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppColors.glassBg,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.glassBorder, width: 0.5),
+      ),
+      child: TextField(
+        controller: _statusCtrl,
+        maxLength: 80,
+        maxLines: 2,
+        minLines: 1,
+        textAlign: TextAlign.center,
+        style: const TextStyle(fontFamily: 'Tajawal', fontSize: 14, color: AppColors.text),
+        decoration: const InputDecoration(
+          hintText: 'اكتب حالتك...',
+          hintStyle: TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub, fontSize: 14),
+          border: InputBorder.none,
+          counterText: '',
+          contentPadding: EdgeInsets.zero,
+        ),
+      ),
+    );
+  }
+
   Widget _buildField({
     required TextEditingController controller,
     required String label,
@@ -261,7 +297,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // حقل قابل للنقر - مع سهم >
   Widget _buildTapField({
     required String label,
     required String value,
@@ -289,14 +324,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ],
               ),
             ),
-            const Icon(Icons.chevron_left_rounded, color: AppColors.textSub), // >
+            const Icon(Icons.chevron_left_rounded, color: AppColors.textSub),
           ],
         ),
       ),
     );
   }
 
-  // حقل Dropdown - مع سهم >
   Widget _buildDropdownField({
     required String label,
     required String? value,
@@ -319,7 +353,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 value: value,
                 hint: Text(label, style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub)),
                 isExpanded: true,
-                icon: const Icon(Icons.chevron_left_rounded, color: AppColors.textSub), // >
+                icon: const Icon(Icons.chevron_left_rounded, color: AppColors.textSub),
                 style: const TextStyle(fontFamily: 'Tajawal', fontSize: 16, color: AppColors.text),
                 items: items.map((e) => DropdownMenuItem(value: e, child: Text(e, style: const TextStyle(fontFamily: 'Tajawal')))).toList(),
                 onChanged: onChanged,
