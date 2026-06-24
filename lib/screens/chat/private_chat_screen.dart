@@ -1,13 +1,13 @@
-import 'dart:ui';
+import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/constants/app_colors.dart';
 import '../../models/user_model.dart';
-import '../../providers/auth_provider.dart';
-import '../../services/profile_service.dart';
-import '../../widgets/user_avatar.dart';
+import '../../services/chat_service.dart';
+import '../../widgets/chat/chat_input_bar.dart';
+import '../../widgets/chat/message_bubble.dart';
 import '../../widgets/app_snackbar.dart';
-import 'user_profile_screen.dart';
+import '../../widgets/user_avatar.dart';
 
 class ProfileVisitorsScreen extends StatefulWidget {
   const ProfileVisitorsScreen({super.key});
