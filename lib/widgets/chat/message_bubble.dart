@@ -14,6 +14,7 @@ class MessageBubble extends StatefulWidget {
   final VoidCallback? onReply;
   final bool isRoom;
   final void Function(String messageId)? onDelete;
+  final VoidCallback? onAvatarTap;
 
   const MessageBubble({
     super.key,
@@ -23,6 +24,7 @@ class MessageBubble extends StatefulWidget {
     this.onReply,
     this.isRoom = true,
     this.onDelete,
+    this.onAvatarTap,
   });
 
   @override
@@ -95,7 +97,6 @@ class _MessageBubbleState extends State<MessageBubble> {
   String _formatDuration(Duration d) { final m = d.inMinutes.remainder(60).toString().padLeft(2, '0'); final s = d.inSeconds.remainder(60).toString().padLeft(2, '0'); return '$m:$s'; }
   String _formatTime(dynamic ts) { try { final dt = DateTime.parse(ts.toString()).toLocal(); final h = dt.hour % 12 == 0? 12 : dt.hour % 12; final m = dt.minute.toString().padLeft(2, '0'); final am = dt.hour < 12? 'ص' : 'م'; return '$h:$m $am'; } catch (_) { return ''; } }
 
-  // صحين موحد - يقرأ is_read و read_at الاثنين
   Widget _readTicks() {
     if (!widget.isMe) return const SizedBox.shrink();
     final msg = widget.message;
@@ -247,15 +248,15 @@ class _MessageBubbleState extends State<MessageBubble> {
           children: [
             if (!widget.isMe && widget.showAvatar)
               GestureDetector(
-                onTap: _openProfile,
+                onTap: widget.onAvatarTap?? _openProfile,
                 child: Padding(
                   padding: const EdgeInsets.only(right: 6),
                   child: CircleAvatar(
                     radius: 16, backgroundColor: AppColors.bgCard2,
                     backgroundImage: senderAvatar!= null && senderAvatar.toString().isNotEmpty
-              ? CachedNetworkImageProvider(senderAvatar) : null,
+          ? CachedNetworkImageProvider(senderAvatar) : null,
                     child: senderAvatar == null || senderAvatar.toString().isEmpty
-              ? Text(senderName.isNotEmpty? senderName[0] : '?',
+          ? Text(senderName.isNotEmpty? senderName[0] : '?',
                           style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.navy, fontWeight: FontWeight.w700))
                       : null,
                   ),
