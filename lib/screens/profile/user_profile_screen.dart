@@ -1,4 +1,6 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/constants/app_colors.dart';
@@ -6,7 +8,6 @@ import '../../models/user_model.dart';
 import '../../services/chat_service.dart';
 import '../../widgets/user_avatar.dart';
 import '../../widgets/app_snackbar.dart';
-import '../../widgets/activity_badge.dart';
 import '../chat/private_chat_screen.dart';
 
 class UserProfileScreen extends StatefulWidget {
@@ -29,15 +30,13 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   @override
   void initState() {
     super.initState();
-    _logVisit(); // NEW: تسجيل الزيارة
+    _logVisit();
     _checkBlock();
   }
 
-  // NEW: دالة تسجيل الزيارة
   Future<void> _logVisit() async {
     final meId = supabase.auth.currentUser?.id;
-    if (meId == null || meId == widget.userId) return; // لا تسجل زيارتك لنفسك
-    
+    if (meId == null || meId == widget.userId) return;
     try {
       await supabase.rpc('log_profile_visit', params: {'p_profile_id': widget.userId});
     } catch (e) {
@@ -109,23 +108,29 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     final ctrl = TextEditingController();
     return showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('سبب البلاغ'),
-        content: TextField(
-          controller: ctrl,
-          decoration: const InputDecoration(
-            hintText: 'اكتب السبب...',
+      builder: (ctx) => ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+          child: AlertDialog(
+            backgroundColor: AppColors.glassBg,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+            title: const Text('سبب البلاغ', style: TextStyle(fontFamily: 'Tajawal', fontWeight: FontWeight.w700)),
+            content: TextField(
+              controller: ctrl,
+              style: const TextStyle(fontFamily: 'Tajawal'),
+              decoration: const InputDecoration(
+                hintText: 'اكتب السبب...',
+                hintStyle: TextStyle(fontFamily: 'Tajawal'),
+                border: UnderlineInputBorder(),
+              ),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إلغاء', style: TextStyle(fontFamily: 'Tajawal'))),
+              TextButton(onPressed: () => Navigator.pop(ctx, ctrl.text.trim()), child: const Text('إرسال', style: TextStyle(fontFamily: 'Tajawal', fontWeight: FontWeight.w700))),
+            ],
           ),
         ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('إلغاء')),
-          ElevatedButton(
-              onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
-              child: const Text('إرسال')),
-        ],
       ),
     );
   }
@@ -137,7 +142,6 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       await _chat.reportUser(widget.userId, reason);
       if (mounted) showAppSnack(context, 'تم إرسال البلاغ للإدارة', success: true);
     } catch (e) {
-      debugPrint('REPORT ERROR: $e');
       if (mounted) showAppSnack(context, 'فشل البلاغ: $e', success: false);
     }
   }
@@ -185,51 +189,118 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     final isMe = supabase.auth.currentUser?.id == widget.userId;
     showModalBottomSheet(
       context: context,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (_) => SafeArea(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          if (!isMe) ...[
-            ListTile(
-              leading: Icon(
-                _iBlockedPeer ? Icons.lock_open_rounded : Icons.message_rounded,
-                color: _iBlockedPeer ? AppColors.warning : AppColors.primary,
-              ),
-              title: Text(
-                _peerBlockedMe ? 'محظور' : _iBlockedPeer ? 'إلغاء الحظر والمراسلة' : 'مراسلة خاصة'),
-              onTap: () {
-                Navigator.pop(context);
-                if (_peerBlockedMe) {
-                  showAppSnack(context, 'فشل الإرسال لأنك محظور من قبل هذا المستخدم', success: false);
-                  return;
-                }
-                if (_iBlockedPeer) {
-                  _unblockUser();
-                } else {
-                  _startChat(user);
-                }
-              },
+      backgroundColor: Colors.transparent,
+      builder: (_) => ClipRRect(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+          child: Container(
+            decoration: BoxDecoration(
+              color: AppColors.glassBg,
+              border: Border(top: BorderSide(color: AppColors.glassBorder, width: 0.5)),
             ),
-            if (!_peerBlockedMe)
-            ListTile(
-              leading: Icon(
-                _iBlockedPeer ? Icons.lock_open_rounded : Icons.block_rounded,
-                color: _iBlockedPeer ? AppColors.primary : AppColors.danger,
-              ),
-              title: Text(_iBlockedPeer ? 'إلغاء الحظر' : 'حظر المستخدم'),
-              onTap: () {
-                Navigator.pop(context);
-                _iBlockedPeer ? _unblockUser() : _blockUser();
-              },
+            child: SafeArea(
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                const SizedBox(height: 8),
+                Container(width: 40, height: 4, decoration: BoxDecoration(color: AppColors.divider, borderRadius: BorderRadius.circular(2))),
+                const SizedBox(height: 12),
+                if (!isMe) ...[
+                  _actionTile(
+                    icon: _iBlockedPeer ? Icons.lock_open_rounded : Icons.message_rounded,
+                    label: _peerBlockedMe ? 'محظور' : _iBlockedPeer ? 'إلغاء الحظر والمراسلة' : 'مراسلة خاصة',
+                    color: _iBlockedPeer ? AppColors.warning : AppColors.primary,
+                    onTap: () {
+                      Navigator.pop(context);
+                      if (_peerBlockedMe) {
+                        showAppSnack(context, 'فشل الإرسال لأنك محظور من قبل هذا المستخدم', success: false);
+                        return;
+                      }
+                      if (_iBlockedPeer) {
+                        _unblockUser();
+                      } else {
+                        _startChat(user);
+                      }
+                    },
+                  ),
+                  if (!_peerBlockedMe)
+                    _actionTile(
+                      icon: _iBlockedPeer ? Icons.lock_open_rounded : Icons.block_rounded,
+                      label: _iBlockedPeer ? 'إلغاء الحظر' : 'حظر المستخدم',
+                      color: _iBlockedPeer ? AppColors.primary : AppColors.danger,
+                      onTap: () {
+                        Navigator.pop(context);
+                        _iBlockedPeer ? _unblockUser() : _blockUser();
+                      },
+                    ),
+                  _actionTile(
+                    icon: Icons.flag_rounded,
+                    label: 'تبليغ للإدارة',
+                    color: AppColors.warning,
+                    onTap: () { Navigator.pop(context); _reportUser(user); },
+                  ),
+                ],
+                const SizedBox(height: 8),
+              ]),
             ),
-            ListTile(
-              leading: const Icon(Icons.flag_rounded, color: AppColors.warning),
-              title: const Text('تبليغ للإدارة'),
-              onTap: () { Navigator.pop(context); _reportUser(user); },
-            ),
-          ],
-          const SizedBox(height: 8),
-        ]),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // وسام النشاط: ماسة + حالة
+  Widget _activityBadge(UserModel user) {
+    final now = DateTime.now();
+    final created = user.createdAt;
+    final days = now.difference(created).inDays;
+    final lastSeen = user.lastSeen;
+    final minutesAgo = lastSeen == null ? 999999 : now.difference(lastSeen).inMinutes;
+
+    String label;
+    IconData icon;
+    Color color;
+
+    if (days < 7) {
+      label = 'جديد';
+      icon = Icons.auto_awesome_rounded;
+      color = AppColors.success;
+    } else if (days > 365) {
+      label = 'أسطوري';
+      icon = Icons.diamond_rounded;
+      color = const Color(0xFFFFD700); // ذهبي
+    } else if (minutesAgo < 5) {
+      label = 'نشط جداً';
+      icon = Icons.flash_on_rounded;
+      color = AppColors.online;
+    } else if (minutesAgo < 60) {
+      label = 'نشط';
+      icon = Icons.circle;
+      color = AppColors.online;
+    } else if (days < 90) {
+      label = 'متوسط';
+      icon = Icons.trending_up_rounded;
+      color = AppColors.primary;
+    } else {
+      label = 'قليل التواجد';
+      icon = Icons.schedule_rounded;
+      color = AppColors.textSub;
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color, width: 0.5),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: color, size: 16),
+          const SizedBox(width: 6),
+          Text(label, style: TextStyle(fontFamily: 'Tajawal', color: color, fontSize: 12, fontWeight: FontWeight.w700)),
+        ],
       ),
     );
   }
@@ -244,68 +315,206 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         final user = snap.data;
         final loading = snap.connectionState == ConnectionState.waiting;
         return Scaffold(
+          backgroundColor: AppColors.bg,
+          extendBodyBehindAppBar: true,
           appBar: AppBar(
-            title: Text(user?.username ?? 'الملف الشخصي'),
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            leading: IconButton(
+              icon: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.3),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 20),
+              ),
+              onPressed: () => Navigator.pop(context),
+            ),
             actions: [
               if (user != null && !isOwnProfile)
                 IconButton(
-                  icon: const Icon(Icons.more_vert_rounded),
+                  icon: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.3),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.more_vert_rounded, color: Colors.white, size: 20),
+                  ),
                   onPressed: () => _showUserActions(user),
                 ),
             ],
           ),
           body: loading
-            ? const Center(child: CircularProgressIndicator())
+            ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
               : user == null
-              ? const Center(child: Text('المستخدم غير موجود', style: TextStyle(color: AppColors.textSub)))
-                  : ListView(
-                      padding: const EdgeInsets.all(16),
-                      children: [
-                        _buildHeader(user),
-                        const SizedBox(height: 24),
-                        _buildActions(user),
-                        const SizedBox(height: 24),
-                        _buildInfo(user),
-                      ],
+              ? const Center(child: Text('المستخدم غير موجود', style: TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub)))
+                  : Container(
+                      decoration: const BoxDecoration(gradient: AppColors.bgGrad),
+                      child: ListView(
+                        padding: EdgeInsets.zero,
+                        children: [
+                          // صورة الغلاف + الأفاتار
+                          Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              Container(
+                                height: 200,
+                                width: double.infinity,
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    colors: [AppColors.primary.withOpacity(0.4), AppColors.primaryDark.withOpacity(0.2)],
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                  ),
+                                ),
+                              ),
+                              Positioned(
+                                bottom: -50,
+                                left: 0,
+                                right: 0,
+                                child: Center(
+                                  child: Stack(
+                                    children: [
+                                      Container(
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          border: Border.all(color: AppColors.bg, width: 4),
+                                        ),
+                                        child: UserAvatar(
+                                          url: user.avatarUrl,
+                                          name: user.username,
+                                          isOnline: user.isOnline && !_isBlocked,
+                                          size: 100,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+
+                          const SizedBox(height: 60),
+
+                          // الاسم + اليوزرنيم
+                          Center(
+                            child: Column(
+                              children: [
+                                Text(
+                                  user.username,
+                                  style: const TextStyle(fontFamily: 'Tajawal', fontSize: 24, fontWeight: FontWeight.w800, color: AppColors.text),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  '@${user.username}',
+                                  style: const TextStyle(fontFamily: 'Tajawal', fontSize: 14, color: AppColors.textSub),
+                                ),
+                                _activityBadge(user), // وسام النشاط
+                                if (_isBlocked) ...[
+                                  const SizedBox(height: 8),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.danger.withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(20),
+                                    ),
+                                    child: Text(
+                                      _peerBlockedMe ? 'تم حظرك' : 'محظور',
+                                      style: const TextStyle(color: AppColors.danger, fontSize: 12, fontWeight: FontWeight.w700, fontFamily: 'Tajawal'),
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+
+                          const SizedBox(height: 24),
+
+                          // معلومات: عمر + برج + دولة - بدون كروت، زجاجي مرتب
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 20),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(20),
+                              child: BackdropFilter(
+                                filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: AppColors.glassBg,
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(color: AppColors.glassBorder, width: 0.5),
+                                  ),
+                                  child: Column(
+                                    children: [
+                                      if (user.age != null) _infoRow(Icons.cake_rounded, 'العمر', '${user.age} سنة'),
+                                      if (user.zodiacResolved != null && user.zodiacResolved!.isNotEmpty) 
+                                        _infoRow(Icons.auto_awesome_rounded, 'البرج', user.zodiacResolved!),
+                                      _infoRow(Icons.location_on_rounded, 'الدولة', user.country ?? 'غير محدد', isLast: true),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+
+                          const SizedBox(height: 16),
+
+                          // البايو
+                          if (user.bio != null && user.bio!.trim().isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 20),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(20),
+                                child: BackdropFilter(
+                                  filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                                  child: Container(
+                                    width: double.infinity,
+                                    padding: const EdgeInsets.all(16),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.glassBg,
+                                      borderRadius: BorderRadius.circular(20),
+                                      border: Border.all(color: AppColors.glassBorder, width: 0.5),
+                                    ),
+                                    child: Text(
+                                      user.bio!,
+                                      style: const TextStyle(fontFamily: 'Tajawal', fontSize: 14, color: AppColors.text, height: 1.5),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+
+                          const SizedBox(height: 24),
+
+                          // الأزرار
+                          if (!_checkingBlock && meId != user.id) _buildActions(user),
+
+                          const SizedBox(height: 40),
+                        ],
+                      ),
                     ),
         );
       },
     );
   }
 
-  Widget _buildHeader(UserModel user) {
-    final bio = user.bio?.trim();
-    return Column(
-      children: [
-        UserAvatar(
-          url: user.avatarUrl,
-          name: user.username,
-          isOnline: user.isOnline && !_isBlocked,
-          size: 90,
-        ),
-        const SizedBox(height: 12),
-        Text(user.username, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
-        const SizedBox(height: 8),
-        if (bio != null && bio.isNotEmpty)
-          Text(bio, textAlign: TextAlign.center, style: const TextStyle(color: AppColors.textSub, fontSize: 14)),
-        const SizedBox(height: 8),
-        // NEW: وسام النشاط
-        ActivityBadge(createdAt: user.createdAt),
-        if (_isBlocked) ...[
-          const SizedBox(height: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            decoration: BoxDecoration(
-              color: AppColors.danger.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Text(
-              _peerBlockedMe ? 'تم حظرك' : 'محظور',
-              style: const TextStyle(color: AppColors.danger, fontSize: 12, fontWeight: FontWeight.w700),
-            ),
-          ),
+  Widget _infoRow(IconData icon, String label, String value, {bool isLast = false}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        border: isLast ? null : const Border(bottom: BorderSide(color: AppColors.divider, width: 0.5)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: AppColors.primary, size: 20),
+          const SizedBox(width: 12),
+          Text(label, style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub, fontSize: 14)),
+          const Spacer(),
+          Text(value, style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.text, fontSize: 14, fontWeight: FontWeight.w600)),
         ],
-      ],
+      ),
     );
   }
 
@@ -313,101 +522,100 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     final meId = supabase.auth.currentUser!.id;
     if (meId == user.id) return const SizedBox.shrink();
     if (_checkingBlock) {
-      return const Center(child: CircularProgressIndicator());
+      return const Center(child: CircularProgressIndicator(color: AppColors.primary));
     }
     if (_peerBlockedMe) {
-      return SizedBox(
-        width: double.infinity,
-        child: ElevatedButton.icon(
-          onPressed: () => showAppSnack(context, 'فشل الإرسال لأنك محظور من قبل هذا المستخدم', success: false),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppColors.bg,
-            foregroundColor: AppColors.textSub,
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        child: SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: ElevatedButton.icon(
+            onPressed: () => showAppSnack(context, 'فشل الإرسال لأنك محظور من قبل هذا المستخدم', success: false),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.glassBg,
+              foregroundColor: AppColors.textSub,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+                side: BorderSide(color: AppColors.glassBorder, width: 0.5),
+              ),
+            ),
+            icon: const Icon(Icons.block_rounded),
+            label: const Text('محظور', style: TextStyle(fontFamily: 'Tajawal', fontSize: 15, fontWeight: FontWeight.w700)),
           ),
-          icon: const Icon(Icons.block_rounded),
-          label: const Text('محظور'),
         ),
       );
     }
     if (_iBlockedPeer) {
-      return SizedBox(
-        width: double.infinity,
-        child: ElevatedButton.icon(
-          onPressed: _unblockUser,
-          style: ElevatedButton.styleFrom(backgroundColor: AppColors.danger),
-          icon: const Icon(Icons.lock_open_rounded),
-          label: const Text('إلغاء الحظر'),
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        child: SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: ElevatedButton.icon(
+            onPressed: _unblockUser,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.danger,
+              foregroundColor: Colors.white,
+              elevation: 0,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            ),
+            icon: const Icon(Icons.lock_open_rounded),
+            label: const Text('إلغاء الحظر', style: TextStyle(fontFamily: 'Tajawal', fontSize: 15, fontWeight: FontWeight.w700)),
+          ),
         ),
       );
     }
-    return SizedBox(
-      width: double.infinity,
-      child: ElevatedButton.icon(
-        onPressed: () => _startChat(user),
-        icon: const Icon(Icons.message_rounded),
-        label: const Text('مراسلة'),
-      ),
-    );
-  }
-
-  Widget _buildInfo(UserModel user) {
-    final age = user.age;
-    final zodiac = user.zodiacResolved;
-    final whatsapp = user.whatsapp;
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.card,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.glassBorder),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 12, offset: const Offset(0, 2))],
-      ),
-      child: Column(
-        children: [
-          if (age != null) ...[
-            _buildInfoRow(Icons.cake_rounded, 'العمر', '$age سنة'),
-            const Divider(),
-          ],
-          if (zodiac != null && zodiac.isNotEmpty) ...[
-            _buildInfoRow(Icons.auto_awesome_rounded, 'البرج', zodiac),
-            const Divider(),
-          ],
-          if (whatsapp != null && whatsapp.isNotEmpty && !_isBlocked) ...[
-            InkWell(
-              onTap: () => _openWhatsapp(whatsapp),
-              child: _buildInfoRow(Icons.phone_rounded, 'واتساب', whatsapp, isLink: true),
-            ),
-            const Divider(),
-          ],
-          _buildInfoRow(
-              Icons.calendar_today_rounded,
-              'تاريخ الانضمام',
-              '${user.createdAt.day}/${user.createdAt.month}/${user.createdAt.year}'),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildInfoRow(IconData icon, String label, String value, {bool isLink = false}) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Row(
         children: [
-          Icon(icon, color: AppColors.primary, size: 20),
+          Expanded(
+            child: SizedBox(
+              height: 52,
+              child: ElevatedButton.icon(
+                onPressed: () => _startChat(user),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                ),
+                icon: const Icon(Icons.message_rounded),
+                label: const Text('مراسلة', style: TextStyle(fontFamily: 'Tajawal', fontSize: 15, fontWeight: FontWeight.w700)),
+              ),
+            ),
+          ),
           const SizedBox(width: 12),
-          Text(label, style: const TextStyle(color: AppColors.textSub, fontSize: 14)),
-          const Spacer(),
-          Text(
-            value,
-            style: TextStyle(
-              color: isLink ? AppColors.primary : AppColors.text,
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              decoration: isLink ? TextDecoration.underline : null,
+          SizedBox(
+            width: 52,
+            height: 52,
+            child: ElevatedButton(
+              onPressed: () => _showUserActions(user),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.glassBg,
+                foregroundColor: AppColors.text,
+                elevation: 0,
+                padding: EdgeInsets.zero,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  side: BorderSide(color: AppColors.glassBorder, width: 0.5),
+                ),
+              ),
+              child: const Icon(Icons.more_horiz_rounded),
             ),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _actionTile({required IconData icon, required String label, required Color color, required VoidCallback onTap}) {
+    return ListTile(
+      leading: Icon(icon, color: color),
+      title: Text(label, style: TextStyle(fontFamily: 'Tajawal', color: color, fontWeight: FontWeight.w600)),
+      onTap: onTap,
     );
   }
 }
