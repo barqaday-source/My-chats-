@@ -170,9 +170,9 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
           children: [
             Expanded(
               child: _loading
-                ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+              ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
                   : _messages.isEmpty
-                  ? const Center(
+                ? const Center(
                         child: Text(
                           'ابدأ المحادثة',
                           style: TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub),
@@ -247,7 +247,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
 
   Widget _buildInputBar() {
     return Container(
-      padding: EdgeInsets.fromLTRB(12, 12, MediaQuery.of(context).padding.bottom + 12),
+      padding: EdgeInsets.fromLTRB(12, 12, 12, MediaQuery.of(context).padding.bottom + 12),
       decoration: BoxDecoration(
         color: AppColors.bgCard,
         border: const Border(top: BorderSide(color: AppColors.divider, width: 0.5)),
@@ -288,7 +288,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
                 shape: BoxShape.circle,
               ),
               child: _sending
-              ? const SizedBox(
+            ? const SizedBox(
                     width: 20,
                     height: 20,
                     child: CircularProgressIndicator(
