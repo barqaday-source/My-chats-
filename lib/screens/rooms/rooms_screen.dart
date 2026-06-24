@@ -43,13 +43,13 @@ class _RoomsScreenState extends State<RoomsScreen> {
 
   List<RoomModel> _filtered() {
     var list = _rooms;
-    
+
     // 1. البحث
     if (_search.isNotEmpty) {
       final q = _search.toLowerCase();
       list = list.where((r) => r.name.toLowerCase().contains(q)).toList();
     }
-    
+
     // 2. "الكل" = فقط المفتوحة، "النشطة" = مفتوحة + فيها متصلين
     if (_tab == 0) {
       // الكل: نخفي المغلقة نهائياً
@@ -59,7 +59,7 @@ class _RoomsScreenState extends State<RoomsScreen> {
       list = list.where((r) => r.isActive && r.onlineCount > 0).toList();
       list.sort((a, b) => b.onlineCount.compareTo(a.onlineCount));
     }
-    
+
     return list;
   }
 
@@ -113,7 +113,7 @@ class _RoomsScreenState extends State<RoomsScreen> {
                       height: 48,
                       child: ElevatedButton(
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.primary, 
+                          backgroundColor: AppColors.primary,
                           foregroundColor: Colors.white,
                           elevation: 0,
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
@@ -129,7 +129,10 @@ class _RoomsScreenState extends State<RoomsScreen> {
                             name: nameCtrl.text.trim(),
                             description: descCtrl.text.trim().isEmpty? null : descCtrl.text.trim(),
                             ownerId: auth.user!.id,
+                            ownerName: auth.userProfile?['username']?? auth.user!.email?.split('@')[0]?? 'مجهول',
+                            ownerAvatar: auth.userProfile?['avatar_url'],
                             createdAt: DateTime.now(),
+                            updatedAt: DateTime.now(),
                             isActive: true,
                             onlineCount: 0,
                           );
@@ -204,9 +207,9 @@ class _RoomsScreenState extends State<RoomsScreen> {
                     border: Border.all(color: AppColors.glassBorder, width: 0.5)
                   ),
                   child: IconButton(
-                    icon: const Icon(Icons.add_rounded, color: AppColors.primary, size: 22), 
-                    onPressed: () => _showCreateRoom(context), 
-                    padding: const EdgeInsets.all(8), 
+                    icon: const Icon(Icons.add_rounded, color: AppColors.primary, size: 22),
+                    onPressed: () => _showCreateRoom(context),
+                    padding: const EdgeInsets.all(8),
                     constraints: const BoxConstraints()
                   ),
                 ),
@@ -232,7 +235,7 @@ class _RoomsScreenState extends State<RoomsScreen> {
                   style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.text),
                   decoration: const InputDecoration(
                     prefixIcon: Icon(Icons.search_rounded, color: AppColors.textSub, size: 20),
-                    hintText: 'ابحث عن غرفة...', 
+                    hintText: 'ابحث عن غرفة...',
                     hintStyle: TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub),
                     contentPadding: EdgeInsets.symmetric(vertical: 12),
                     border: InputBorder.none,
@@ -250,12 +253,12 @@ class _RoomsScreenState extends State<RoomsScreen> {
             itemBuilder: (_, i) => GestureDetector(
               onTap: () => setState(() => _tab = i),
               child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200), 
-                margin: const EdgeInsets.only(right: 8), 
+                duration: const Duration(milliseconds: 200),
+                margin: const EdgeInsets.only(right: 8),
                 padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
                 decoration: BoxDecoration(
-                  color: _tab == i? AppColors.primary : AppColors.glassBg, 
-                  borderRadius: BorderRadius.circular(20), 
+                  color: _tab == i? AppColors.primary : AppColors.glassBg,
+                  borderRadius: BorderRadius.circular(20),
                   border: Border.all(color: _tab == i? AppColors.primaryDark : AppColors.glassBorder, width: 0.5),
                   boxShadow: _tab == i? [BoxShadow(color: AppColors.primary.withOpacity(0.2), blurRadius: 8)] : null,
                 ),
@@ -268,7 +271,7 @@ class _RoomsScreenState extends State<RoomsScreen> {
         // القائمة
         Expanded(
           child: _loading
-? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+           ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
               : RefreshIndicator(
                   onRefresh: _load, color: AppColors.primary,
                   child: Builder(builder: (_) {
@@ -281,14 +284,14 @@ class _RoomsScreenState extends State<RoomsScreen> {
                           const Text('لا توجد غرف بعد', style: TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub, fontSize: 14)),
                           const SizedBox(height: 12),
                           ElevatedButton.icon(
-                            onPressed: () => _showCreateRoom(context), 
+                            onPressed: () => _showCreateRoom(context),
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: AppColors.primary, 
+                              backgroundColor: AppColors.primary,
                               foregroundColor: Colors.white,
                               elevation: 0,
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                            ), 
-                            icon: const Icon(Icons.add_rounded, size: 18), 
+                            ),
+                            icon: const Icon(Icons.add_rounded, size: 18),
                             label: const Text('أنشئ أول غرفة', style: TextStyle(fontFamily: 'Tajawal'))
                           ),
                         ]))),
@@ -327,8 +330,8 @@ class _RoomCard extends StatelessWidget {
           border: Border.all(color: AppColors.glassBorder, width: 0.5),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.05), 
-              blurRadius: 15, 
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 15,
               offset: const Offset(0, 4)
             )
           ],
@@ -348,7 +351,7 @@ class _RoomCard extends StatelessWidget {
                       AspectRatio(
                         aspectRatio: 16/9,
                         child: room.imageUrl!= null && room.imageUrl!.isNotEmpty
-                        ? CachedNetworkImage(
+                       ? CachedNetworkImage(
                                 imageUrl: room.imageUrl!,
                                 fit: BoxFit.cover,
                                 errorWidget: (_, __, ___) => _roomPlaceholder(),
@@ -367,7 +370,7 @@ class _RoomCard extends StatelessWidget {
                           ),
                         ),
                       ),
-                      
+
                       // أيقونة قفل صغيرة إذا الغرفة مغلقة
                       if (!room.isActive)
                         Positioned(
@@ -380,8 +383,8 @@ class _RoomCard extends StatelessWidget {
                               shape: BoxShape.circle,
                             ),
                             child: const Icon(
-                              Icons.lock_rounded, 
-                              color: Colors.white, 
+                              Icons.lock_rounded,
+                              color: Colors.white,
                               size: 16
                             ),
                           ),
@@ -431,7 +434,7 @@ class _RoomCard extends StatelessWidget {
                           ],
                         ),
                       ),
-                      
+
                       // أيقونة الإعدادات للمالك
                       if (isOwner)
                         Positioned(
@@ -458,7 +461,7 @@ class _RoomCard extends StatelessWidget {
                         ),
                     ],
                   ),
-                  
+
                   // معلومات الغرفة
                   Padding(
                     padding: const EdgeInsets.all(16),
@@ -495,10 +498,10 @@ class _RoomCard extends StatelessWidget {
                             // حالة الغرفة - نشطة/مغلقة
                             StreamBuilder<List<Map<String, dynamic>>>(
                               stream: supabase
-                              .from('room_members')
-                              .stream(primaryKey: ['id'])
-                              .eq('room_id', room.id)
-                              .map((rows) => rows.where((m) => m['is_online'] == true).toList()),
+                             .from('room_members')
+                             .stream(primaryKey: ['id'])
+                             .eq('room_id', room.id)
+                             .map((rows) => rows.where((m) => m['is_online'] == true).toList()),
                               initialData: const [],
                               builder: (context, snap) {
                                 final onlineCount = snap.data?.length?? room.onlineCount;
@@ -509,7 +512,7 @@ class _RoomCard extends StatelessWidget {
                                     color: active? AppColors.success.withOpacity(0.15) : AppColors.danger.withOpacity(0.1),
                                     borderRadius: BorderRadius.circular(20),
                                     border: Border.all(
-                                      color: active? AppColors.success : AppColors.danger, 
+                                      color: active? AppColors.success : AppColors.danger,
                                       width: 0.5
                                     ),
                                   ),
@@ -526,7 +529,7 @@ class _RoomCard extends StatelessWidget {
                                       ),
                                       const SizedBox(width: 6),
                                       Text(
-                                      !room.isActive? 'مغلقة' : active? '$onlineCount متصل' : 'غير نشطة',
+                                     !room.isActive? 'مغلقة' : active? '$onlineCount متصل' : 'غير نشطة',
                                         style: TextStyle(
                                           fontFamily: 'Tajawal',
                                           color: active? AppColors.success : AppColors.danger,
@@ -542,8 +545,8 @@ class _RoomCard extends StatelessWidget {
                             const Spacer(),
                             // سهم > للدخول
                             Icon(
-                              Icons.chevron_left_rounded, 
-                              color: room.isActive? AppColors.primary : AppColors.textSub, 
+                              Icons.chevron_left_rounded,
+                              color: room.isActive? AppColors.primary : AppColors.textSub,
                               size: 24
                             ),
                           ],
