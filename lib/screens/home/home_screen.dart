@@ -21,12 +21,12 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  int _tab = 1; // نبدأ بالغرف
+  int _tab = 1;
   int _notifCount = 0;
   late final NotificationService _notifService;
   late final AuthProvider _authProvider;
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
-  Map<String, dynamic>? _userProfile; // جديد: بيانات البروفايل
+  Map<String, dynamic>? _userProfile;
 
   @override
   void initState() {
@@ -35,20 +35,19 @@ class _HomeScreenState extends State<HomeScreen> {
     _notifService = NotificationService();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadNotifCount();
-      _loadUserProfile(); // جديد: نجيب بيانات البروفايل
+      _loadUserProfile();
     });
   }
 
-  // جديد: جلب بيانات البروفايل من جدول profiles
   Future<void> _loadUserProfile() async {
     final uid = _authProvider.user?.id;
     if (uid == null) return;
     try {
       final res = await Supabase.instance.client
-        .from('profiles')
-        .select('username, avatar_url')
-        .eq('id', uid)
-        .single();
+       .from('profiles')
+       .select('username, avatar_url')
+       .eq('id', uid)
+       .single();
       if (mounted) setState(() => _userProfile = res);
     } catch (e) {
       debugPrint('_loadUserProfile error: $e');
@@ -98,7 +97,7 @@ class _HomeScreenState extends State<HomeScreen> {
             if (_tab == 2)
               IconButton(
                 onPressed: () => Navigator.push(context, MaterialPageRoute(
-                  builder: (_) => const ProfileVisitsScreen() // عدلت الاسم
+                  builder: (_) => const ProfileVisitsScreen()
                 )),
                 icon: const Icon(Icons.visibility_rounded, color: AppColors.white),
                 tooltip: 'زوار ملفي',
@@ -135,8 +134,8 @@ class _HomeScreenState extends State<HomeScreen> {
       );
 
   Widget _buildModernDrawer() {
-    final username = _userProfile?['username']?? 'مستخدم'; // عدلت
-    final avatarUrl = _userProfile?['avatar_url']; // عدلت
+    final username = _userProfile?['username']?? 'مستخدم';
+    final avatarUrl = _userProfile?['avatar_url'];
 
     return Drawer(
       backgroundColor: AppColors.bgCard,
@@ -149,6 +148,77 @@ class _HomeScreenState extends State<HomeScreen> {
                 children: [
                   CircleAvatar(
                     radius: 24,
-                    backgroundImage: avatarUrl!= null? NetworkImage(avatarUrl) : null, // عدلت
-                    child: avatarUrl == null // عدلت
-                  ? Text(username[0].toUpperCase(), // ع
+                    backgroundImage: avatarUrl!= null? NetworkImage(avatarUrl) : null,
+                    child: avatarUrl == null
+                  ? Text(username[0].toUpperCase(),
+                          style: const TextStyle(fontFamily: 'Tajawal', fontWeight: FontWeight.w700))
+                      : null,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(username,
+                          style: const TextStyle(
+                            fontFamily: 'Tajawal',
+                            color: AppColors.white,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 16
+                          )
+                        ),
+                        const Text('عرض الملف الشخصي',
+                          style: TextStyle(
+                            fontFamily: 'Tajawal',
+                            color: AppColors.textSub,
+                            fontSize: 12
+                          )
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close_rounded, color: AppColors.white),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(color: AppColors.divider),
+            _drawerItem(Icons.person_rounded, 'الملف الشخصي', () {
+              Navigator.pop(context);
+              setState(() => _tab = 2);
+            }),
+            _drawerItem(Icons.visibility_rounded, 'زوار ملفي', () {
+              Navigator.pop(context);
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfileVisitsScreen()));
+            }),
+            _drawerItem(Icons.settings_rounded, 'الإعدادات', () {
+              Navigator.pop(context);
+            }),
+            const Spacer(),
+            _drawerItem(Icons.logout_rounded, 'تسجيل خروج', () {
+              Navigator.pop(context);
+              context.read<AuthProvider>().signOut();
+            }, isDestructive: true),
+            const SizedBox(height: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _drawerItem(IconData icon, String title, VoidCallback onTap, {bool isDestructive = false}) {
+    return ListTile(
+      leading: Icon(icon, color: isDestructive? AppColors.danger : AppColors.white),
+      title: Text(title,
+        style: TextStyle(
+          fontFamily: 'Tajawal',
+          color: isDestructive? AppColors.danger : AppColors.white,
+          fontWeight: FontWeight.w600
+        )
+      ),
+      onTap: onTap,
+    );
+  }
+}
