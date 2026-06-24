@@ -43,13 +43,23 @@ class _RoomsScreenState extends State<RoomsScreen> {
 
   List<RoomModel> _filtered() {
     var list = _rooms;
+    
+    // 1. البحث
     if (_search.isNotEmpty) {
       final q = _search.toLowerCase();
       list = list.where((r) => r.name.toLowerCase().contains(q)).toList();
     }
-    if (_tab == 1) {
-      return list.where((r) => r.isActive && r.onlineCount > 0).toList();
+    
+    // 2. "الكل" = فقط المفتوحة، "النشطة" = مفتوحة + فيها متصلين
+    if (_tab == 0) {
+      // الكل: نخفي المغلقة نهائياً
+      list = list.where((r) => r.isActive).toList();
+    } else {
+      // النشطة: مفتوحة + فيها متصلين + ترتيب تنازلي حسب العدد
+      list = list.where((r) => r.isActive && r.onlineCount > 0).toList();
+      list.sort((a, b) => b.onlineCount.compareTo(a.onlineCount));
     }
+    
     return list;
   }
 
@@ -120,7 +130,7 @@ class _RoomsScreenState extends State<RoomsScreen> {
                             description: descCtrl.text.trim().isEmpty? null : descCtrl.text.trim(),
                             ownerId: auth.user!.id,
                             createdAt: DateTime.now(),
-                            isActive: true, // الغرفة تبدأ مفتوحة
+                            isActive: true,
                             onlineCount: 0,
                           );
                           try {
