@@ -16,92 +16,134 @@ class AppBottomNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => SafeArea(
-        bottom: true, // 👈 رفع الشريط ذكياً فوق أزرار نظام الأندرويد لضمان حساسية الضغط
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 12), // تنسيق المسافات ليعطي مظهراً عائماً فخماً
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(28),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20), // تأثير الزجاج الضبابي (Glassmorphism)
-              child: Container(
-                height: 64,
-                decoration: BoxDecoration(
-                  color: AppColors.navBar.withOpacity(0.92), // البياض النقي الشفاف المتناسق مع الثيم
-                  borderRadius: BorderRadius.circular(28),
-                  border: Border.all(color: AppColors.glassBorder, width: 0.8),
+        top: false, // نلغي الحماية من فوق عشان يلزق
+        bottom: true,
+        child: ClipRect( // بدل ClipRRect عشان الحواف مستقيمة
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15), // زجاجي 2026
+            child: Container(
+              height: 64,
+              decoration: BoxDecoration(
+                color: AppColors.bgCard.withOpacity(0.7), // زجاجي مو أبيض صافي
+                border: Border(
+                  top: BorderSide(color: AppColors.glassBorder, width: 0.5), // خط علوي فقط
                 ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: [
-                    _item(0, Icons.chat_bubble_outline_rounded, Icons.chat_bubble_rounded, 'الدردشات'),
-                    _item(1, Icons.meeting_room_outlined, Icons.meeting_room_rounded, 'الغرف'),
-                    _item(2, Icons.person_outline_rounded, Icons.person_rounded, 'الملف'),
-                    _notifItem(), // ✅ الإشعارات مكان المنيو
-                  ],
-                ),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  _item(0, Icons.chat_bubble_outline_rounded, Icons.chat_bubble_rounded),
+                  _item(1, Icons.meeting_room_outlined, Icons.meeting_room_rounded),
+                  _item(2, Icons.person_outline_rounded, Icons.person_rounded),
+                  _notifItem(), // الإشعارات
+                ],
               ),
             ),
           ),
         ),
       );
 
-  Widget _item(int idx, IconData icon, IconData activeIcon, String label) => GestureDetector(
-        onTap: () => onTap(idx),
-        behavior: HitTestBehavior.opaque, // يوسع مساحة الضغط لتشمل كامل محيط الأيقونة
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: current == idx ? AppColors.primary.withOpacity(0.15) : Colors.transparent, // الخلفية النعناعية الشفيفة عند التفعيل
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Icon(
-            current == idx ? activeIcon : icon,
-            color: current == idx ? AppColors.primary : AppColors.textSub, // النعناعي الأساسي للنشط والرمادي للمطفي
-            size: 24,
+  Widget _item(int idx, IconData icon, IconData activeIcon) => Expanded(
+        child: InkWell(
+          onTap: () => onTap(idx),
+          splashColor: Colors.transparent, // بدون انميشن دائري
+          highlightColor: Colors.transparent,
+          child: SizedBox(
+            height: 64,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // أيقونة Outline تتملي عند التفعيل
+                AnimatedScale(
+                  scale: current == idx ? 1.1 : 1.0,
+                  duration: const Duration(milliseconds: 250), // أنميشن 2026 ناعم
+                  curve: Curves.easeOut,
+                  child: Icon(
+                    current == idx ? activeIcon : icon,
+                    color: current == idx ? AppColors.primary : AppColors.textSub,
+                    size: 26,
+                  ),
+                ),
+                // خط صغير تحت الأيقونة النشطة - ستايل يوتيوب
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 250),
+                  curve: Curves.easeOut,
+                  margin: const EdgeInsets.only(top: 4),
+                  height: 2,
+                  width: current == idx ? 20 : 0,
+                  decoration: BoxDecoration(
+                    color: AppColors.primary,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       );
 
-  Widget _notifItem() => GestureDetector(
-        onTap: () => onTap(3), // ✅ اندكس 3 للإشعارات
-        behavior: HitTestBehavior.opaque,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: current == 3 ? AppColors.primary.withOpacity(0.15) : Colors.transparent,
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Stack(
-            clipBehavior: Clip.none,
-            children: [
-              Icon(
-                current == 3 ? Icons.notifications_rounded : Icons.notifications_none_rounded,
-                color: current == 3 ? AppColors.primary : AppColors.textSub,
-                size: 24,
-              ),
-              if (notifCount > 0)
-                Positioned(
-                  right: -2,
-                  top: -2,
-                  child: Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: const BoxDecoration(
-                      color: AppColors.danger, // لون التنبيه الأحمر الصافي الثابت عندك
-                      shape: BoxShape.circle,
-                    ),
-                    child: Text(
-                      '$notifCount',
-                      style: const TextStyle(
-                        color: AppColors.white,
-                        fontSize: 8,
-                        fontWeight: FontWeight.bold,
+  Widget _notifItem() => Expanded(
+        child: InkWell(
+          onTap: () => onTap(3),
+          splashColor: Colors.transparent,
+          highlightColor: Colors.transparent,
+          child: SizedBox(
+            height: 64,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                AnimatedScale(
+                  scale: current == 3 ? 1.1 : 1.0,
+                  duration: const Duration(milliseconds: 250),
+                  curve: Curves.easeOut,
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Icon(
+                        current == 3 ? Icons.notifications_rounded : Icons.notifications_none_rounded,
+                        color: current == 3 ? AppColors.primary : AppColors.textSub,
+                        size: 26,
                       ),
-                    ),
+                      if (notifCount > 0)
+                        Positioned(
+                          right: -4,
+                          top: -4,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: AppColors.danger,
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: AppColors.bgCard, width: 1.5),
+                            ),
+                            constraints: const BoxConstraints(minWidth: 18),
+                            child: Text(
+                              notifCount > 99 ? '99+' : '$notifCount',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                fontFamily: 'Tajawal',
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
                 ),
-            ],
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 250),
+                  curve: Curves.easeOut,
+                  margin: const EdgeInsets.only(top: 4),
+                  height: 2,
+                  width: current == 3 ? 20 : 0,
+                  decoration: BoxDecoration(
+                    color: AppColors.primary,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       );
