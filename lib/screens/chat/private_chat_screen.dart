@@ -1,358 +1,238 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/constants/app_colors.dart';
 import '../../models/user_model.dart';
-import '../../services/chat_service.dart';
-import '../../widgets/chat/chat_input_bar.dart';
-import '../../widgets/chat/message_bubble.dart';
-import '../../widgets/app_snackbar.dart';
 import '../../widgets/user_avatar.dart';
-import '../../widgets/status_chip.dart';
-import '../profile/user_profile_screen.dart'; // NEW
+import '../../widgets/app_snackbar.dart';
+import '../profile/user_profile_screen.dart';
 
-class PrivateChatScreen extends StatefulWidget {
-  final String chatId;
-  final UserModel peer;
-  const PrivateChatScreen({super.key, required this.chatId, required this.peer});
+class SearchUsersScreen extends StatefulWidget {
+  const SearchUsersScreen({super.key});
 
   @override
-  State<PrivateChatScreen> createState() => _PrivateChatScreenState();
+  State<SearchUsersScreen> createState() => _SearchUsersScreenState();
 }
 
-class _PrivateChatScreenState extends State<PrivateChatScreen> {
+class _SearchUsersScreenState extends State<SearchUsersScreen> {
   final supabase = Supabase.instance.client;
-  final _chat = ChatService();
-  final ScrollController _scroll = ScrollController();
-
-  late String _chatId;
-  bool _creatingChat = true;
-  Map<String, dynamic>? _replyingTo;
-
-  // الحظر
-  bool _iBlockedPeer = false;
-  bool _peerBlockedMe = false;
-  bool get _isBlocked => _iBlockedPeer || _peerBlockedMe;
-  bool _checkingBlock = true;
-
-  // لمنع سبام القراءة
-  DateTime _lastReadMark = DateTime.fromMillisecondsSinceEpoch(0);
+  final _searchController = TextEditingController();
+  List<UserModel> _users = [];
+  bool _loading = true; // يبدي يحمل مباشرة
 
   @override
   void initState() {
     super.initState();
-    _initChat();
+    _loadRecentUsers(); // أول ما تفتح يجيب أحدث المسجلين
   }
 
-  Future<void> _initChat() async {
-    var cid = widget.chatId;
-    if (cid.isEmpty || cid == 'new') {
-      final meId = supabase.auth.currentUser!.id;
-      final ids = [meId, widget.peer.id]..sort();
-      cid = ids.join('_');
-    }
-    if (mounted) setState(() {
-      _chatId = cid;
-      _creatingChat = false;
-    });
-
-    await _checkBlock();
-    // علّم مقروء أول ما تفتح
-    if (!_isBlocked) _markReadThrottled();
-  }
-
-  Future<void> _checkBlock() async {
-    setState(() => _checkingBlock = true);
+  // يجيب أحدث 50 يوزر مسجل
+  Future<void> _loadRecentUsers() async {
+    setState(() => _loading = true);
     try {
-      final meId = supabase.auth.currentUser!.id;
-      final blocking = await supabase
-       .from('blocked_users')
-       .select('blocker_id')
-       .eq('blocker_id', meId)
-       .eq('blocked_id', widget.peer.id)
-       .maybeSingle();
+      final meId = supabase.auth.currentUser?.id;
+      final res = await supabase
+       .from('profiles')
+       .select('id, username, avatar_url, is_online, created_at, status_text')
+       .neq('id', meId?? '') // لا تطلع نفسك
+       .order('created_at', ascending: false) // الأحدث أول
+       .limit(50);
 
-      final blockedBy = await supabase
-       .from('blocked_users')
-       .select('blocker_id')
-       .eq('blocker_id', widget.peer.id)
-       .eq('blocked_id', meId)
-       .maybeSingle();
-
-      if (mounted) setState(() {
-        _iBlockedPeer = blocking!= null;
-        _peerBlockedMe = blockedBy!= null;
-      });
-    } finally {
-      if (mounted) setState(() => _checkingBlock = false);
-    }
-  }
-
-  Future<void> _unblock() async {
-    if (!_iBlockedPeer) {
-      showAppSnack(context, 'فشل الإرسال لأنك محظور من قبل هذا المستخدم', success: false);
-      return;
-    }
-    try {
-      await _chat.unblockUser(widget.peer.id);
       if (mounted) {
         setState(() {
-          _iBlockedPeer = false;
-          _peerBlockedMe = false;
+          _users = res.map((e) => UserModel.fromJson(e)).toList();
+          _loading = false;
         });
-        showAppSnack(context, 'تم إلغاء الحظر', success: true);
       }
     } catch (e) {
-      showAppSnack(context, 'فشل إلغاء الحظر: $e', success: false);
-    }
-  }
-
-  void _markReadThrottled() {
-    if (_isBlocked) return;
-    final now = DateTime.now();
-    if (now.difference(_lastReadMark).inSeconds < 2) return;
-    _lastReadMark = now;
-    _chat.markPrivateMessagesRead(_chatId);
-  }
-
-  void _scrollToBottom({bool force = false}) {
-    if (!_scroll.hasClients) return;
-    final max = _scroll.position.maxScrollExtent;
-    final current = _scroll.position.pixels;
-    // لا تقفز بوجهه إذا صاعد يقرأ قديم
-    if (!force && max - current > 200) return;
-
-    Future.delayed(const Duration(milliseconds: 80), () {
-      if (_scroll.hasClients) {
-        _scroll.animateTo(
-          _scroll.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 250),
-          curve: Curves.easeOut,
-        );
+      debugPrint('Load users error: $e');
+      if (mounted) {
+        setState(() => _loading = false);
+        showAppSnack(context, 'فشل تحميل المستخدمين', success: false);
       }
-    });
+    }
   }
 
-  Future<void> _send(String text, File? image, File? audioFile, int audioDuration) async {
-    if (_peerBlockedMe) {
-      showAppSnack(context, 'فشل الإرسال لأنك محظور من قبل هذا المستخدم', success: false);
+  // البحث
+  Future<void> _search(String query) async {
+    if (query.trim().isEmpty) {
+      _loadRecentUsers(); // إذا مسح البحث، رجع الأحدث
       return;
     }
-    if (_iBlockedPeer) {
-      showAppSnack(context, 'لا يمكنك المراسلة، هذا المستخدم محظور', success: false);
-      return;
-    }
-    if (text.trim().isEmpty && image == null && audioFile == null) return;
+
+    setState(() => _loading = true);
 
     try {
-      await _chat.sendPrivateMessageEx(
-        chatId: _chatId,
-        peerId: widget.peer.id,
-        content: text,
-        imageFile: image,
-        audioFile: audioFile,
-        audioDuration: audioDuration,
-        replyMessage: _replyingTo,
-      );
-      if (mounted) setState(() => _replyingTo = null);
-      _scrollToBottom(force: true);
-    } catch (e) {
-      if (!mounted) return;
-      final err = e.toString().toLowerCase();
-      if (err.contains('blocked')) {
-        await _checkBlock();
-        showAppSnack(context, _peerBlockedMe
-       ? 'فشل الإرسال لأنك محظور من قبل هذا المستخدم'
-          : 'لا يمكنك المراسلة، يوجد حظر', success: false);
-      } else if (err.contains('offline')) {
-        showAppSnack(context, 'تم حفظ الرسالة، سترسل عند عودة النت', success: true);
-      } else {
-        showAppSnack(context, 'فشل الإرسال: $e', success: false);
+      final meId = supabase.auth.currentUser?.id;
+      final res = await supabase
+       .from('profiles')
+       .select('id, username, avatar_url, is_online, created_at, status_text')
+       .ilike('username', '%$query%') // بحث جزئي
+       .neq('id', meId?? '')
+       .limit(50);
+
+      if (mounted) {
+        setState(() {
+          _users = res.map((e) => UserModel.fromJson(e)).toList();
+          _loading = false;
+        });
       }
+    } catch (e) {
+      debugPrint('Search error: $e');
+      if (mounted) setState(() => _loading = false);
     }
   }
 
-  // NEW: دالة فتح بروفايل الطرف الثاني
-  void _openPeerProfile() {
-    Navigator.push(context, MaterialPageRoute(
-      builder: (_) => UserProfileScreen(userId: widget.peer.id)
-    ));
-  }
-
-  Widget _buildBlockedBar() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: const BoxDecoration(
-        color: AppColors.bgCard,
-        border: Border(top: BorderSide(color: Color(0xFF2A2A2A))),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              _peerBlockedMe
-             ? 'تم حظرك من قبل هذا المستخدم'
-                : 'لا يمكنك مراسلة هذا المستخدم',
-              style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub, fontSize: 14),
-            ),
-          ),
-          if (_iBlockedPeer)
-          TextButton(
-            onPressed: _unblock,
-            child: const Text(
-              'إلغاء الحظر',
-              style: TextStyle(fontFamily: 'Tajawal', color: AppColors.primary, fontWeight: FontWeight.w700),
-            ),
-          ),
-        ],
+  void _openProfile(UserModel user) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => UserProfileScreen(userId: user.id),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final currentUserId = supabase.auth.currentUser!.id;
-
-    if (_creatingChat || _checkingBlock) {
-      return const Scaffold(
-        backgroundColor: AppColors.bg,
-        body: Center(child: CircularProgressIndicator(color: AppColors.primary)),
-      );
-    }
-
     return Scaffold(
       backgroundColor: AppColors.bg,
       appBar: AppBar(
         backgroundColor: AppColors.bgCard,
-        iconTheme: const IconThemeData(color: AppColors.white),
-        title: StreamBuilder<List<Map<String, dynamic>>>(
-          stream: supabase
-      .from('profiles')
-      .stream(primaryKey: ['id'])
-      .eq('id', widget.peer.id),
-          builder: (context, snap) {
-            final data = snap.data?.isNotEmpty == true? snap.data!.first : null;
-            final isOnline = data?['is_online']?? widget.peer.isOnline;
-            final avatarUrl = data?['avatar_url']?? widget.peer.avatarUrl;
-            final username = data?['username']?? widget.peer.username;
-            final statusText = (data?['status_text']?? widget.peer.statusText?? '').toString();
-
-            return Row(
-              children: [
-                UserAvatar(
-                  url: avatarUrl,
-                  name: username,
-                  isOnline: isOnline &&!_isBlocked,
-                  size: 36,
-                  onTap: _openPeerProfile, // NEW: الضغط عالصورة يفتح البروفايل
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      GestureDetector( // NEW: حتى الضغط عالاسم يفتح البروفايل
-                        onTap: _openPeerProfile,
-                        child: Text(username,
-                          style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.white, fontSize: 16, fontWeight: FontWeight.w600),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      // NEW: الحالة اليومية، إذا فاضية نرجع للحالة القديمة
-                      if (_peerBlockedMe)...[
-                        const Text('تم حظرك',
-                          style: TextStyle(fontFamily: 'Tajawal', color: AppColors.danger, fontSize: 12),
-                        ),
-                      ] else if (_iBlockedPeer)...[
-                        const Text('محظور',
-                          style: TextStyle(fontFamily: 'Tajawal', color: AppColors.danger, fontSize: 12),
-                        ),
-                      ] else if (statusText.isNotEmpty)...[
-                        StatusChip(statusText),
-                      ] else...[
-                        Text(isOnline? 'متصل' : 'غير متصل',
-                          style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub, fontSize: 12),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ],
-            );
-          },
+        title: const Text(
+          'المستخدمون',
+          style: TextStyle(fontFamily: 'Tajawal', fontWeight: FontWeight.w700),
         ),
       ),
       body: Column(
         children: [
-          Expanded(
-            child: StreamBuilder<List<Map<String, dynamic>>>(
-              stream: _chat.getPrivateMessagesStream(_chatId),
-              builder: (context, snap) {
-                if (snap.hasError) {
-                  return Center(child: Text('خطأ: ${snap.error}', style: const TextStyle(color: AppColors.danger, fontFamily: 'Tajawal')));
-                }
-                if (!snap.hasData) {
-                  return const Center(child: CircularProgressIndicator(color: AppColors.primary));
-                }
-
-                final messages = snap.data!;
-
-                // علّم مقروء بس إذا أكو رسائل جديدة من الطرف الثاني
-                if (messages.isNotEmpty &&!_isBlocked) {
-                  final hasUnread = messages.any((m) =>
-                    m['sender_id']!= currentUserId &&
-                    m['is_read']!= true && m['read_at'] == null
-                  );
-                  if (hasUnread) {
-                    WidgetsBinding.instance.addPostFrameCallback((_) => _markReadThrottled());
-                  }
-                }
-
-                if (messages.isEmpty) {
-                  return Center(
-                    child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                      Icon(Icons.chat_bubble_outline_rounded, size: 56, color: AppColors.textSub.withOpacity(0.5)),
-                      const SizedBox(height: 12),
-                      Text(_isBlocked
-                    ? (_peerBlockedMe? 'تم حظرك من قبل هذا المستخدم' : 'لا يمكن عرض الرسائل أثناء الحظر')
-                        : 'ابدأ المحادثة مع ${widget.peer.username}',
-                        style: const TextStyle(color: AppColors.textSub, fontFamily: 'Tajawal')),
-                    ]),
-                  );
-                }
-
-                WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
-
-                return ListView.builder(
-                  controller: _scroll,
-                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
-                  itemCount: messages.length,
-                  itemBuilder: (_, i) {
-                    final msg = messages[i];
-                    final isMe = msg['sender_id'] == currentUserId;
-                    return MessageBubble(
-                      key: ValueKey(msg['id']),
-                      message: msg,
-                      isMe: isMe,
-                      showAvatar: false,
-                      isRoom: false,
-                      onReply: _isBlocked? null : () => setState(() => _replyingTo = msg),
-                      onDelete: (_) {},
-                    );
-                  },
-                );
-              },
+          // حقل البحث - BorderRadius 16 فخم
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: TextField(
+              controller: _searchController,
+              onChanged: _search,
+              style: const TextStyle(fontFamily: 'Tajawal'),
+              decoration: InputDecoration(
+                hintText: 'ابحث عن مستخدم...',
+                hintStyle: const TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub),
+                prefixIcon: const Icon(Icons.search_rounded, color: AppColors.textSub),
+                suffixIcon: _searchController.text.isNotEmpty
+                 ? IconButton(
+                      icon: const Icon(Icons.clear_rounded, color: AppColors.textSub),
+                      onPressed: () {
+                        _searchController.clear();
+                        _loadRecentUsers();
+                      },
+                    )
+                  : null,
+                filled: true,
+                fillColor: AppColors.bgCard,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16), // Premium: 16
+                  borderSide: BorderSide.none,
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide.none,
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
+                ),
+              ),
             ),
           ),
-          if (_isBlocked)
-            _buildBlockedBar()
-          else
-            ChatInputBar(
-              onSend: _send,
-              replyTo: _replyingTo,
-              onCancelReply: () => setState(() => _replyingTo = null),
-            ),
+
+          // الليست
+          Expanded(
+            child: _loading
+             ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+              : _users.isEmpty
+               ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.person_search_rounded, 
+                          size: 64, 
+                          color: AppColors.textSub.withOpacity(0.5)
+                        ),
+                        const SizedBox(height: 16),
+                        const Text(
+                          'لا يوجد مستخدمين',
+                          style: TextStyle(
+                            fontFamily: 'Tajawal',
+                            color: AppColors.textSub,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                : ListView.separated(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    itemCount: _users.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                    itemBuilder: (context, index) {
+                      final user = _users[index];
+                      return InkWell(
+                        onTap: () => _openProfile(user),
+                        borderRadius: BorderRadius.circular(16), // Premium: 16
+                        child: Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: AppColors.bgCard,
+                            borderRadius: BorderRadius.circular(16), // Premium: 16
+                            border: Border.all(color: AppColors.glassBorder),
+                          ),
+                          child: Row(
+                            children: [
+                              UserAvatar(
+                                url: user.avatarUrl,
+                                name: user.username,
+                                isOnline: user.isOnline,
+                                size: 48,
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      user.username,
+                                      style: const TextStyle(
+                                        fontFamily: 'Tajawal',
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w600,
+                                        color: AppColors.text,
+                                      ),
+                                    ),
+                                    if (user.statusText!= null && user.statusText!.isNotEmpty)...[
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        user.statusText!,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          fontFamily: 'Tajawal',
+                                          fontSize: 13,
+                                          color: AppColors.textSub,
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                              const Icon(
+                                Icons.chevron_left_rounded,
+                                color: AppColors.textSub,
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+          ),
         ],
       ),
     );
@@ -360,7 +240,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
 
   @override
   void dispose() {
-    _scroll.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 }
