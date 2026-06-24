@@ -60,9 +60,9 @@ class _ProfileVisitorsScreenState extends State<ProfileVisitorsScreen> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
-        toolbarHeight: 80, // نزلناه شوي
+        toolbarHeight: 80,
         title: const Padding(
-          padding: EdgeInsets.only(top: 12), // ينزل 12px
+          padding: EdgeInsets.only(top: 12),
           child: Text(
             'زوار ملفي',
             style: TextStyle(
@@ -76,9 +76,9 @@ class _ProfileVisitorsScreenState extends State<ProfileVisitorsScreen> {
       body: Container(
         decoration: const BoxDecoration(gradient: AppColors.bgGrad),
         child: _loading
-           ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+         ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
             : _visitors.isEmpty
-               ? _buildEmptyState()
+             ? _buildEmptyState()
                 : RefreshIndicator(
                     onRefresh: _loadVisitors,
                     color: AppColors.primary,
@@ -126,7 +126,7 @@ class _ProfileVisitorsScreenState extends State<ProfileVisitorsScreen> {
 
   Widget _buildVisitorTile(Map<String, dynamic> visitor) {
     final userId = visitor['visitor_id'] as String;
-    final username = visitor['username'] as String??? 'مستخدم';
+    final username = visitor['username'] as String??? 'مستخدم'; // صلحت??? إلى??
     final avatarUrl = visitor['avatar_url'] as String?;
     final visitedAt = DateTime.parse(visitor['visited_at'] as String);
 
