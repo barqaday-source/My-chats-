@@ -9,12 +9,13 @@ class UserModel extends Equatable {
   final String? whatsapp;
   final DateTime? birthDate;
   final String? zodiac;
+  final String? country; // NEW
   final String role;
   final bool isOnline;
   final bool isBlocked;
   final DateTime? lastSeen;
   final DateTime createdAt;
-  final String? statusText; // NEW
+  final String? statusText;
 
   // legacy - للتوافق فقط
   final bool isMod;
@@ -31,12 +32,13 @@ class UserModel extends Equatable {
     this.whatsapp,
     this.birthDate,
     this.zodiac,
+    this.country, // NEW
     this.role = 'user',
     this.isOnline = false,
     this.isBlocked = false,
     this.lastSeen,
     required this.createdAt,
-    this.statusText, // NEW
+    this.statusText,
     this.isMod = false,
     this.followersCount = 0,
     this.followingCount = 0,
@@ -90,12 +92,13 @@ class UserModel extends Equatable {
       whatsapp: json['whatsapp'] as String?,
       birthDate: _parseDate(json['birth_date']),
       zodiac: json['zodiac'] as String?,
+      country: json['country'] as String?, // NEW
       role: json['role'] as String? ?? 'user',
       isOnline: json['is_online'] as bool? ?? false,
       isBlocked: json['is_banned'] as bool? ?? json['is_blocked'] as bool? ?? false,
       lastSeen: _parseDate(json['last_seen']),
       createdAt: _parseDate(json['created_at']) ?? DateTime.now(),
-      statusText: json['status_text'] as String?, // NEW
+      statusText: json['status_text'] as String?,
       isMod: json['is_mod'] as bool? ?? false,
       followersCount: (json['followers_count'] as num?)?.toInt() ?? 0,
       followingCount: (json['following_count'] as num?)?.toInt() ?? 0,
@@ -115,13 +118,14 @@ class UserModel extends Equatable {
       'whatsapp': whatsapp,
       'birth_date': birthDate?.toIso8601String().split('T').first,
       'zodiac': zodiac,
+      'country': country, // NEW
       'role': role,
       'is_online': isOnline,
       'is_banned': isBlocked,
       'is_blocked': isBlocked,
       'last_seen': lastSeen?.toIso8601String(),
       'created_at': createdAt.toIso8601String(),
-      'status_text': statusText, // NEW
+      'status_text': statusText,
     };
   }
 
@@ -140,13 +144,15 @@ class UserModel extends Equatable {
     bool clearBirthDate = false,
     String? zodiac,
     bool clearZodiac = false,
+    String? country, // NEW
+    bool clearCountry = false, // NEW
     String? role,
     bool? isOnline,
     bool? isBlocked,
     DateTime? lastSeen,
     DateTime? createdAt,
-    String? statusText, // NEW
-    bool clearStatusText = false, // NEW
+    String? statusText,
+    bool clearStatusText = false,
   }) {
     return UserModel(
       id: id ?? this.id,
@@ -157,12 +163,13 @@ class UserModel extends Equatable {
       whatsapp: clearWhatsapp ? null : whatsapp ?? this.whatsapp,
       birthDate: clearBirthDate ? null : birthDate ?? this.birthDate,
       zodiac: clearZodiac ? null : zodiac ?? this.zodiac,
+      country: clearCountry ? null : country ?? this.country, // NEW
       role: role ?? this.role,
       isOnline: isOnline ?? this.isOnline,
       isBlocked: isBlocked ?? this.isBlocked,
       lastSeen: lastSeen ?? this.lastSeen,
       createdAt: createdAt ?? this.createdAt,
-      statusText: clearStatusText ? null : statusText ?? this.statusText, // NEW
+      statusText: clearStatusText ? null : statusText ?? this.statusText,
       isMod: isMod,
       followersCount: followersCount,
       followingCount: followingCount,
@@ -173,8 +180,8 @@ class UserModel extends Equatable {
   @override
   List<Object?> get props => [
     id, username, email, avatarUrl, bio, whatsapp,
-    birthDate, zodiac, role, isOnline, isBlocked, lastSeen, createdAt,
-    statusText // NEW
+    birthDate, zodiac, country, role, isOnline, isBlocked, lastSeen, createdAt,
+    statusText
   ];
 
   @override
