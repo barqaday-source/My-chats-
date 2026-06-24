@@ -1,6 +1,8 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/constants/app_colors.dart';
 import '../../services/chat_service.dart';
 import '../../screens/profile/user_profile_screen.dart';
@@ -31,19 +33,82 @@ class MessageBubble extends StatefulWidget {
   State<MessageBubble> createState() => _MessageBubbleState();
 }
 
-class _MessageBubbleState extends State<MessageBubble> {
+class _MessageBubbleState extends State<MessageBubble> with SingleTickerProviderStateMixin {
   final _player = AudioPlayer();
+  final _chat = ChatService();
+  final _supabase = Supabase.instance.client;
   bool _isPlaying = false;
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
+  bool _showReactions = false;
+  List<Map<String, dynamic>> _reactions = [];
+  late AnimationController _animCtrl;
+  late Animation<double> _scaleAnim;
+
+  final List<String> _emojis = ['❤️', '😂', '😮', '😢', '😡', '👍'];
 
   @override
   void initState() {
     super.initState();
+    _animCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 200));
+    _scaleAnim = CurvedAnimation(parent: _animCtrl, curve: Curves.easeOutBack);
+    _animCtrl.forward();
+
     _player.onPlayerStateChanged.listen((s) { if (mounted) setState(() => _isPlaying = s == PlayerState.playing); });
     _player.onPositionChanged.listen((p) { if (mounted) setState(() => _position = p); });
     _player.onDurationChanged.listen((d) { if (mounted) setState(() => _duration = d); });
     _player.onPlayerComplete.listen((_) { if (mounted) setState(() { _isPlaying = false; _position = Duration.zero; }); });
+
+    _loadReactions();
+    _listenReactions();
+  }
+
+  void _loadReactions() async {
+    final msgId = widget.message['id'].toString();
+    try {
+      final res = await _supabase
+         .from('message_reactions')
+         .select('user_id, emoji, profiles!message_reactions_user_id_fkey(username)')
+         .eq('message_id', msgId);
+      if (mounted) setState(() => _reactions = List<Map<String, dynamic>>.from(res));
+    } catch (_) {}
+  }
+
+  void _listenReactions() {
+    final msgId = widget.message['id'].toString();
+    _supabase
+       .channel('reactions_$msgId')
+       .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'message_reactions',
+          filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'message_id', value: msgId),
+          callback: (payload) => _loadReactions(),
+        )
+       .subscribe();
+  }
+
+  Future<void> _toggleReaction(String emoji) async {
+    final msgId = widget.message['id'].toString();
+    final userId = _supabase.auth.currentUser!.id;
+    try {
+      final existing = _reactions.firstWhere(
+        (r) => r['user_id'] == userId && r['emoji'] == emoji,
+        orElse: () => {},
+      );
+      if (existing.isNotEmpty) {
+        await _supabase.from('message_reactions').delete().eq('message_id', msgId).eq('user_id', userId).eq('emoji', emoji);
+      } else {
+        await _supabase.from('message_reactions').insert({
+          'message_id': msgId,
+          'user_id': userId,
+          'emoji': emoji,
+        });
+      }
+      setState(() => _showReactions = false);
+    } catch (_) {
+      if (mounted) showAppSnack(context, 'فشل التفاعل', success: false);
+    }
   }
 
   Future<void> _deleteMessage() async {
@@ -51,7 +116,7 @@ class _MessageBubbleState extends State<MessageBubble> {
       final msg = widget.message;
       final imageUrl = msg['image_url']?? msg['media_url'];
       final audioUrl = msg['audio_url'];
-      final ok = await ChatService().deleteMessage(
+      final ok = await _chat.deleteMessage(
         msg['id'].toString(),
         isRoom: widget.isRoom,
         imageUrl: imageUrl,
@@ -69,15 +134,60 @@ class _MessageBubbleState extends State<MessageBubble> {
     }
   }
 
+  void _showOptions() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => ClipRRect(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+          child: Container(
+            decoration: BoxDecoration(
+              color: AppColors.glassBg,
+              border: Border(top: BorderSide(color: AppColors.glassBorder, width: 0.5)),
+            ),
+            child: SafeArea(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const SizedBox(height: 8),
+                  Container(width: 40, height: 4, decoration: BoxDecoration(color: AppColors.divider, borderRadius: BorderRadius.circular(2))),
+                  const SizedBox(height: 16),
+                  _optionTile(Icons.reply_rounded, 'رد', () {
+                    Navigator.pop(ctx);
+                    widget.onReply?.call();
+                  }),
+                  if (widget.isMe) _optionTile(Icons.delete_rounded, 'حذف', () {
+                    Navigator.pop(ctx);
+                    _showDeleteDialog();
+                  }, color: AppColors.danger),
+                  const SizedBox(height: 8),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _optionTile(IconData icon, String label, VoidCallback onTap, {Color? color}) => ListTile(
+        leading: Icon(icon, color: color?? AppColors.text),
+        title: Text(label, style: TextStyle(fontFamily: 'Tajawal', color: color?? AppColors.text, fontWeight: FontWeight.w600)),
+        onTap: onTap,
+      );
+
   void _showDeleteDialog() {
     showDialog(context: context, builder: (ctx) => AlertDialog(
       backgroundColor: AppColors.bgCard,
-      title: const Text('حذف الرسالة', style: TextStyle(color: AppColors.white, fontFamily: 'Tajawal')),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      title: const Text('حذف الرسالة', style: TextStyle(color: AppColors.text, fontFamily: 'Tajawal', fontWeight: FontWeight.w700)),
       content: const Text('هل تريد حذف هذه الرسالة؟', style: TextStyle(color: AppColors.textSub, fontFamily: 'Tajawal')),
       actions: [
         TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إلغاء', style: TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub))),
         TextButton(onPressed: () { Navigator.pop(ctx); _deleteMessage(); },
-          child: const Text('حذف', style: TextStyle(color: AppColors.danger, fontFamily: 'Tajawal'))),
+          child: const Text('حذف', style: TextStyle(color: AppColors.danger, fontFamily: 'Tajawal', fontWeight: FontWeight.w700))),
       ],
     ));
   }
@@ -126,13 +236,72 @@ class _MessageBubbleState extends State<MessageBubble> {
                 margin: const EdgeInsets.symmetric(horizontal: 1),
                 height: h,
                 decoration: BoxDecoration(
-                  color: active? AppColors.navy : AppColors.primary.withOpacity(0.45),
+                  color: active? AppColors.primary : AppColors.primary.withOpacity(0.3),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
             );
           }),
         ),
+      ),
+    );
+  }
+
+  Widget _reactionBar() {
+    return Positioned(
+      top: -44,
+      left: widget.isMe? null : 0,
+      right: widget.isMe? 0 : null,
+      child: ScaleTransition(
+        scale: _scaleAnim,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(24),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              decoration: BoxDecoration(
+                color: AppColors.glassBg,
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(color: AppColors.glassBorder, width: 0.5),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: _emojis.map((e) => GestureDetector(
+                  onTap: () => _toggleReaction(e),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 6),
+                    child: Text(e, style: const TextStyle(fontSize: 24)),
+                  ),
+                )).toList(),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _reactionCounts() {
+    if (_reactions.isEmpty) return const SizedBox.shrink();
+    final grouped = <String, int>{};
+    for (final r in _reactions) {
+      final emoji = r['emoji'] as String;
+      grouped[emoji] = (grouped[emoji]?? 0) + 1;
+    }
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Wrap(
+        spacing: 4,
+        children: grouped.entries.map((e) => Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          decoration: BoxDecoration(
+            color: AppColors.glassBg,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.glassBorder, width: 0.5),
+          ),
+          child: Text('${e.key} ${e.value}', style: const TextStyle(fontSize: 11, fontFamily: 'Tajawal')),
+        )).toList(),
       ),
     );
   }
@@ -148,6 +317,7 @@ class _MessageBubbleState extends State<MessageBubble> {
 
     final replyText = widget.message['reply_to_text']?? widget.message['reply_content'];
     final replyType = widget.message['reply_to_type']?? 'text';
+    final replySender = widget.message['reply_to_sender_name'];
     String? replyContent;
     if (replyText!= null) {
       replyContent = replyText;
@@ -155,47 +325,60 @@ class _MessageBubbleState extends State<MessageBubble> {
       if (replyType == 'audio') replyContent = '🎤 رسالة صوتية';
     }
 
-    final bubbleColor = widget.isMe? const Color(0xFFE6F7F3) : Colors.white;
-    final borderColor = widget.isMe? AppColors.primary.withOpacity(0.3) : AppColors.glassBorder;
-
     Widget bubbleContent = Column(
       crossAxisAlignment: widget.isMe? CrossAxisAlignment.end : CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
         if (!widget.isMe && widget.showAvatar)
           Padding(padding: const EdgeInsets.only(bottom: 4),
-            child: Text(senderName, style: const TextStyle(fontFamily: 'Tajawal', fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.navy))),
+            child: Text(senderName, style: const TextStyle(fontFamily: 'Tajawal', fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.primary))),
+
+        // الرد على رسالة
         if (replyContent!= null) Container(
           margin: const EdgeInsets.only(bottom: 6),
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(color: Colors.black.withOpacity(0.06), borderRadius: BorderRadius.circular(8),
-            border: const Border(right: BorderSide(color: AppColors.primary, width: 3))),
-          child: Text(replyContent, maxLines: 1, overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontFamily: 'Tajawal', fontSize: 12, color: AppColors.textSub))),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: Colors.black.withOpacity(0.04),
+            borderRadius: BorderRadius.circular(12),
+            border: Border(right: BorderSide(color: AppColors.primary, width: 3))
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (replySender!= null)
+                Text(replySender, style: const TextStyle(fontFamily: 'Tajawal', fontSize: 11, color: AppColors.primary, fontWeight: FontWeight.w700)),
+              Text(replyContent, maxLines: 1, overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontFamily: 'Tajawal', fontSize: 12, color: AppColors.textSub)),
+            ],
+          )),
+
+        // صورة
         if (imageUrl!= null && imageUrl.toString().isNotEmpty)
           GestureDetector(
             onTap: () => _openImageViewer(imageUrl.toString()),
-            child: ClipRRect(borderRadius: BorderRadius.circular(12),
+            child: ClipRRect(borderRadius: BorderRadius.circular(14),
               child: CachedNetworkImage(imageUrl: imageUrl, width: 220, fit: BoxFit.cover,
                 placeholder: (c, u) => Container(width: 220, height: 140, color: AppColors.bgCard2,
                   child: const Center(child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary))),
                 errorWidget: (c, u, e) => Container(width: 220, height: 140, color: AppColors.bgCard2,
                   child: const Icon(Icons.broken_image_rounded, color: AppColors.textSub)))),
           ),
+
+        // صوت
         if (audioUrl!= null && audioUrl.toString().isNotEmpty)
           Container(
             width: 240,
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             decoration: BoxDecoration(
-              color: AppColors.primary.withOpacity(0.12),
-              borderRadius: BorderRadius.circular(10),
+              color: AppColors.primary.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(14),
             ),
             child: Row(children: [
               GestureDetector(
                 onTap: () async { if (_isPlaying) { await _player.pause(); } else { await _player.play(UrlSource(audioUrl)); } },
                 child: Container(
                   width: 36, height: 36,
-                  decoration: const BoxDecoration(color: AppColors.navy, shape: BoxShape.circle),
+                  decoration: const BoxDecoration(color: AppColors.primary, shape: BoxShape.circle),
                   child: Icon(_isPlaying? Icons.pause_rounded : Icons.play_arrow_rounded, color: Colors.white, size: 22),
                 ),
               ),
@@ -204,13 +387,16 @@ class _MessageBubbleState extends State<MessageBubble> {
               const SizedBox(width: 8),
               Text(
                 _duration.inSeconds > 0? _formatDuration(_isPlaying? _position : _duration) : '0:00',
-                style: const TextStyle(fontFamily: 'Tajawal', fontSize: 11, color: AppColors.navy, fontWeight: FontWeight.w600),
+                style: const TextStyle(fontFamily: 'Tajawal', fontSize: 11, color: AppColors.primary, fontWeight: FontWeight.w600),
               ),
             ]),
           ),
+
+        // نص
         if (content.isNotEmpty)
           Padding(padding: EdgeInsets.only(top: (imageUrl!= null || audioUrl!= null)? 6 : 0),
             child: Text(content, style: const TextStyle(fontFamily: 'Tajawal', fontSize: 15, color: AppColors.text, height: 1.4))),
+
         const SizedBox(height: 4),
         Row(
           mainAxisSize: MainAxisSize.min,
@@ -222,48 +408,98 @@ class _MessageBubbleState extends State<MessageBubble> {
       ],
     );
 
-    final bubble = Container(
-      constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.72),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: bubbleColor,
-        borderRadius: BorderRadius.only(
-          topLeft: const Radius.circular(18), topRight: const Radius.circular(18),
-          bottomLeft: Radius.circular(widget.isMe? 18 : 4),
-          bottomRight: Radius.circular(widget.isMe? 4 : 18)),
-        border: Border.all(color: borderColor),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 6, offset: const Offset(0, 2))],
+    final bubble = ClipRRect(
+      borderRadius: BorderRadius.only(
+        topLeft: const Radius.circular(18), topRight: const Radius.circular(18),
+        bottomLeft: Radius.circular(widget.isMe? 18 : 4),
+        bottomRight: Radius.circular(widget.isMe? 4 : 18)),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+        child: Container(
+          constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.72),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: widget.isMe? AppColors.primary.withOpacity(0.15) : AppColors.glassBg,
+            borderRadius: BorderRadius.only(
+              topLeft: const Radius.circular(18), topRight: const Radius.circular(18),
+              bottomLeft: Radius.circular(widget.isMe? 18 : 4),
+              bottomRight: Radius.circular(widget.isMe? 4 : 18)),
+            border: Border.all(color: widget.isMe? AppColors.primary.withOpacity(0.3) : AppColors.glassBorder, width: 0.5),
+          ),
+          child: bubbleContent,
+        ),
       ),
-      child: bubbleContent,
     );
 
     return GestureDetector(
-      onLongPress: widget.isMe? _showDeleteDialog : null,
+      onLongPress: () {
+        setState(() => _showReactions =!_showReactions);
+        if (_showReactions) _animCtrl.forward(from: 0);
+      },
       onHorizontalDragEnd: (_) => widget.onReply?.call(),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-        child: Row(
-          mainAxisAlignment: widget.isMe? MainAxisAlignment.end : MainAxisAlignment.start,
-          crossAxisAlignment: CrossAxisAlignment.end,
+        child: Stack(
+          clipBehavior: Clip.none,
           children: [
-            if (!widget.isMe && widget.showAvatar)
-              GestureDetector(
-                onTap: widget.onAvatarTap?? _openProfile,
-                child: Padding(
-                  padding: const EdgeInsets.only(right: 6),
-                  child: CircleAvatar(
-                    radius: 16, backgroundColor: AppColors.bgCard2,
-                    backgroundImage: senderAvatar!= null && senderAvatar.toString().isNotEmpty
-          ? CachedNetworkImageProvider(senderAvatar) : null,
-                    child: senderAvatar == null || senderAvatar.toString().isEmpty
-          ? Text(senderName.isNotEmpty? senderName[0] : '?',
-                          style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.navy, fontWeight: FontWeight.w700))
-                      : null,
+            Row(
+              mainAxisAlignment: widget.isMe? MainAxisAlignment.end : MainAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                if (!widget.isMe && widget.showAvatar)
+                  GestureDetector(
+                    onTap: widget.onAvatarTap?? _openProfile,
+                    child: Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: CircleAvatar(
+                        radius: 16, backgroundColor: AppColors.bgCard2,
+                        backgroundImage: senderAvatar!= null && senderAvatar.toString().isNotEmpty
+             ? CachedNetworkImageProvider(senderAvatar) : null,
+                        child: senderAvatar == null || senderAvatar.toString().isEmpty
+             ? Text(senderName.isNotEmpty? senderName[0] : '?',
+                              style: const TextStyle(fontFamily: 'Tajawal', color: AppColors.primary, fontWeight: FontWeight.w700))
+                          : null,
+                      ),
+                    ),
+                  ),
+                if (!widget.isMe &&!widget.showAvatar) const SizedBox(width: 38),
+                Flexible(
+                  child: Column(
+                    crossAxisAlignment: widget.isMe? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                    children: [
+                      bubble,
+                      _reactionCounts(),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            if (_showReactions) _reactionBar(),
+            // زر حذف يظهر بالضغط المطول
+            if (_showReactions && widget.isMe)
+              Positioned(
+                bottom: -36,
+                right: widget.isMe? 0 : null,
+                left: widget.isMe? null : 0,
+                child: GestureDetector(
+                  onTap: _showDeleteDialog,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: AppColors.danger,
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.delete_rounded, color: Colors.white, size: 16),
+                        SizedBox(width: 4),
+                        Text('حذف', style: TextStyle(color: Colors.white, fontFamily: 'Tajawal', fontSize: 12, fontWeight: FontWeight.w600)),
+                      ],
+                    ),
                   ),
                 ),
               ),
-            if (!widget.isMe &&!widget.showAvatar) const SizedBox(width: 38),
-            Flexible(child: bubble),
           ],
         ),
       ),
@@ -271,5 +507,5 @@ class _MessageBubbleState extends State<MessageBubble> {
   }
 
   @override
-  void dispose() { _player.dispose(); super.dispose(); }
+  void dispose() { _player.dispose(); _animCtrl.dispose(); super.dispose(); }
 }
