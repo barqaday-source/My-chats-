@@ -1,94 +1,157 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
+import '../../models/chat_model.dart';
 import '../../models/user_model.dart';
+import '../../providers/auth_provider.dart';
+import '../../services/chat_service.dart';
 import '../../widgets/user_avatar.dart';
 import '../../widgets/app_snackbar.dart';
-import '../profile/user_profile_screen.dart';
+import 'private_chat_screen.dart';
+import '../users_grid_screen.dart';
 
-class SearchUsersScreen extends StatefulWidget {
-  const SearchUsersScreen({super.key});
+class ChatsListScreen extends StatefulWidget {
+  const ChatsListScreen({super.key});
 
   @override
-  State<SearchUsersScreen> createState() => _SearchUsersScreenState();
+  State<ChatsListScreen> createState() => _ChatsListScreenState();
 }
 
-class _SearchUsersScreenState extends State<SearchUsersScreen> {
-  final supabase = Supabase.instance.client;
-  final _searchController = TextEditingController();
-  List<UserModel> _users = [];
-  bool _loading = true; // يبدي يحمل مباشرة
+class _ChatsListScreenState extends State<ChatsListScreen> {
+  final _chatService = ChatService();
+  List<ChatModel> _chats = [];
+  bool _loading = true;
+  final Set<String> _removingIds = {};
 
   @override
   void initState() {
     super.initState();
-    _loadRecentUsers(); // أول ما تفتح يجيب أحدث المسجلين
+    _loadChats();
   }
 
-  // يجيب أحدث 50 يوزر مسجل
-  Future<void> _loadRecentUsers() async {
+  Future<void> _loadChats() async {
     setState(() => _loading = true);
     try {
-      final meId = supabase.auth.currentUser?.id;
-      final res = await supabase
-       .from('profiles')
-       .select('id, username, avatar_url, is_online, created_at, status_text')
-       .neq('id', meId?? '') // لا تطلع نفسك
-       .order('created_at', ascending: false) // الأحدث أول
-       .limit(50);
-
-      if (mounted) {
-        setState(() {
-          _users = res.map((e) => UserModel.fromJson(e)).toList();
-          _loading = false;
-        });
-      }
+      final user = context.read<AuthProvider>().user!;
+      final chats = await _chatService.getUserChats(user.id);
+      if (!mounted) return;
+      setState(() {
+        _chats = chats.map((c) => ChatModel.fromJson(c)).toList();
+        _loading = false;
+      });
     } catch (e) {
-      debugPrint('Load users error: $e');
       if (mounted) {
         setState(() => _loading = false);
-        showAppSnack(context, 'فشل تحميل المستخدمين', success: false);
+        showAppSnack(context, 'فشل تحميل المحادثات', success: false);
       }
     }
   }
 
-  // البحث
-  Future<void> _search(String query) async {
-    if (query.trim().isEmpty) {
-      _loadRecentUsers(); // إذا مسح البحث، رجع الأحدث
-      return;
-    }
-
-    setState(() => _loading = true);
-
-    try {
-      final meId = supabase.auth.currentUser?.id;
-      final res = await supabase
-       .from('profiles')
-       .select('id, username, avatar_url, is_online, created_at, status_text')
-       .ilike('username', '%$query%') // بحث جزئي
-       .neq('id', meId?? '')
-       .limit(50);
-
-      if (mounted) {
-        setState(() {
-          _users = res.map((e) => UserModel.fromJson(e)).toList();
-          _loading = false;
-        });
-      }
-    } catch (e) {
-      debugPrint('Search error: $e');
-      if (mounted) setState(() => _loading = false);
-    }
-  }
-
-  void _openProfile(UserModel user) {
+  void _openChat(ChatModel chat) {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => UserProfileScreen(userId: user.id),
+        builder: (_) => PrivateChatScreen(
+          chatId: chat.id,
+          peer: chat.peer,
+        ),
+      ),
+    ).then((_) => _loadChats());
+  }
+
+  Future<bool?> _showDeleteSheet(BuildContext context, String peerName) {
+    return showModalBottomSheet<bool>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => ClipRRect(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+            decoration: BoxDecoration(
+              color: AppColors.glassBg,
+              border: Border(top: BorderSide(color: AppColors.glassBorder, width: 0.5)),
+            ),
+            child: SafeArea(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(width: 40, height: 4, decoration: BoxDecoration(
+                    color: AppColors.divider, borderRadius: BorderRadius.circular(2),
+                  )),
+                  const SizedBox(height: 20),
+                  const Icon(Icons.delete_outline_rounded, size: 44, color: AppColors.danger),
+                  const SizedBox(height: 12),
+                  Text('حذف دردشة $peerName؟',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontFamily: 'Tajawal', fontSize: 17, fontWeight: FontWeight.w700, color: AppColors.text)),
+                  const SizedBox(height: 6),
+                  const Text('سيتم حذف المحادثة من جهازك فقط',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontFamily: 'Tajawal', fontSize: 13, color: AppColors.textSub)),
+                  const SizedBox(height: 20),
+                  Row(children: [
+                    Expanded(child: OutlinedButton(
+                      onPressed: () => Navigator.pop(ctx, false),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppColors.text,
+                        side: BorderSide(color: AppColors.glassBorder),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      child: const Text('إلغاء', style: TextStyle(fontFamily: 'Tajawal')),
+                    )),
+                    const SizedBox(width: 12),
+                    Expanded(child: FilledButton(
+                      onPressed: () => Navigator.pop(ctx, true),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AppColors.danger,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      child: const Text('حذف', style: TextStyle(fontFamily: 'Tajawal', fontWeight: FontWeight.w700)),
+                    )),
+                  ]),
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
     );
+  }
+
+  Future<void> _deleteChat(ChatModel chat) async {
+    final ok = await _showDeleteSheet(context, chat.peer.username);
+    if (ok!= true) return;
+
+    setState(() => _removingIds.add(chat.id));
+    await Future.delayed(const Duration(milliseconds: 200));
+
+    try {
+      await _chatService.clearChat(chat.id, isRoom: false);
+      if (!mounted) return;
+      setState(() {
+        _chats.removeWhere((c) => c.id == chat.id);
+        _removingIds.remove(chat.id);
+      });
+      showAppSnack(context, 'تم حذف الدردشة', success: true);
+    } catch (e) {
+      if (mounted) {
+        setState(() => _removingIds.remove(chat.id));
+        showAppSnack(context, 'فشل الحذف: $e', success: false);
+      }
+    }
+  }
+
+  void _openUsersSearch() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const UsersGridScreen()),
+    ).then((_) => _loadChats());
   }
 
   @override
@@ -96,151 +159,239 @@ class _SearchUsersScreenState extends State<SearchUsersScreen> {
     return Scaffold(
       backgroundColor: AppColors.bg,
       appBar: AppBar(
-        backgroundColor: AppColors.bgCard,
-        title: const Text(
-          'المستخدمون',
-          style: TextStyle(fontFamily: 'Tajawal', fontWeight: FontWeight.w700),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        title: const Text('المحادثات', style: TextStyle(fontFamily: 'Tajawal', fontWeight: FontWeight.w700)),
+      ),
+      body: Container(
+        decoration: const BoxDecoration(gradient: AppColors.bgGrad),
+        child: Column(
+          children: [
+            _buildUsersSearchButton(),
+            Expanded(
+              child: _loading
+        ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+                  : _chats.isEmpty
+           ? _buildEmptyState()
+                      : RefreshIndicator(
+                          onRefresh: _loadChats,
+                          color: AppColors.primary,
+                          child: ListView.separated(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            itemCount: _chats.length,
+                            separatorBuilder: (_, __) => const SizedBox(height: 4),
+                            itemBuilder: (context, index) {
+                              final chat = _chats[index];
+                              return _buildChatTile(chat);
+                            },
+                          ),
+                        ),
+            ),
+          ],
         ),
       ),
-      body: Column(
-        children: [
-          // حقل البحث - BorderRadius 16 فخم
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: TextField(
-              controller: _searchController,
-              onChanged: _search,
-              style: const TextStyle(fontFamily: 'Tajawal'),
-              decoration: InputDecoration(
-                hintText: 'ابحث عن مستخدم...',
-                hintStyle: const TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub),
-                prefixIcon: const Icon(Icons.search_rounded, color: AppColors.textSub),
-                suffixIcon: _searchController.text.isNotEmpty
-                 ? IconButton(
-                      icon: const Icon(Icons.clear_rounded, color: AppColors.textSub),
-                      onPressed: () {
-                        _searchController.clear();
-                        _loadRecentUsers();
-                      },
-                    )
-                  : null,
-                filled: true,
-                fillColor: AppColors.bgCard,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16), // Premium: 16
-                  borderSide: BorderSide.none,
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  borderSide: BorderSide.none,
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
-                ),
+    );
+  }
+
+  Widget _buildUsersSearchButton() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          child: InkWell(
+            onTap: _openUsersSearch,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              decoration: BoxDecoration(
+                color: AppColors.glassBg,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppColors.glassBorder, width: 0.5),
+              ),
+              child: const Row(
+                textDirection: TextDirection.rtl,
+                children: [
+                  Icon(Icons.person_search_outlined, color: AppColors.primary, size: 20),
+                  SizedBox(width: 12),
+                  Text(
+                    'ابحث عن أشخاص للدردشة...',
+                    style: TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub, fontSize: 14),
+                  ),
+                ],
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
 
-          // الليست
-          Expanded(
-            child: _loading
-             ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
-              : _users.isEmpty
-               ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.person_search_rounded, 
-                          size: 64, 
-                          color: AppColors.textSub.withOpacity(0.5)
-                        ),
-                        const SizedBox(height: 16),
-                        const Text(
-                          'لا يوجد مستخدمين',
-                          style: TextStyle(
-                            fontFamily: 'Tajawal',
-                            color: AppColors.textSub,
-                            fontSize: 16,
-                          ),
-                        ),
-                      ],
-                    ),
-                  )
-                : ListView.separated(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    itemCount: _users.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 8),
-                    itemBuilder: (context, index) {
-                      final user = _users[index];
-                      return InkWell(
-                        onTap: () => _openProfile(user),
-                        borderRadius: BorderRadius.circular(16), // Premium: 16
-                        child: Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: AppColors.bgCard,
-                            borderRadius: BorderRadius.circular(16), // Premium: 16
-                            border: Border.all(color: AppColors.glassBorder),
-                          ),
-                          child: Row(
-                            children: [
-                              UserAvatar(
-                                url: user.avatarUrl,
-                                name: user.username,
-                                isOnline: user.isOnline,
-                                size: 48,
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      user.username,
-                                      style: const TextStyle(
-                                        fontFamily: 'Tajawal',
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w600,
-                                        color: AppColors.text,
-                                      ),
-                                    ),
-                                    if (user.statusText!= null && user.statusText!.isNotEmpty)...[
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        user.statusText!,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          fontFamily: 'Tajawal',
-                                          fontSize: 13,
-                                          color: AppColors.textSub,
-                                        ),
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                              ),
-                              const Icon(
-                                Icons.chevron_left_rounded,
-                                color: AppColors.textSub,
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  ),
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.chat_bubble_outline_rounded, size: 64, color: AppColors.textSub.withOpacity(0.5)),
+          const SizedBox(height: 16),
+          const Text('لا توجد محادثات', style: TextStyle(fontFamily: 'Tajawal', color: AppColors.textSub, fontSize: 16)),
+          const SizedBox(height: 12),
+          ElevatedButton.icon(
+            onPressed: _openUsersSearch,
+            icon: const Icon(Icons.person_search_outlined, size: 18),
+            label: const Text('ابحث عن أشخاص', style: TextStyle(fontFamily: 'Tajawal')),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+              elevation: 0,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            ),
           ),
         ],
       ),
     );
   }
 
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
+  Widget _buildChatTile(ChatModel chat) {
+    final isRemoving = _removingIds.contains(chat.id);
+
+    return AnimatedOpacity(
+      opacity: isRemoving? 0.0 : 1.0,
+      duration: const Duration(milliseconds: 200),
+      child: AnimatedSize(
+        duration: const Duration(milliseconds: 200),
+        child: isRemoving
+      ? const SizedBox(height: 0)
+          : Dismissible(
+              key: Key(chat.id),
+              direction: DismissDirection.endToStart,
+              confirmDismiss: (_) async {
+                await _deleteChat(chat);
+                return false;
+              },
+              background: Container(
+                alignment: Alignment.centerRight,
+                padding: const EdgeInsets.only(right: 20),
+                decoration: BoxDecoration(
+                  color: AppColors.danger,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: const Icon(Icons.delete_rounded, color: Colors.white),
+              ),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: () => _openChat(chat),
+                  onLongPress: () => _deleteChat(chat),
+                  splashColor: Colors.transparent,
+                  highlightColor: AppColors.primary.withOpacity(0.06),
+                  borderRadius: BorderRadius.circular(16),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    decoration: const BoxDecoration(
+                      border: Border(bottom: BorderSide(color: AppColors.divider, width: 0.5)),
+                    ),
+                    child: Row(
+                      children: [
+                        // الصورة + نقطة أونلاين
+                        UserAvatar(
+                          url: chat.peer.avatarUrl,
+                          name: chat.peer.username,
+                          isOnline: chat.peer.isOnline,
+                          size: 52,
+                        ),
+                        const SizedBox(width: 12),
+                        // الاسم + آخر رسالة
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      chat.peer.username,
+                                      style: const TextStyle(
+                                        fontFamily: 'Tajawal',
+                                        color: AppColors.text,
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  Text(
+                                    _formatTime(chat.lastMessageTime),
+                                    style: const TextStyle(
+                                      fontFamily: 'Tajawal',
+                                      color: AppColors.textSub,
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 3),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      chat.lastMessage?? 'لا توجد رسائل',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontFamily: 'Tajawal',
+                                        color: chat.unreadCount > 0? AppColors.text : AppColors.textSub,
+                                        fontSize: 13,
+                                        fontWeight: chat.unreadCount > 0? FontWeight.w600 : FontWeight.normal,
+                                      ),
+                                    ),
+                                  ),
+                                  // عداد أحمر فقط
+                                  if (chat.unreadCount > 0)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                      decoration: const BoxDecoration(
+                                        color: AppColors.danger,
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: Text(
+                                        chat.unreadCount > 99? '99+' : chat.unreadCount.toString(),
+                                        style: const TextStyle(
+                                          fontFamily: 'Tajawal',
+                                          color: Colors.white,
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+      ),
+    );
+  }
+
+  String _formatTime(DateTime time) {
+    final now = DateTime.now();
+    final diff = now.difference(time);
+    if (diff.inDays > 0) {
+      return '${time.day}/${time.month}';
+    } else if (diff.inHours > 0) {
+      return '${diff.inHours}س';
+    } else if (diff.inMinutes > 0) {
+      return '${diff.inMinutes}د';
+    } else {
+      return 'الآن';
+    }
   }
 }
