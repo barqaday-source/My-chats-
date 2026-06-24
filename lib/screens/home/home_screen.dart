@@ -26,13 +26,33 @@ class _HomeScreenState extends State<HomeScreen> {
   late final NotificationService _notifService;
   late final AuthProvider _authProvider;
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+  Map<String, dynamic>? _userProfile; // جديد: بيانات البروفايل
 
   @override
   void initState() {
     super.initState();
     _authProvider = context.read<AuthProvider>();
     _notifService = NotificationService();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadNotifCount());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadNotifCount();
+      _loadUserProfile(); // جديد: نجيب بيانات البروفايل
+    });
+  }
+
+  // جديد: جلب بيانات البروفايل من جدول profiles
+  Future<void> _loadUserProfile() async {
+    final uid = _authProvider.user?.id;
+    if (uid == null) return;
+    try {
+      final res = await Supabase.instance.client
+        .from('profiles')
+        .select('username, avatar_url')
+        .eq('id', uid)
+        .single();
+      if (mounted) setState(() => _userProfile = res);
+    } catch (e) {
+      debugPrint('_loadUserProfile error: $e');
+    }
   }
 
   Future<void> _loadNotifCount() async {
@@ -67,7 +87,6 @@ class _HomeScreenState extends State<HomeScreen> {
           titleSpacing: 0,
           title: Row(
             children: [
-              // أيقونة المنيو بس - شلت اسم الصفحة عشان ما يتكرر
               IconButton(
                 onPressed: () => _scaffoldKey.currentState?.openDrawer(),
                 icon: const Icon(Icons.density_medium_rounded, color: AppColors.white),
@@ -76,16 +95,14 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
           actions: [
-            // أيقونة العين - تظهر بس بتبويب البروفايل
             if (_tab == 2)
               IconButton(
                 onPressed: () => Navigator.push(context, MaterialPageRoute(
-                  builder: (_) => const ProfileVisitorsScreen()
+                  builder: (_) => const ProfileVisitsScreen() // عدلت الاسم
                 )),
                 icon: const Icon(Icons.visibility_rounded, color: AppColors.white),
                 tooltip: 'زوار ملفي',
               ),
-            // الجرس مع العداد
             badges.Badge(
               showBadge: _notifCount > 0,
               badgeContent: Text(
@@ -117,96 +134,21 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       );
 
-  // درور انزلاقي حديث مع X
   Widget _buildModernDrawer() {
-    final user = _authProvider.user;
+    final username = _userProfile?['username']?? 'مستخدم'; // عدلت
+    final avatarUrl = _userProfile?['avatar_url']; // عدلت
+
     return Drawer(
       backgroundColor: AppColors.bgCard,
       child: SafeArea(
         child: Column(
           children: [
-            // هيدر الدرور مع X
             Padding(
               padding: const EdgeInsets.all(16),
               child: Row(
                 children: [
                   CircleAvatar(
                     radius: 24,
-                    backgroundImage: user?.avatarUrl!= null
-                    ? NetworkImage(user!.avatarUrl!)
-                      : null,
-                    child: user?.avatarUrl == null
-                    ? Text(user?.username[0].toUpperCase()?? 'U',
-                          style: const TextStyle(fontFamily: 'Tajawal', fontWeight: FontWeight.w700))
-                      : null,
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(user?.username?? 'مستخدم',
-                          style: const TextStyle(
-                            fontFamily: 'Tajawal',
-                            color: AppColors.white,
-                            fontWeight: FontWeight.w700,
-                            fontSize: 16
-                          )
-                        ),
-                        const Text('عرض الملف الشخصي',
-                          style: TextStyle(
-                            fontFamily: 'Tajawal',
-                            color: AppColors.textSub,
-                            fontSize: 12
-                          )
-                        ),
-                      ],
-                    ),
-                  ),
-                  // زر X للإغلاق
-                  IconButton(
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.close_rounded, color: AppColors.white),
-                  ),
-                ],
-              ),
-            ),
-            const Divider(color: AppColors.divider),
-            // عناصر القائمة
-            _drawerItem(Icons.person_rounded, 'الملف الشخصي', () {
-              Navigator.pop(context);
-              setState(() => _tab = 2);
-            }),
-            _drawerItem(Icons.visibility_rounded, 'زوار ملفي', () {
-              Navigator.pop(context);
-              Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfileVisitorsScreen()));
-            }),
-            _drawerItem(Icons.settings_rounded, 'الإعدادات', () {
-              Navigator.pop(context);
-            }),
-            const Spacer(),
-            _drawerItem(Icons.logout_rounded, 'تسجيل خروج', () {
-              Navigator.pop(context);
-              context.read<AuthProvider>().signOut();
-            }, isDestructive: true),
-            const SizedBox(height: 20),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _drawerItem(IconData icon, String title, VoidCallback onTap, {bool isDestructive = false}) {
-    return ListTile(
-      leading: Icon(icon, color: isDestructive? AppColors.danger : AppColors.white),
-      title: Text(title,
-        style: TextStyle(
-          fontFamily: 'Tajawal',
-          color: isDestructive? AppColors.danger : AppColors.white,
-          fontWeight: FontWeight.w600
-        )
-      ),
-      onTap: onTap,
-    );
-  }
-}
+                    backgroundImage: avatarUrl!= null? NetworkImage(avatarUrl) : null, // عدلت
+                    child: avatarUrl == null // عدلت
+                  ? Text(username[0].toUpperCase(), // ع
