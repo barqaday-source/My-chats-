@@ -9,15 +9,22 @@ class UserModel extends Equatable {
   final String? whatsapp;
   final DateTime? birthDate;
   final String? zodiac;
-  final String? country; // NEW
+  final String? country;
   final String role;
   final bool isOnline;
   final bool isBlocked;
   final DateTime? lastSeen;
   final DateTime createdAt;
+  
+  // الحالة - موحدة
   final String? statusText;
+  // للتوافق مع الكود القديم
+  String? get status => statusText;
+  
+  // المحفظة
+  final int coins;
 
-  // legacy - للتوافق فقط
+  // legacy
   final bool isMod;
   final int followersCount;
   final int followingCount;
@@ -32,13 +39,14 @@ class UserModel extends Equatable {
     this.whatsapp,
     this.birthDate,
     this.zodiac,
-    this.country, // NEW
+    this.country,
     this.role = 'user',
     this.isOnline = false,
     this.isBlocked = false,
     this.lastSeen,
     required this.createdAt,
     this.statusText,
+    this.coins = 0,
     this.isMod = false,
     this.followersCount = 0,
     this.followingCount = 0,
@@ -92,13 +100,15 @@ class UserModel extends Equatable {
       whatsapp: json['whatsapp'] as String?,
       birthDate: _parseDate(json['birth_date']),
       zodiac: json['zodiac'] as String?,
-      country: json['country'] as String?, // NEW
+      country: json['country'] as String?,
       role: json['role'] as String? ?? 'user',
       isOnline: json['is_online'] as bool? ?? false,
       isBlocked: json['is_banned'] as bool? ?? json['is_blocked'] as bool? ?? false,
       lastSeen: _parseDate(json['last_seen']),
       createdAt: _parseDate(json['created_at']) ?? DateTime.now(),
-      statusText: json['status_text'] as String?,
+      // يقرأ من status أو status_text - الاثنين يشتغلون
+      statusText: json['status'] as String? ?? json['status_text'] as String?,
+      coins: (json['coins'] as num?)?.toInt() ?? 0,
       isMod: json['is_mod'] as bool? ?? false,
       followersCount: (json['followers_count'] as num?)?.toInt() ?? 0,
       followingCount: (json['following_count'] as num?)?.toInt() ?? 0,
@@ -118,14 +128,14 @@ class UserModel extends Equatable {
       'whatsapp': whatsapp,
       'birth_date': birthDate?.toIso8601String().split('T').first,
       'zodiac': zodiac,
-      'country': country, // NEW
+      'country': country,
       'role': role,
       'is_online': isOnline,
       'is_banned': isBlocked,
-      'is_blocked': isBlocked,
       'last_seen': lastSeen?.toIso8601String(),
       'created_at': createdAt.toIso8601String(),
-      'status_text': statusText,
+      'status': statusText, // نحفظ بـ status - نفس عمود Supabase
+      'coins': coins,
     };
   }
 
@@ -144,8 +154,8 @@ class UserModel extends Equatable {
     bool clearBirthDate = false,
     String? zodiac,
     bool clearZodiac = false,
-    String? country, // NEW
-    bool clearCountry = false, // NEW
+    String? country,
+    bool clearCountry = false,
     String? role,
     bool? isOnline,
     bool? isBlocked,
@@ -153,6 +163,7 @@ class UserModel extends Equatable {
     DateTime? createdAt,
     String? statusText,
     bool clearStatusText = false,
+    int? coins,
   }) {
     return UserModel(
       id: id ?? this.id,
@@ -163,13 +174,14 @@ class UserModel extends Equatable {
       whatsapp: clearWhatsapp ? null : whatsapp ?? this.whatsapp,
       birthDate: clearBirthDate ? null : birthDate ?? this.birthDate,
       zodiac: clearZodiac ? null : zodiac ?? this.zodiac,
-      country: clearCountry ? null : country ?? this.country, // NEW
+      country: clearCountry ? null : country ?? this.country,
       role: role ?? this.role,
       isOnline: isOnline ?? this.isOnline,
       isBlocked: isBlocked ?? this.isBlocked,
       lastSeen: lastSeen ?? this.lastSeen,
       createdAt: createdAt ?? this.createdAt,
       statusText: clearStatusText ? null : statusText ?? this.statusText,
+      coins: coins ?? this.coins,
       isMod: isMod,
       followersCount: followersCount,
       followingCount: followingCount,
@@ -181,9 +193,9 @@ class UserModel extends Equatable {
   List<Object?> get props => [
     id, username, email, avatarUrl, bio, whatsapp,
     birthDate, zodiac, country, role, isOnline, isBlocked, lastSeen, createdAt,
-    statusText
+    statusText, coins
   ];
 
   @override
-  String toString() => 'UserModel(id: $id, username: $username, role: $role)';
+  String toString() => 'UserModel(id: $id, username: $username, role: $role, coins: $coins)';
 }
