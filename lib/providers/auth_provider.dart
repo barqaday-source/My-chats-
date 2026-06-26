@@ -5,51 +5,58 @@ import '../services/auth_service.dart';
 import '../core/constants/supabase_config.dart';
 import '../services/presence_service.dart';
 import '../main.dart';
+import '../models/user_model.dart';
 
 class AuthProvider with ChangeNotifier {
   final AuthService _authService = AuthService();
+  final supabase = Supabase.instance.client;
 
-  User? _user;
+  User? _authUser;
+  UserModel? _profile;
   bool _isLoading = false;
   String? _error;
   bool _initialized = false;
-  Map<String, dynamic>? _userProfile;
 
   RealtimeChannel? _banChannel;
 
-  User? get currentUser => _user;
-  User? get user => _user;
+  // للتوافق مع الكود القديم
+  User? get currentUser => _authUser;
+  // هذا اللي تستخدمه شاشات المحفظة / البروفايل
+  UserModel? get user => _profile;
+  
   bool get isLoading => _isLoading;
   bool get loading => _isLoading;
   String? get error => _error;
   bool get initialized => _initialized;
-  bool get isLoggedIn => _user != null;
-  bool get isAuthenticated => _user != null;
-  Map<String, dynamic>? get userProfile => _userProfile;
+  bool get isLoggedIn => _authUser != null;
+  bool get isAuthenticated => _authUser != null;
+  
+  // للتوافق القديم - يرجع Map
+  Map<String, dynamic>? get userProfile => _profile?.toJson();
 
   AuthProvider() {
     checkSession();
     _authService.authStateChanges.listen((data) async {
-      _user = data.session?.user;
-      if (_user != null) {
+      _authUser = data.session?.user;
+      if (_authUser != null) {
         await _loadUserProfile();
-        if (_user != null) {
+        if (_authUser != null) {
           _startPresence();
           _startBanWatch();
         }
       } else {
         await _stopPresence();
-        _userProfile = null;
+        _profile = null;
       }
       notifyListeners();
     });
   }
 
   Future<void> checkSession() async {
-    _user = _authService.currentUser;
-    if (_user != null) {
+    _authUser = _authService.currentUser;
+    if (_authUser != null) {
       await _loadUserProfile();
-      if (_user != null) {
+      if (_authUser != null) {
         _startPresence();
         _startBanWatch();
       }
@@ -69,10 +76,10 @@ class AuthProvider with ChangeNotifier {
   }
 
   void _startBanWatch() {
-    if (_user == null) return;
+    if (_authUser == null) return;
     _banChannel?.unsubscribe();
     _banChannel = SupabaseConfig.client
-        .channel('ban_watch_${_user!.id}')
+        .channel('ban_watch_${_authUser!.id}')
         .onPostgresChanges(
           event: PostgresChangeEvent.update,
           schema: 'public',
@@ -80,7 +87,7 @@ class AuthProvider with ChangeNotifier {
           filter: PostgresChangeFilter(
             type: PostgresChangeFilterType.eq,
             column: 'id',
-            value: _user!.id,
+            value: _authUser!.id,
           ),
           callback: (payload) {
             final banned = payload.newRecord['is_banned'] == true;
@@ -96,23 +103,23 @@ class AuthProvider with ChangeNotifier {
     _error = 'تم حظر حسابك';
     await _stopPresence();
     await _authService.signOut();
-    _user = null;
-    _userProfile = null;
+    _authUser = null;
+    _profile = null;
     notifyListeners();
     navigatorKey.currentState?.pushNamedAndRemoveUntil('/login', (route) => false);
   }
 
   Future<void> _loadUserProfile() async {
     try {
-      if (_user == null) return;
+      if (_authUser == null) return;
       final res = await SupabaseConfig.client
           .from(SupabaseConfig.tUsers)
           .select()
-          .eq('id', _user!.id)
+          .eq('id', _authUser!.id)
           .maybeSingle();
       
       if (res == null) {
-        _userProfile = null;
+        _profile = null;
         return;
       }
 
@@ -122,10 +129,16 @@ class AuthProvider with ChangeNotifier {
         return;
       }
 
-      _userProfile = res;
+      _profile = UserModel.fromJson(res);
     } catch (e) {
-      _userProfile = null;
+      _profile = null;
     }
+  }
+
+  // تحديث بيانات المستخدم - للاستخدام بعد الشراء
+  Future<void> refreshUser() async {
+    await _loadUserProfile();
+    notifyListeners();
   }
 
   Future<bool> login(String email, String password) async {
@@ -135,11 +148,11 @@ class AuthProvider with ChangeNotifier {
       notifyListeners();
 
       await _authService.signInWithEmail(email: email, password: password);
-      _user = _authService.currentUser;
+      _authUser = _authService.currentUser;
       
-      if (_user != null) {
+      if (_authUser != null) {
         await _loadUserProfile();
-        if (_user == null) {
+        if (_profile == null && _authUser != null) {
           // محظور، _handleBanned اشتغلت
           _isLoading = false;
           notifyListeners();
@@ -151,7 +164,7 @@ class AuthProvider with ChangeNotifier {
 
       _isLoading = false;
       notifyListeners();
-      return _user != null;
+      return _authUser != null;
     } catch (e) {
       _error = e.toString();
       _isLoading = false;
@@ -180,10 +193,11 @@ class AuthProvider with ChangeNotifier {
           'is_online': true,
           'last_seen': DateTime.now().toIso8601String(),
           'is_banned': false,
+          'coins': 0,
         }, onConflict: 'id');
-        _user = res.user;
+        _authUser = res.user;
         await _loadUserProfile();
-        if (_user != null) {
+        if (_authUser != null) {
           _startPresence();
           _startBanWatch();
         }
@@ -219,8 +233,8 @@ class AuthProvider with ChangeNotifier {
 
       await _stopPresence();
       await _authService.signOut();
-      _userProfile = null;
-      _user = null;
+      _profile = null;
+      _authUser = null;
 
       navigatorKey.currentState?.pushNamedAndRemoveUntil('/login', (route) => false);
 
