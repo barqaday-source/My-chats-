@@ -6,10 +6,12 @@ import '../../core/constants/app_colors.dart';
 import '../../widgets/user_avatar.dart';
 import '../../widgets/app_snackbar.dart';
 
-class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key});
-  @override State<ProfileScreen> createState() => _ProfileScreenState();
+class EditProfileScreen extends StatefulWidget {
+  const EditProfileScreen({super.key});
+  @override State<EditProfileScreen> createState() => _EditProfileScreenState();
 }
+
+class _EditProfileScreenState extends State<EditProfileScreen> {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   final supabase = Supabase.instance.client;
