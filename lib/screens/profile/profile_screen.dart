@@ -5,12 +5,12 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/constants/app_colors.dart';
 import '../../providers/auth_provider.dart';
 import '../../widgets/user_avatar.dart';
+import '../../widgets/app_snackbar.dart';
 import 'edit_profile_screen.dart';
-
-/// الشاشات الجاية - placeholders لحد ما نبنيها
-class WalletScreen extends StatelessWidget { const WalletScreen({super.key}); @override Widget build(BuildContext c) => Scaffold(appBar: AppBar(title: const Text('محفظتي', style: TextStyle(fontFamily: 'Tajawal'))), body: const Center(child: Text('رصيدك هنا', style: TextStyle(fontFamily: 'Tajawal')))); }
-class TopUpScreen extends StatelessWidget { const TopUpScreen({super.key}); @override Widget build(BuildContext c) => Scaffold(appBar: AppBar(title: const Text('اشحن رصيدك', style: TextStyle(fontFamily: 'Tajawal'))), body: const Center(child: Text('شحن عبر الوكيل - واتساب', style: TextStyle(fontFamily: 'Tajawal')))); }
-class OffersScreen extends StatelessWidget { const OffersScreen({super.key}); @override Widget build(BuildContext c) => Scaffold(appBar: AppBar(title: const Text('العروض المميزة', style: TextStyle(fontFamily: 'Tajawal'))), body: const Center(child: Text('ثيمات / بوست', style: TextStyle(fontFamily: 'Tajawal')))); }
+import 'blocked_users_screen.dart';
+import '../wallet/wallet_screen.dart';
+import '../wallet/topup_screen.dart';
+import '../wallet/offers_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -56,7 +56,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           child: ListView(
             padding: const EdgeInsets.all(20),
             children: [
-              // الهيدر - أفاتار + اسم + حالة
+              // الهيدر
               Center(
                 child: Column(
                   children: [
@@ -96,7 +96,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               // 3 مربعات: محفظتي / اشحن / عروض
               Row(
                 children: [
-                  _statCard('محفظتي', '${user.coins ?? 0} 🪙', () {
+                  _statCard('محفظتي', '${user.coins} 🪙', () {
                     Navigator.push(context, MaterialPageRoute(builder: (_) => const WalletScreen()));
                   }),
                   const SizedBox(width: 12),
@@ -115,9 +115,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
               _menuTile(Icons.person_outline_rounded, 'تعديل الملف الشخصي', () {
                 Navigator.push(context, MaterialPageRoute(builder: (_) => const EditProfileScreen())).then((_) => _loadStats());
               }),
-              _menuTile(Icons.visibility_outlined, 'زوار ملفي', () {}, badge: _visits > 0 ? '$_visits' : null),
-              _menuTile(Icons.block_rounded, 'المحظورون', () {}),
-              _menuTile(Icons.settings_outlined, 'الإعدادات', () {}),
+              _menuTile(Icons.visibility_outlined, 'زوار ملفي', () {
+                showAppSnack(context, 'قريباً', success: false);
+              }, badge: _visits > 0 ? '$_visits' : null),
+              _menuTile(Icons.block_rounded, 'المحظورون', () {
+                Navigator.push(context, MaterialPageRoute(builder: (_) => const BlockedUsersScreen()));
+              }),
+              _menuTile(Icons.settings_outlined, 'الإعدادات', () {
+                showAppSnack(context, 'قريباً', success: false);
+              }),
               _menuTile(Icons.logout_rounded, 'تسجيل الخروج', () async {
                 await supabase.auth.signOut();
               }, danger: true),
